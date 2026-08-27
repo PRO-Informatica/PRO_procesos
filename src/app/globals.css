@@ -10,6 +10,10 @@
   --brand: #ed1c2e;
   --brand-strong: #c81324;
   --brand-soft: #fff0f1;
+  --success: #16794d;
+  --success-soft: #ecfdf3;
+  --destructive: #b42318;
+  --destructive-soft: #fef3f2;
   --sidebar: #111216;
 }
 
@@ -23,6 +27,10 @@
   --brand: #ff3344;
   --brand-strong: #ff6673;
   --brand-soft: #35171c;
+  --success: #6ce9a6;
+  --success-soft: #123326;
+  --destructive: #fda29b;
+  --destructive-soft: #3b1717;
   --sidebar: #0b0c0f;
 }
 
@@ -36,6 +44,10 @@
   --color-brand: var(--brand);
   --color-brand-strong: var(--brand-strong);
   --color-brand-soft: var(--brand-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-destructive: var(--destructive);
+  --color-destructive-soft: var(--destructive-soft);
   --color-sidebar: var(--sidebar);
   --font-sans: Arial, Helvetica, sans-serif;
   --font-mono: Menlo, Consolas, monospace;
@@ -57,4 +69,77 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+button,
+a,
+input {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.form-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.625rem;
+  background: var(--surface);
+  padding: 0.75rem 0.875rem;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.form-input::placeholder {
+  color: var(--foreground-muted);
+  opacity: 0.7;
+}
+
+.form-input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 13%, transparent);
+  outline: none;
+}
+
+.primary-button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 0.625rem;
+  background: var(--brand);
+  padding: 0.625rem 1rem;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: background-color 150ms ease, opacity 150ms ease;
+}
+
+.primary-button:hover:not(:disabled) {
+  background: var(--brand-strong);
+}
+
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.auth-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(to bottom right, black, transparent 78%);
 }

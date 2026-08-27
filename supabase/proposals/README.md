@@ -1,0 +1,52 @@
+# Propuestas de base de datos
+
+Los archivos de esta carpeta son borradores para revisión. No forman parte de `supabase/migrations` y no deben ejecutarse automáticamente.
+
+> `20260827_platform_admin_global_read.sql` está obsoleto y no debe ejecutarse. La migration equivalente `043_platform_admin_global_read.sql` ya fue aplicada manualmente en Supabase, incluyendo global SELECT sobre `notifications` y las actualizaciones de los helpers de documentos y Storage.
+
+## Platform Admin: lectura global
+
+Propuesta actual: `20260827_platform_admin_global_read.sql`.
+
+Objetivo:
+
+- añadir visibilidad global de sólo lectura para `PLATFORM_ADMIN`;
+- conservar todas las policies de membresía y permisos existentes;
+- no conceder mutaciones operacionales;
+- mantener privado el bucket `private-documents`;
+- separar visibilidad administrativa de membresía operacional.
+
+### Decisiones de alcance
+
+- Se proponen policies `FOR SELECT TO authenticated` que usan `(select app_private.is_platform_admin())`.
+- No se incluyen policies `INSERT`, `UPDATE` o `DELETE`.
+- `notifications` queda fuera hasta definir qué significa exactamente una notificación “relevante” para administración global. Dar acceso a todas expondría alertas personales sin una regla explícita.
+- `company_templates` queda fuera porque la tabla no existe actualmente en el schema cache de Supabase (`PGRST205`).
+- Storage conserva el bucket privado. La policy propuesta sólo permite leer objetos registrados como versiones `UPLOADED` en `public.document_versions`.
+
+### Bloqueo para `can_read_document`
+
+La actualización solicita incorporar `app_private.is_platform_admin()` dentro de `app_private.can_read_document()`.
+
+El cuerpo y la firma exacta de la función actual no están en el repositorio. No debe utilizarse `CREATE OR REPLACE FUNCTION` hasta revisar su migration o extraer su definición, porque podría eliminar reglas actuales de membresía/permisos.
+
+El cambio final debe conservar íntegramente el predicado actual y añadir conceptualmente:
+
+```sql
+app_private.is_platform_admin()
+OR
+(predicado_actual_sin_modificar)
+```
+
+También debe revisarse `app_private.can_read_storage_object()` si la policy vigente de `storage.objects` depende de ese helper.
+
+### Cambios requeridos en ProjectContext
+
+El selector operacional no debe consultar simplemente todos los proyectos visibles por RLS. Debe construir su conjunto desde:
+
+1. `project_members` activos del usuario;
+2. compañías donde el usuario posea una asignación `COMPANY_ADMIN` no revocada;
+3. proyectos pertenecientes a esas compañías;
+4. unión y deduplicación de ambos conjuntos.
+
+`PLATFORM_ADMIN` debe resolverse en un contexto separado y nunca convertirse en rol o permiso de proyecto.

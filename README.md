@@ -25,6 +25,19 @@ npm run build
 
 ## Estado
 
-La Fase 0 contiene únicamente el baseline técnico, clientes Supabase SSR y un app shell mínimo. Auth, contexto de proyecto y módulos funcionales quedan fuera de esta fase.
+La Fase 1 incorpora:
+
+- acceso con correo y contraseña mediante Supabase Auth;
+- sesión SSR protegida con `getClaims()` y `proxy.ts`;
+- validación del estado `profiles.active`;
+- recuperación y actualización de contraseña;
+- cierre de sesión;
+- app shell responsive con sidebar colapsable, topbar y temas light/dark/system.
+
+El registro público no está habilitado. Los módulos operativos quedan fuera de estas fases.
+
+La Fase 2 incorpora contexto global de proyecto, selector persistente, unión de roles activos de empresa/proyecto y navegación condicionada por permisos. El selector es una preferencia de interfaz: RLS continúa siendo la autoridad para cada consulta.
+
+La fundación de experiencia visual usa Motion para React e incluye variantes centralizadas, reducción de movimiento, loader con identidad PRO, loaders locales, botones con estado de envío, skeletons y estados reutilizables de vacío/error.
 
 El build usa Webpack de forma explícita porque Turbopack no puede enlazar el proceso auxiliar de PostCSS en el entorno de ejecución restringido usado para validar este baseline.
