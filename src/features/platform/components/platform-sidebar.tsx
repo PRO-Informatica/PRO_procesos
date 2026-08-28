@@ -9,8 +9,10 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 type PlatformSidebarProps = {
   collapsed: boolean;
@@ -21,8 +23,18 @@ type PlatformSidebarProps = {
 
 const navigation = [
   { label: "Resumen", icon: LayoutDashboard, href: "/platform", enabled: true },
-  { label: "Empresas", icon: Building2, enabled: false },
-  { label: "Usuarios", icon: Users, enabled: false },
+  {
+    label: "Empresas",
+    icon: Building2,
+    href: "/platform/companies",
+    enabled: true,
+  },
+  {
+    label: "Usuarios",
+    icon: Users,
+    href: "/platform/users",
+    enabled: true,
+  },
   { label: "Plantillas", icon: PanelsTopLeft, enabled: false },
   { label: "Auditoría", icon: FileClock, enabled: false },
 ];
@@ -33,16 +45,24 @@ export function PlatformSidebar({
   onCollapse,
   onMobileClose,
 }: PlatformSidebarProps) {
+  const pathname = usePathname();
+
   return (
     <>
-      {mobileOpen && (
-        <button
-          type="button"
-          aria-label="Cerrar navegación"
-          className="fixed inset-0 z-40 bg-black/45 lg:hidden"
-          onClick={onMobileClose}
-        />
-      )}
+      <AnimatePresence>
+        {mobileOpen && (
+          <motion.button
+            type="button"
+            aria-label="Cerrar navegación"
+            className="fixed inset-0 z-40 bg-black/45 lg:hidden"
+            onClick={onMobileClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.16 }}
+          />
+        )}
+      </AnimatePresence>
 
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex bg-sidebar text-white transition-[width,transform] duration-200 ${
@@ -92,6 +112,11 @@ export function PlatformSidebar({
             <div className="space-y-1">
               {navigation.map((item) => {
                 const Icon = item.icon;
+                const active = item.href
+                  ? item.href === "/platform"
+                    ? pathname === item.href
+                    : pathname.startsWith(item.href)
+                  : false;
                 const sharedClass = `flex h-10 w-full items-center rounded-lg text-sm transition-colors ${
                   collapsed ? "justify-center px-2" : "gap-3 px-3"
                 }`;
@@ -102,11 +127,26 @@ export function PlatformSidebar({
                       href={item.href}
                       key={item.label}
                       onClick={onMobileClose}
-                      className={`${sharedClass} bg-white/10 font-medium text-white`}
+                      className={`${sharedClass} relative font-medium ${
+                        active
+                          ? "text-white"
+                          : "text-white/60 hover:bg-white/8 hover:text-white"
+                      }`}
+                      aria-current={active ? "page" : undefined}
                       title={collapsed ? item.label : undefined}
                     >
-                      <Icon aria-hidden="true" className="size-[18px] shrink-0" />
-                      {!collapsed && <span>{item.label}</span>}
+                      {active && (
+                        <motion.span
+                          layoutId="platform-active-navigation"
+                          className="absolute inset-0 rounded-lg bg-white/10"
+                          transition={{ duration: 0.2 }}
+                        />
+                      )}
+                      <Icon
+                        aria-hidden="true"
+                        className="relative size-[18px] shrink-0"
+                      />
+                      {!collapsed && <span className="relative">{item.label}</span>}
                     </Link>
                   );
                 }

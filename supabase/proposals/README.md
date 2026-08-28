@@ -2,6 +2,15 @@
 
 Los archivos de esta carpeta son borradores para revisión. No forman parte de `supabase/migrations` y no deben ejecutarse automáticamente.
 
+## Platform Admin: administración maestra de usuarios
+
+Ejecutada manualmente y promovida al registro oficial:
+
+- proposal: `20260828_platform_admin_user_access_management.sql`
+- migration: `../migrations/044_platform_admin_user_access_management.sql`
+
+Incluye RPC `SECURITY DEFINER` para editar `profiles.full_name`, administrar memberships de empresa/proyecto y asignar o revocar roles desde PLATFORM_ADMIN. No incluye passwords: esas operaciones permanecen exclusivamente en Supabase Auth Admin server-side.
+
 > `20260827_platform_admin_global_read.sql` está obsoleto y no debe ejecutarse. La migration equivalente `043_platform_admin_global_read.sql` ya fue aplicada manualmente en Supabase, incluyendo global SELECT sobre `notifications` y las actualizaciones de los helpers de documentos y Storage.
 
 ## Platform Admin: lectura global

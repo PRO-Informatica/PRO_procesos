@@ -1,9 +1,9 @@
 "use client";
 
 import { ArrowLeftRight, ChevronDown, LogOut, Menu } from "lucide-react";
-import Link from "next/link";
 
 import { ThemeToggle } from "@/components/shared/theme-toggle";
+import { ScopeSwitchLink } from "@/components/shared/scope-switch-link";
 import { signOut } from "@/features/auth/actions";
 import type { SessionProfile } from "@/features/auth/types";
 import { usePlatformContext } from "@/features/platform/platform-context";
@@ -44,13 +44,14 @@ export function PlatformTopbar({
 
       <div className="ml-auto flex items-center gap-2">
         {hasOperationalAccess && (
-          <Link
+          <ScopeSwitchLink
             href="/"
+            loadingLabel="Cambiando a operación…"
             className="hidden h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-foreground-muted transition-colors hover:bg-muted hover:text-foreground sm:flex"
           >
             <ArrowLeftRight aria-hidden="true" className="size-4" />
             Ir a operación
-          </Link>
+          </ScopeSwitchLink>
         )}
         <ThemeToggle />
 
@@ -75,13 +76,14 @@ export function PlatformTopbar({
 
           <div className="absolute right-0 mt-2 w-56 rounded-xl border border-border bg-surface p-2 shadow-lg">
             {hasOperationalAccess && (
-              <Link
+              <ScopeSwitchLink
                 href="/"
+                loadingLabel="Cambiando a operación…"
                 className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground-muted transition-colors hover:bg-muted hover:text-foreground sm:hidden"
               >
                 <ArrowLeftRight aria-hidden="true" className="size-4" />
                 Ir a operación
-              </Link>
+              </ScopeSwitchLink>
             )}
             <form action={signOut}>
               <button

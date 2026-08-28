@@ -17,9 +17,11 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
 
+import { ScopeSwitchLink } from "@/components/shared/scope-switch-link";
 import { usePlatformContext } from "@/features/platform/platform-context";
 import { ProjectSelector } from "@/features/projects/components/project-selector";
 import { useProjectContext } from "@/features/projects/project-context";
@@ -114,14 +116,20 @@ export function AppSidebar({
 
   return (
     <>
-      {mobileOpen && (
-        <button
-          type="button"
-          aria-label="Cerrar navegación"
-          className="fixed inset-0 z-40 bg-black/45 lg:hidden"
-          onClick={onMobileClose}
-        />
-      )}
+      <AnimatePresence>
+        {mobileOpen && (
+          <motion.button
+            type="button"
+            aria-label="Cerrar navegación"
+            className="fixed inset-0 z-40 bg-black/45 lg:hidden"
+            onClick={onMobileClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.16 }}
+          />
+        )}
+      </AnimatePresence>
 
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex bg-sidebar text-white transition-[width,transform] duration-200 ${
@@ -202,9 +210,10 @@ export function AppSidebar({
 
           {platformContext.isPlatformAdmin && platformContext.hasOperationalAccess && (
             <div className="border-t border-white/8 p-3">
-              <Link
+              <ScopeSwitchLink
                 href="/platform"
-                onClick={onMobileClose}
+                loadingLabel="Cambiando a administración global…"
+                onNavigate={onMobileClose}
                 className={`flex h-10 items-center rounded-lg text-sm font-medium text-white/65 transition-colors hover:bg-white/8 hover:text-white ${
                   collapsed ? "justify-center" : "gap-3 px-3"
                 }`}
@@ -212,7 +221,7 @@ export function AppSidebar({
               >
                 <Globe2 aria-hidden="true" className="size-[18px] shrink-0" />
                 {!collapsed && <span>Administración global</span>}
-              </Link>
+              </ScopeSwitchLink>
             </div>
           )}
 

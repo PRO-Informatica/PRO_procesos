@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { GlobalLoadingProvider } from "@/components/feedback/global-loading-provider";
 import { MotionProvider } from "@/components/providers/motion-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 
@@ -19,7 +20,9 @@ export default function RootLayout({
     <html lang="es" suppressHydrationWarning>
       <body>
         <ThemeProvider>
-          <MotionProvider>{children}</MotionProvider>
+          <MotionProvider>
+            <GlobalLoadingProvider>{children}</GlobalLoadingProvider>
+          </MotionProvider>
         </ThemeProvider>
       </body>
     </html>

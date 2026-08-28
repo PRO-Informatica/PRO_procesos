@@ -1,5 +1,8 @@
 import { Building2, Eye, LockKeyhole, ShieldCheck } from "lucide-react";
 
+import { MotionItem, MotionList } from "@/components/motion/motion-list";
+import { MotionSection } from "@/components/motion/motion-section";
+
 const foundations = [
   {
     icon: Eye,
@@ -21,7 +24,7 @@ const foundations = [
 export function PlatformOverview() {
   return (
     <div className="mx-auto max-w-6xl">
-      <section className="overflow-hidden rounded-2xl border border-border bg-surface">
+      <MotionSection className="overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="border-b border-border p-6 sm:p-8">
           <div className="flex size-11 items-center justify-center rounded-xl bg-brand-soft text-brand-strong">
             <ShieldCheck aria-hidden="true" className="size-5" />
@@ -37,16 +40,18 @@ export function PlatformOverview() {
           </p>
         </div>
 
-        <div className="grid gap-px bg-border md:grid-cols-3">
+        <MotionList className="grid gap-px bg-border md:grid-cols-3">
           {foundations.map(({ icon: Icon, title, description }) => (
-            <article key={title} className="bg-surface p-6">
-              <Icon aria-hidden="true" className="size-5 text-brand-strong" />
-              <h2 className="mt-4 text-sm font-semibold text-foreground">{title}</h2>
-              <p className="mt-2 text-sm leading-6 text-foreground-muted">{description}</p>
-            </article>
+            <MotionItem key={title} className="bg-surface">
+              <article className="p-6">
+                <Icon aria-hidden="true" className="size-5 text-brand-strong" />
+                <h2 className="mt-4 text-sm font-semibold text-foreground">{title}</h2>
+                <p className="mt-2 text-sm leading-6 text-foreground-muted">{description}</p>
+              </article>
+            </MotionItem>
           ))}
-        </div>
-      </section>
+        </MotionList>
+      </MotionSection>
     </div>
   );
 }

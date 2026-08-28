@@ -1,8 +1,10 @@
 "use client";
 
-import { Building2, ChevronDown, LoaderCircle } from "lucide-react";
+import { Building2, ChevronDown } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useActionState } from "react";
+
+import { useGlobalPending } from "@/components/feedback/global-loading-provider";
 
 import { switchProject } from "../actions";
 import { useProjectContext } from "../project-context";
@@ -12,6 +14,11 @@ const initialState = { status: "idle" as const };
 export function ProjectSelector({ collapsed = false }: { collapsed?: boolean }) {
   const context = useProjectContext();
   const [state, formAction, pending] = useActionState(switchProject, initialState);
+  useGlobalPending(
+    pending,
+    "Cambiando proyecto…",
+    "Estamos actualizando tu contexto operacional.",
+  );
 
   if (context.status === "error") {
     return (
@@ -47,11 +54,7 @@ export function ProjectSelector({ collapsed = false }: { collapsed?: boolean }) 
           className="grid size-11 place-items-center rounded-lg border border-white/10 bg-white/5 text-brand"
           title={`${context.activeProject.name} · ${context.activeProject.companyName}`}
         >
-          {pending ? (
-            <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
-          ) : (
-            <Building2 aria-hidden="true" className="size-4" />
-          )}
+          <Building2 aria-hidden="true" className="size-4" />
         </div>
       ) : (
         <motion.div layout className="relative">
@@ -73,17 +76,10 @@ export function ProjectSelector({ collapsed = false }: { collapsed?: boolean }) 
               </option>
             ))}
           </select>
-          {pending ? (
-            <LoaderCircle
-              aria-hidden="true"
-              className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-white/55"
-            />
-          ) : (
-            <ChevronDown
-              aria-hidden="true"
-              className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-white/45"
-            />
-          )}
+          <ChevronDown
+            aria-hidden="true"
+            className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-white/45"
+          />
         </motion.div>
       )}
 
