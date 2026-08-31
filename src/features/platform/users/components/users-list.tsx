@@ -187,6 +187,7 @@ export function UsersList({
                           Ver
                         </Link>
                         <UserStatusDialog
+                          key={`${user.id}-${user.profileActive ? "active" : "inactive"}`}
                           userId={user.id}
                           userName={user.fullName}
                           active={user.profileActive}

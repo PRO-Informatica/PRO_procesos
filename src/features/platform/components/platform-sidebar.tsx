@@ -35,8 +35,18 @@ const navigation = [
     href: "/platform/users",
     enabled: true,
   },
-  { label: "Plantillas", icon: PanelsTopLeft, enabled: false },
-  { label: "Auditoría", icon: FileClock, enabled: false },
+  {
+    label: "Plantillas",
+    icon: PanelsTopLeft,
+    href: "/platform/templates",
+    enabled: true,
+  },
+  {
+    label: "Auditoría",
+    icon: FileClock,
+    href: "/platform/audit",
+    enabled: true,
+  },
 ];
 
 export function PlatformSidebar({

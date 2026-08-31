@@ -141,7 +141,12 @@ export async function updatePassword(
     };
   }
 
-  redirect("/");
+  await supabase.auth.signOut();
+
+  return {
+    status: "success",
+    message: "Contraseña actualizada correctamente.",
+  };
 }
 
 export async function signOut() {

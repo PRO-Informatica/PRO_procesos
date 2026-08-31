@@ -20,6 +20,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { ScopeSwitchLink } from "@/components/shared/scope-switch-link";
 import { usePlatformContext } from "@/features/platform/platform-context";
@@ -51,8 +52,13 @@ const navigation: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "Operación",
     items: [
-      { label: "Programación", icon: CalendarDays, permission: "programming.view" },
-      { label: "Despachos", icon: Truck, permission: "dispatch.view" },
+      {
+        label: "Programación",
+        icon: CalendarDays,
+        href: "/programming",
+        permission: "programming.view",
+      },
+      { label: "Despachos", icon: Truck, href: "/dispatches", permission: "dispatch.view" },
     ],
   },
   {
@@ -96,6 +102,7 @@ export function AppSidebar({
   onCollapse,
   onMobileClose,
 }: SidebarProps) {
+  const pathname = usePathname();
   const projectContext = useProjectContext();
   const platformContext = usePlatformContext();
   const visibleNavigation = navigation
@@ -171,18 +178,27 @@ export function AppSidebar({
                 <div className="space-y-1">
                   {section.items.map((item) => {
                     const Icon = item.icon;
+                    const active =
+                      item.href === "/"
+                        ? pathname === "/"
+                        : Boolean(item.href && pathname.startsWith(item.href));
                     const sharedClass = `flex h-10 w-full items-center rounded-lg text-sm transition-colors ${
                       collapsed ? "justify-center px-2" : "gap-3 px-3"
                     }`;
 
-                    if (item.enabled && item.href) {
+                    if (item.href) {
                       return (
                         <Link
                           href={item.href}
                           key={item.label}
                           onClick={onMobileClose}
-                          className={`${sharedClass} bg-white/10 font-medium text-white`}
+                          className={`${sharedClass} font-medium ${
+                            active
+                              ? "bg-white/10 text-white"
+                              : "text-white/62 hover:bg-white/8 hover:text-white"
+                          }`}
                           title={collapsed ? item.label : undefined}
+                          aria-current={active ? "page" : undefined}
                         >
                           <Icon aria-hidden="true" className="size-[18px] shrink-0" />
                           {!collapsed && <span>{item.label}</span>}

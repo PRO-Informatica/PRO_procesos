@@ -82,6 +82,32 @@ input {
   outline-offset: 2px;
 }
 
+.subtle-scrollbar {
+  scrollbar-color: color-mix(in srgb, var(--foreground-muted) 45%, transparent) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.subtle-scrollbar::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.subtle-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.subtle-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--foreground-muted) 45%, transparent);
+  background-clip: padding-box;
+}
+
+.subtle-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--foreground-muted) 65%, transparent);
+  background-clip: padding-box;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -153,4 +179,56 @@ input {
     linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
   background-size: 44px 44px;
   mask-image: linear-gradient(to bottom right, black, transparent 78%);
+}
+
+.programming-calendar .sx-react-calendar-wrapper {
+  width: 100%;
+  height: 680px;
+  max-height: min(78vh, 920px);
+}
+
+.programming-calendar .sx__calendar {
+  --sx-color-background: var(--surface);
+  --sx-color-surface: var(--surface);
+  --sx-color-on-surface: var(--foreground);
+  --sx-color-on-background: var(--foreground);
+  --sx-color-outline: var(--border);
+  --sx-color-neutral: var(--muted);
+  --sx-color-primary: var(--brand);
+  --sx-color-primary-container: var(--brand-soft);
+  --sx-color-on-primary-container: var(--brand-strong);
+  border: 0;
+  font-family: var(--font-sans);
+}
+
+.programming-calendar .sx__time-grid-event,
+.programming-calendar .sx__month-grid-event,
+.programming-calendar .sx__month-agenda-event,
+.programming-calendar .sx__week-agenda-event {
+  cursor: pointer;
+}
+
+.programming-calendar--create-enabled .sx__month-grid-day,
+.programming-calendar--create-enabled .sx__time-grid-day {
+  cursor: crosshair;
+  transition: background-color 150ms ease;
+}
+
+.programming-calendar--create-enabled .sx__month-grid-day:hover,
+.programming-calendar--create-enabled .sx__time-grid-day:hover {
+  background-color: color-mix(in srgb, var(--brand-soft) 42%, transparent);
+}
+
+.programming-calendar--create-enabled .sx__time-grid-event,
+.programming-calendar--create-enabled .sx__month-grid-event,
+.programming-calendar--create-enabled .sx__month-agenda-event,
+.programming-calendar--create-enabled .sx__week-agenda-event {
+  cursor: pointer;
+}
+
+@media (max-width: 699px) {
+  .programming-calendar .sx-react-calendar-wrapper {
+    height: 720px;
+    max-height: none;
+  }
 }

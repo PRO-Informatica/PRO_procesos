@@ -332,7 +332,7 @@ export async function requestPlatformPasswordReset(
 
   const origin = await getRequestOrigin();
   const { error } = await admin.auth.resetPasswordForEmail(email, {
-    redirectTo: `${origin}/auth/confirm?next=/reset-password`,
+    redirectTo: `${origin}/reset-password`,
   });
 
   if (error) {

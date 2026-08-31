@@ -1,5 +1,5 @@
-import { PageLoader } from "@/components/feedback/app-loader";
+import { DashboardSkeleton } from "@/features/dashboard/components/dashboard-skeleton";
 
 export default function DashboardLoading() {
-  return <PageLoader label="Cargando proyectos…" />;
+  return <DashboardSkeleton />;
 }

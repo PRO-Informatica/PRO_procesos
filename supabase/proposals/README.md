@@ -2,6 +2,18 @@
 
 Los archivos de esta carpeta son borradores para revisión. No forman parte de `supabase/migrations` y no deben ejecutarse automáticamente.
 
+## Platform Phase 5: plantilla fija de Guía de despacho
+
+Aprobada y promovida a migration, todavía **no ejecutada**:
+
+- proposal: `20260829_dispatch_guide_lines.sql`
+- migration: `../migrations/045_default_dispatch_guide_template.sql`
+
+Propone productos repetibles mediante `dispatch_guide_lines`, conserva
+`dispatch_guides.quantity` como agregado derivado para compatibilidad con las
+RPC actuales y añade un snapshot textual de la persona que recibe. No crea
+Company Templates, form-builder ni matching por código de producto.
+
 ## Platform Admin: administración maestra de usuarios
 
 Ejecutada manualmente y promovida al registro oficial:

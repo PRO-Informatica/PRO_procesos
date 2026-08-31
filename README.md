@@ -38,6 +38,8 @@ El registro público no está habilitado. Los módulos operativos quedan fuera d
 
 La Fase 2 incorpora contexto global de proyecto, selector persistente, unión de roles activos de empresa/proyecto y navegación condicionada por permisos. El selector es una preferencia de interfaz: RLS continúa siendo la autoridad para cada consulta.
 
+La Fase 3 incorpora el dashboard operacional read-only y aislado por proyecto, con resúmenes de planificación, despachos, incidencias, lote semanal, facturación y actividad. El siguiente módulo de Programación debe ofrecer obligatoriamente dos vistas complementarias sobre los estados reales del dominio: **Calendario** y **Kanban**. El resumen semanal del dashboard no sustituye ninguna de esas vistas.
+
 La fundación de experiencia visual usa Motion para React e incluye variantes centralizadas, reducción de movimiento, loader con identidad PRO, loaders locales, botones con estado de envío, skeletons y estados reutilizables de vacío/error.
 
 El build usa Webpack de forma explícita porque Turbopack no puede enlazar el proceso auxiliar de PostCSS en el entorno de ejecución restringido usado para validar este baseline.

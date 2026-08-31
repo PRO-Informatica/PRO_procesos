@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@schedule-x/calendar": "^4.7.0",
+    "@schedule-x/react": "^4.1.0",
+    "@schedule-x/theme-default": "^4.7.0",
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.112.4",
     "lucide-react": "^1.34.0",

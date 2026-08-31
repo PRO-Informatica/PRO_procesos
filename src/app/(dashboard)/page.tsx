@@ -1,5 +1,38 @@
-import { ProjectOverview } from "@/features/projects/components/project-overview";
+import { EmptyState } from "@/components/feedback/empty-state";
+import { ProjectDashboard } from "@/features/dashboard/components/project-dashboard";
+import { getProjectDashboard } from "@/features/dashboard/queries";
+import { requireActiveProfile } from "@/features/auth/queries";
+import { getProjectContext } from "@/features/projects/queries";
 
-export default function HomePage() {
-  return <ProjectOverview />;
+export default async function HomePage() {
+  const profile = await requireActiveProfile();
+  const projectContext = await getProjectContext(profile.id);
+
+  if (projectContext.status === "error") {
+    throw new Error(projectContext.message);
+  }
+
+  if (!projectContext.activeProject) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <EmptyState
+          title="No tienes proyectos asignados"
+          description="Tu cuenta está activa, pero todavía no tiene acceso operacional a un proyecto."
+        />
+      </div>
+    );
+  }
+
+  const dashboard = await getProjectDashboard(
+    projectContext.activeProject.id,
+    projectContext.activeProject.timezone,
+  );
+
+  return (
+    <ProjectDashboard
+      project={projectContext.activeProject}
+      roleCodes={projectContext.roleCodes}
+      data={dashboard}
+    />
+  );
 }

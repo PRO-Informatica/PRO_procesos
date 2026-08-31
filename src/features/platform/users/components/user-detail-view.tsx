@@ -130,9 +130,14 @@ export function UserDetailView({ user }: { user: PlatformUserDetail }) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <EditUserDialog userId={user.id} fullName={user.fullName} />
+            <EditUserDialog
+              key={`${user.id}-${user.fullName}`}
+              userId={user.id}
+              fullName={user.fullName}
+            />
             <PasswordManagementDialog userId={user.id} />
             <UserStatusDialog
+              key={`${user.id}-${user.profileActive ? "active" : "inactive"}`}
               userId={user.id}
               userName={user.fullName}
               active={user.profileActive}
@@ -258,6 +263,7 @@ export function UserDetailView({ user }: { user: PlatformUserDetail }) {
                           assignments={membership.roles}
                         />
                         <MembershipStatusDialog
+                          key={`${membership.membershipId}-${membership.active ? "active" : "inactive"}`}
                           scope="COMPANY"
                           userId={user.id}
                           companyId={membership.companyId}
@@ -343,6 +349,7 @@ export function UserDetailView({ user }: { user: PlatformUserDetail }) {
                           assignments={membership.roles}
                         />
                         <MembershipStatusDialog
+                          key={`${membership.membershipId}-${membership.active ? "active" : "inactive"}`}
                           scope="PROJECT"
                           userId={user.id}
                           companyId={membership.companyId}
