@@ -104,6 +104,10 @@ function invoiceError(message: string) {
     return "La factura todavía no está lista para conciliar.";
   if (value.includes("PERMISSION_DENIED"))
     return "No tienes permiso para gestionar esta factura.";
+  if (value.includes("RECONCILIATION_ORDER_ALREADY_COMPLETED"))
+    return "El Pedido ya está completado y no admite nuevas facturas.";
+  if (value.includes("SERVICE_INVOICE_CONTEXT_INVALID"))
+    return "La factura de servicio no pertenece a este Pedido.";
   if (
     value.includes("INVOICE_TOTALS") ||
     value.includes("INVOICE_EXTRACTION_FIELDS")
@@ -697,6 +701,150 @@ export async function failInvoiceUpload(
     p_version_id: versionId,
     p_reason: reason.slice(0, 500),
   });
+}
+
+export async function startOrderValidation(input: {
+  projectId: string;
+  batchId: string;
+  orderId: string;
+}) {
+  if (
+    ![input.projectId, input.batchId, input.orderId].every((value) =>
+      UUID.test(value),
+    ) ||
+    !(await authorize(input.projectId, "invoice.match"))
+  )
+    return {
+      status: "error" as const,
+      message: "No tienes permiso para validar este Pedido.",
+    };
+  const { error } = await (await createClient()).rpc(
+    "start_reconciliation_order_validation",
+    { p_reconciliation_order_id: input.orderId },
+  );
+  if (error)
+    return { status: "error" as const, message: invoiceError(error.message) };
+  refreshOrder(input.batchId, input.orderId);
+  return { status: "success" as const };
+}
+
+export async function prepareOrderServiceInvoiceUpload(input: {
+  projectId: string;
+  batchId: string;
+  orderId: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  currency: string;
+  subtotal: number;
+  total: number;
+  fileName: string;
+  fileSize: number;
+  replacesInvoiceId?: string;
+}): Promise<InvoiceUploadResult> {
+  if (
+    ![input.projectId, input.batchId, input.orderId].every((value) =>
+      UUID.test(value),
+    ) ||
+    (input.replacesInvoiceId && !UUID.test(input.replacesInvoiceId)) ||
+    !input.fileName.toLowerCase().endsWith(".pdf") ||
+    !Number.isInteger(input.fileSize) ||
+    input.fileSize <= 0 ||
+    input.fileSize > 10 * 1024 * 1024
+  )
+    return { status: "error", message: "Selecciona un PDF válido de hasta 10 MiB." };
+  if (!(await authorize(input.projectId, "invoice.create")))
+    return { status: "error", message: "No tienes permiso para registrar facturas." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc(
+    "prepare_order_service_invoice_upload",
+    {
+      p_reconciliation_order_id: input.orderId,
+      p_invoice_number: input.invoiceNumber,
+      p_invoice_date: input.invoiceDate,
+      p_currency: input.currency,
+      p_subtotal: input.subtotal,
+      p_total: input.total,
+      p_file_name: input.fileName,
+      p_file_size: input.fileSize,
+      p_replaces_invoice_id: input.replacesInvoiceId || null,
+    },
+  );
+  if (error || !data?.[0])
+    return { status: "error", message: invoiceError(error?.message ?? "SERVICE_PREPARE_FAILED") };
+  const prepared = data[0];
+  const signed = await createAdminClient()
+    .storage.from(prepared.storage_bucket)
+    .createSignedUploadUrl(prepared.storage_path, { upsert: false });
+  if (signed.error || !signed.data?.token) {
+    await supabase.rpc("fail_document_upload", {
+      p_document_id: prepared.document_id,
+      p_version_id: prepared.version_id,
+      p_reason: "No fue posible crear la URL firmada de factura de servicio.",
+    });
+    return { status: "error", message: "No fue posible preparar la carga privada." };
+  }
+  return {
+    status: "success",
+    invoiceId: prepared.invoice_id,
+    upload: {
+      documentId: prepared.document_id,
+      versionId: prepared.version_id,
+      bucket: prepared.storage_bucket,
+      path: prepared.storage_path,
+      token: signed.data.token,
+    },
+  };
+}
+
+export async function finalizeOrderServiceInvoiceUpload(input: {
+  projectId: string;
+  batchId: string;
+  orderId: string;
+  invoiceId: string;
+  documentId: string;
+  versionId: string;
+}) {
+  if (
+    !Object.values(input).every((value) => UUID.test(value)) ||
+    !(await authorize(input.projectId, "invoice.create"))
+  )
+    return { status: "error" as const, message: "Carga de servicio inválida." };
+  const { error } = await (await createClient()).rpc(
+    "finalize_order_service_invoice_upload",
+    {
+      p_invoice_id: input.invoiceId,
+      p_document_id: input.documentId,
+      p_version_id: input.versionId,
+    },
+  );
+  if (error)
+    return { status: "error" as const, message: invoiceError(error.message) };
+  refreshOrder(input.batchId, input.orderId);
+  return { status: "success" as const };
+}
+
+export async function requestOrderProductReinvoicing(input: {
+  projectId: string;
+  batchId: string;
+  orderId: string;
+  invoiceId: string;
+}) {
+  if (
+    !Object.values(input).every((value) => UUID.test(value)) ||
+    !(await authorize(input.projectId, "invoice.match"))
+  )
+    return { status: "error" as const, message: "No tienes permiso para solicitar refacturación." };
+  const { error } = await (await createClient()).rpc(
+    "request_order_product_reinvoicing",
+    {
+      p_reconciliation_order_id: input.orderId,
+      p_invoice_id: input.invoiceId,
+    },
+  );
+  if (error)
+    return { status: "error" as const, message: invoiceError(error.message) };
+  refreshOrder(input.batchId, input.orderId);
+  return { status: "success" as const };
 }
 
 export async function getInvoiceDownloadUrl(

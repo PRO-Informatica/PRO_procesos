@@ -27,6 +27,7 @@ export default async function DispatchDetailPage({ params }: { params: Promise<{
   return <DispatchDetailView detail={detail} project={context.activeProject} permissions={{
     canCreate: context.permissions.includes("dispatch.create"),
     canModify: context.permissions.includes("dispatch.modify"),
+    canManageBatch: context.permissions.includes("batch.modify"),
     canRegisterIncident: context.permissions.includes("dispatch.register_incident"),
   }} />;
 }

@@ -236,10 +236,10 @@ export function BatchDetailView({
       </MotionSection>
       <MotionSection className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[
+          ["Pedidos completados", detail.orders.filter((order) => order.effectiveStatus === "COMPLETED").length],
+          ["Pedidos pendientes", detail.orders.filter((order) => !["COMPLETED", "REINVOICING"].includes(order.effectiveStatus)).length],
+          ["En refacturación", detail.orders.filter((order) => order.effectiveStatus === "REINVOICING").length],
           ["Guías activas", detail.activeGuideCount],
-          ["Listas", detail.readyGuideCount],
-          ["Pendientes", detail.pendingGuideCount],
-          ["Rollovers", detail.rolloverCount],
         ].map(([label, value]) => (
           <div
             key={String(label)}
@@ -308,7 +308,7 @@ export function BatchDetailView({
                     Ver conciliación <ChevronRight className="size-4" />
                   </Link>
                 </div>
-                <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+                <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-6">
                   <DataCell label="Guías" value={order.guideCount} />
                   <DataCell
                     label="Cantidades"
@@ -323,14 +323,15 @@ export function BatchDetailView({
                         : "Sin cantidades"
                     }
                   />
-                  <DataCell label="Facturas" value={order.invoiceCount} />
+                  <DataCell label="PRODUCT" value={order.productInvoiceCount} />
+                  <DataCell label="SERVICE" value={order.serviceInvoiceCount} />
                   <DataCell
                     label="Documentos"
                     value={formatStatusLabel(order.documentStatus)}
                   />
                   <DataCell
-                    label="Conciliación"
-                    value={formatStatusLabel(order.reconciliationStatus)}
+                    label="Estado del pedido"
+                    value={formatStatusLabel(order.effectiveStatus)}
                   />
                 </dl>
               </article>

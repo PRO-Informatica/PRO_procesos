@@ -116,6 +116,12 @@ export type OrderReconciliationStatus =
   | "MATCHED"
   | "WITH_DIFFERENCES"
   | "REQUIRES_REVIEW";
+export type OrderEffectiveStatus =
+  | "OPEN"
+  | "READY_FOR_VALIDATION"
+  | "VALIDATING"
+  | "REINVOICING"
+  | "COMPLETED";
 
 export type ReconciliationOrderSummary = {
   id: string;
@@ -124,9 +130,12 @@ export type ReconciliationOrderSummary = {
   supplierName: string;
   documentStatus: OrderDocumentStatus;
   reconciliationStatus: OrderReconciliationStatus;
+  effectiveStatus: OrderEffectiveStatus;
   version: number;
   guideCount: number;
   invoiceCount: number;
+  productInvoiceCount: number;
+  serviceInvoiceCount: number;
   quantitiesByUnit: QuantityByUnit[];
 };
 

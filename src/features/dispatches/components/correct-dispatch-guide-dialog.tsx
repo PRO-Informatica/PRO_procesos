@@ -277,11 +277,12 @@ export function CorrectDispatchGuideDialog({
                         className="form-label"
                         htmlFor="correction-order-number"
                       >
-                        Número de pedido
+                        Número de pedido *
                       </label>
                       <input
                         id="correction-order-number"
                         name="orderNumber"
+                        required
                         maxLength={120}
                         defaultValue={detail.guideOrderNumber ?? ""}
                         className="form-input"

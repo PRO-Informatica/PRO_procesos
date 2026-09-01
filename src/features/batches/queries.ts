@@ -826,6 +826,32 @@ export async function getBatchDetail(
         (quantities.get(guide.unitCode) ?? 0) + guide.quantity,
       );
     }
+    const linkedInvoiceIds = new Set(
+      (orderInvoicesResult.data ?? [])
+        .filter((relation) => relation.reconciliation_order_id === order.id)
+        .map((relation) => relation.invoice_id),
+    );
+    const linkedInvoices = invoices.filter((invoice) =>
+      linkedInvoiceIds.has(invoice.id),
+    );
+    const hasCurrentProduct = linkedInvoices.some(
+      (invoice) =>
+        invoice.type === "PRODUCT" &&
+        !["SUPERSEDED", "CANCELLED"].includes(invoice.status) &&
+        !invoice.replacedByInvoiceId,
+    );
+    const effectiveStatus: ReconciliationOrderSummary["effectiveStatus"] =
+      order.reconciliation_status === "MATCHED"
+        ? "COMPLETED"
+        : ["PARTIAL", "WITH_DIFFERENCES", "REQUIRES_REVIEW"].includes(
+              order.reconciliation_status,
+            ) && hasCurrentProduct
+          ? "REINVOICING"
+          : order.document_status === "DOCUMENTS_LOADING"
+            ? "VALIDATING"
+            : orderGuides.length > 0
+              ? "READY_FOR_VALIDATION"
+              : "OPEN";
     return {
       id: order.id,
       batchId: order.batch_id,
@@ -835,10 +861,15 @@ export async function getBatchDetail(
         : "Proveedor por revisar",
       documentStatus: order.document_status,
       reconciliationStatus: order.reconciliation_status,
+      effectiveStatus,
       version: order.version,
       guideCount: orderGuides.length,
-      invoiceCount: (orderInvoicesResult.data ?? []).filter(
-        (relation) => relation.reconciliation_order_id === order.id,
+      invoiceCount: linkedInvoices.length,
+      productInvoiceCount: linkedInvoices.filter(
+        (invoice) => invoice.type === "PRODUCT",
+      ).length,
+      serviceInvoiceCount: linkedInvoices.filter(
+        (invoice) => invoice.type === "SERVICE",
       ).length,
       quantitiesByUnit: [...quantities.entries()]
         .map(([unitCode, quantity]) => ({ unitCode, quantity }))

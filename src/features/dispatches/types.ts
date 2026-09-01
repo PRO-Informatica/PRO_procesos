@@ -31,6 +31,7 @@ export type DispatchListItem = {
   result: DispatchResult | null;
   guideId: string | null;
   guideNumber: string | null;
+  orderNumber: string | null;
   guideDate: string | null;
   quantity: number | null;
   dispatchedQuantity: number | null;
@@ -169,6 +170,7 @@ export type DispatchOrderContext = {
 export type DispatchPermissions = {
   canCreate: boolean;
   canModify: boolean;
+  canManageBatch: boolean;
   canRegisterIncident: boolean;
 };
 

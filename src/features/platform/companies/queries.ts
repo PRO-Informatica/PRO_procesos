@@ -8,6 +8,7 @@ import type {
   CompanyListItem,
   CompanyListResult,
   CompanyProject,
+  CompanySupplier,
   CompanyStatus,
   CompanyUser,
 } from "./types";
@@ -53,6 +54,19 @@ type RoleRow = {
 type ProfileRow = {
   id: string;
   full_name: string | null;
+};
+
+type SupplierRow = {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+};
+
+type ProjectSupplierRow = {
+  project_id: string;
+  supplier_id: string;
+  active: boolean;
 };
 
 function incrementCount(counts: Map<string, number>, key: string) {
@@ -235,7 +249,8 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
 
   if (!companyData) return null;
 
-  const [projectsResult, membershipsResult] = await Promise.all([
+  const [projectsResult, membershipsResult, suppliersResult, projectSuppliersResult] =
+    await Promise.all([
     supabase
       .from("projects")
       .select(
@@ -248,9 +263,23 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
       .select("id, company_id, user_id, active, created_at")
       .eq("company_id", companyId)
       .order("created_at"),
+    supabase
+      .from("suppliers")
+      .select("id, code, name, active")
+      .eq("company_id", companyId)
+      .order("name"),
+    supabase
+      .from("project_suppliers")
+      .select("project_id, supplier_id, active")
+      .eq("company_id", companyId),
   ]);
 
-  if (projectsResult.error || membershipsResult.error) {
+  if (
+    projectsResult.error ||
+    membershipsResult.error ||
+    suppliersResult.error ||
+    projectSuppliersResult.error
+  ) {
     throw new Error("No fue posible cargar las relaciones de la empresa.");
   }
 
@@ -313,6 +342,13 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
     roles: roleCodesByMembership.get(membership.id) ?? [],
     createdAt: membership.created_at,
   }));
+  const activeSupplierIdsByProject = new Map<string, string[]>();
+  for (const relation of (projectSuppliersResult.data ?? []) as ProjectSupplierRow[]) {
+    if (!relation.active) continue;
+    const current = activeSupplierIdsByProject.get(relation.project_id) ?? [];
+    current.push(relation.supplier_id);
+    activeSupplierIdsByProject.set(relation.project_id, current);
+  }
   const projects: CompanyProject[] = ((projectsResult.data ?? []) as ProjectRow[]).map(
     (project) => ({
       id: project.id,
@@ -322,6 +358,15 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
       timezone: project.timezone ?? "America/Guatemala",
       startDate: project.start_date,
       estimatedEndDate: project.estimated_end_date,
+      supplierIds: activeSupplierIdsByProject.get(project.id) ?? [],
+    }),
+  );
+  const suppliers: CompanySupplier[] = ((suppliersResult.data ?? []) as SupplierRow[]).map(
+    (supplier) => ({
+      id: supplier.id,
+      code: supplier.code,
+      name: supplier.name,
+      active: supplier.active,
     }),
   );
 
@@ -333,6 +378,7 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
     createdAt: companyData.created_at,
     updatedAt: companyData.updated_at,
     projects,
+    suppliers,
     users,
     companyAdmins: users
       .filter((user) => user.active && user.roles.includes("COMPANY_ADMIN"))

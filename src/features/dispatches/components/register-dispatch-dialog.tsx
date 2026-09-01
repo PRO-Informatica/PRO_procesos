@@ -11,7 +11,11 @@ import { useGlobalPending } from "@/components/feedback/global-loading-provider"
 import { formatStatusLabel } from "@/lib/status-labels";
 
 import { registerDispatchAction } from "../actions";
-import { formatDispatchQuantity, formatIdentifier } from "../formatters";
+import {
+  formatDispatchQuantity,
+  formatGeneratedGuideNumber,
+  formatIdentifier,
+} from "../formatters";
 import {
   DISPATCH_RESULTS,
   initialDispatchMutationState,
@@ -65,6 +69,12 @@ export function RegisterDispatchDialog({
     new Intl.DateTimeFormat("en-CA", {
       timeZone: timezone || "America/Guatemala",
     }).format(new Date()),
+  );
+  const [guideNumber] = useState(() =>
+    formatGeneratedGuideNumber(
+      new Date(),
+      timezone || "America/Guatemala",
+    ),
   );
   const [loadTime, setLoadTime] = useState("");
   const [arrivalTime, setArrivalTime] = useState("");
@@ -323,17 +333,23 @@ export function RegisterDispatchDialog({
                         id="guide-number"
                         name="guideNumber"
                         required
+                        readOnly
+                        value={guideNumber}
                         maxLength={120}
-                        className="form-input"
+                        className="form-input bg-muted/40 font-mono font-semibold"
                       />
+                      <p className="mt-1 text-xs text-foreground-muted">
+                        Generado automáticamente con la zona horaria del proyecto.
+                      </p>
                     </div>
                     <div>
                       <label className="form-label" htmlFor="order-number">
-                        Número de pedido
+                        Número de pedido *
                       </label>
                       <input
                         id="order-number"
                         name="orderNumber"
+                        required
                         maxLength={120}
                         className="form-input"
                       />
@@ -431,22 +447,13 @@ export function RegisterDispatchDialog({
                           </div>
                           <div>
                             <label className="form-label">UM</label>
-                            <select
+                            <input
                               name="lineUnitCode"
                               required
-                              value={line.unitCode}
-                              onChange={(e) =>
-                                updateLine(line.id, "unitCode", e.target.value)
-                              }
-                              className="form-input"
-                            >
-                              <option value="">—</option>
-                              {units.map((unit) => (
-                                <option key={unit.code} value={unit.code}>
-                                  {unit.code}
-                                </option>
-                              ))}
-                            </select>
+                              readOnly
+                              value={selected?.unitCode ?? line.unitCode}
+                              className="form-input bg-muted/40 font-semibold"
+                            />
                           </div>
                           <div>
                             <label className="form-label">Código</label>

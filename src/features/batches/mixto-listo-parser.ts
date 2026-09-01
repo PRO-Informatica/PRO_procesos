@@ -40,6 +40,19 @@ function decimal(value: string) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function invoiceDescription(value: string) {
+  // Mixto Listo prints unit price and line total immediately after the
+  // description. PDF layout extraction can flatten those columns into the
+  // same row, so remove only terminal monetary values (always two decimals).
+  // Product measurements such as `4000 PSI` and `3/8"` remain untouched.
+  return value
+    .replace(
+      /(?:\s+(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\.[0-9]{2})+\s*$/,
+      "",
+    )
+    .trim();
+}
+
 function isSectionBoundary(value: string) {
   return /^(OBSERVACIONES|SUBTOTAL|TOTAL|IVA|FORMA DE PAGO|AUTORIZACION|FRASES|SUJETO A)/.test(
     plain(value.trim()),
@@ -143,7 +156,7 @@ export function parseMixtoListoInvoiceText(
         quantity,
         unit_code: normalizeUnit(match[2]),
         code: match[3].trim().toUpperCase(),
-        description: match[4].trim(),
+        description: invoiceDescription(match[4]),
       });
       continue;
     }

@@ -48,7 +48,7 @@ function Metric({
   icon: typeof Truck;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
+    <div className="min-w-[78vw] snap-start rounded-xl border border-border bg-surface p-4 sm:min-w-0">
       <div className="flex items-center justify-between gap-3">
         <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-foreground-muted">
           {label}
@@ -148,7 +148,7 @@ export function DispatchesWorkspace({
         {canCreate && data.eligibleProgramming.length > 0 && <RegisterButton onClick={() => { setFixedProgrammingId(undefined); setRegisterOpen(true); }} />}
       </MotionSection>
 
-      <MotionSection className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <MotionSection className="flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain pb-2 [scrollbar-width:thin] sm:grid sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-5">
         <Metric label="Total despachos" value={metrics.total} icon={Truck} />
         <Metric label="Registrados" value={metrics.registered} icon={ClipboardList} />
         <Metric label="En lote" value={metrics.batched} icon={PackageCheck} />
@@ -230,10 +230,10 @@ export function DispatchesWorkspace({
           />
         ) : (
           <>
-            <div className="hidden overflow-hidden rounded-xl border border-border bg-surface lg:block">
+            <div className="hidden max-h-[min(65vh,48rem)] overflow-y-auto rounded-xl border border-border bg-surface lg:block">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
-                  <thead className="bg-muted/70 text-[10px] uppercase tracking-[0.08em] text-foreground-muted">
+                  <thead className="sticky top-0 z-10 bg-muted text-[10px] uppercase tracking-[0.08em] text-foreground-muted">
                     <tr>
                       <th className="px-4 py-3 font-semibold">Fecha de guía</th>
                       <th className="px-4 py-3 font-semibold">Guía</th>
@@ -265,13 +265,14 @@ export function DispatchesWorkspace({
               </div>
             </div>
 
-            <div className="grid gap-3 lg:hidden">
+            <div className="grid max-h-[65vh] gap-3 overflow-y-auto overscroll-contain pr-1 lg:hidden">
               {filtered.map((item) => (
                 <Link key={item.id} href={`/dispatches/${item.id}`} className="rounded-xl border border-border bg-surface p-4 transition hover:border-brand/35 hover:shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-foreground">{item.guideNumber ?? "Sin guía"}</p>
                       <p className="mt-1 truncate text-sm text-foreground-muted">{item.supplierName}</p>
+                      <p className="mt-1 text-xs text-foreground-muted">Pedido {item.orderNumber ?? "Sin pedido"}</p>
                     </div>
                     <ChevronRight aria-hidden="true" className="mt-1 size-4 shrink-0 text-foreground-muted" />
                   </div>
@@ -282,6 +283,9 @@ export function DispatchesWorkspace({
                     <div><p className="mb-1 text-foreground-muted">Estado</p><DispatchStatusBadge status={item.status} /></div>
                     <div><p className="mb-1 text-foreground-muted">Resultado</p><DispatchResultBadge result={item.result} /></div>
                   </div>
+                  <span className="mt-4 inline-flex min-h-9 items-center justify-center rounded-lg border border-border px-3 text-xs font-semibold text-brand-strong">
+                    Ver detalle
+                  </span>
                 </Link>
               ))}
             </div>

@@ -2,6 +2,7 @@
 
 import { Building2, ChevronDown } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { usePathname } from "next/navigation";
 import { useActionState } from "react";
 
 import { useGlobalPending } from "@/components/feedback/global-loading-provider";
@@ -13,6 +14,7 @@ const initialState = { status: "idle" as const };
 
 export function ProjectSelector({ collapsed = false }: { collapsed?: boolean }) {
   const context = useProjectContext();
+  const pathname = usePathname();
   const [state, formAction, pending] = useActionState(switchProject, initialState);
   useGlobalPending(
     pending,
@@ -49,6 +51,7 @@ export function ProjectSelector({ collapsed = false }: { collapsed?: boolean }) 
 
   return (
     <form action={formAction} className="relative">
+      <input type="hidden" name="returnTo" value={pathname} />
       {collapsed ? (
         <div
           className="grid size-11 place-items-center rounded-lg border border-white/10 bg-white/5 text-brand"

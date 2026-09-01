@@ -335,11 +335,19 @@ export function ProgrammingWorkspace({
                 </p>
               </div>
               {canCreate && scope === "active" && (
-                <ContextCreateButton
-                  label="Nueva programación"
-                  disabled={!initialData.suppliers.length}
-                  onClick={() => openCreate()}
-                />
+                <div className="sm:text-right">
+                  <ContextCreateButton
+                    label="Nueva programación"
+                    disabled={!initialData.suppliers.length}
+                    onClick={() => openCreate()}
+                  />
+                  {!initialData.suppliers.length && (
+                    <p className="mt-2 max-w-xs text-xs text-foreground-muted">
+                      Sin proveedores activos. Solicita a un administrador que
+                      asigne proveedores a este proyecto.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
             <ProgrammingCalendar
@@ -364,11 +372,19 @@ export function ProgrammingWorkspace({
                 </p>
               </div>
               {canCreate && scope === "active" && (
-                <ContextCreateButton
-                  label="Nueva programación"
-                  disabled={!initialData.suppliers.length}
-                  onClick={() => openCreate()}
-                />
+                <div className="sm:text-right">
+                  <ContextCreateButton
+                    label="Nueva programación"
+                    disabled={!initialData.suppliers.length}
+                    onClick={() => openCreate()}
+                  />
+                  {!initialData.suppliers.length && (
+                    <p className="mt-2 max-w-xs text-xs text-foreground-muted">
+                      Sin proveedores activos. Solicita a un administrador que
+                      asigne proveedores a este proyecto.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
             <ProgrammingKanban

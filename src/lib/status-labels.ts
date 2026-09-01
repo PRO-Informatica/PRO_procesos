@@ -32,6 +32,8 @@ const STATUS_LABELS: Readonly<Record<string, string>> = {
   OPEN: "Abierto",
   DOCUMENTS_LOADING: "Documentos en carga",
   READY_TO_RECONCILE: "Listo para conciliar",
+  READY_FOR_VALIDATION: "Listo para validar",
+  VALIDATING: "Validando",
   NOT_EVALUATED: "Sin evaluar",
   NO_INVOICES: "Sin facturas",
   MATCHED: "Conciliado",

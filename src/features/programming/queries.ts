@@ -535,7 +535,8 @@ export async function getProgrammingDetailPageData(
   });
   const dispatchedQuantity = mappedDispatches.reduce(
     (total, dispatch) =>
-      dispatch.result === "COMPLETE" || dispatch.result === "PARTIAL"
+      (dispatch.result === "COMPLETE" || dispatch.result === "PARTIAL") &&
+      dispatch.unitCode === row.unit_code
         ? total + (dispatch.quantity ?? 0)
         : total,
     0,

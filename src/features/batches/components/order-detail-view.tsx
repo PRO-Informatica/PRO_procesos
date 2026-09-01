@@ -2,13 +2,14 @@
 
 import {
   ArrowLeft,
+  BriefcaseBusiness,
+  CheckCircle2,
   FileCheck2,
   FilePlus2,
   LoaderCircle,
-  LockKeyhole,
+  Package,
   Pencil,
   Plus,
-  RefreshCcw,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
@@ -23,15 +24,18 @@ import { createClient } from "@/lib/supabase/client";
 import { formatStatusLabel } from "@/lib/status-labels";
 
 import {
-  closeReconciliationOrder,
   confirmInvoiceExtraction,
   confirmMixtoListoInvoice,
   failMixtoListoInvoiceUpload,
+  failInvoiceUpload,
+  finalizeOrderServiceInvoiceUpload,
   finalizeAndExtractMixtoListoInvoice,
   getInvoiceDownloadUrl,
   inspectMixtoListoInvoicePdf,
   prepareMixtoListoInvoiceUpload,
-  recalculateOrder,
+  prepareOrderServiceInvoiceUpload,
+  requestOrderProductReinvoicing,
+  startOrderValidation,
 } from "../actions";
 import { formatBatchDate, formatBatchQuantity } from "../formatters";
 import { orderNumberFromMixtoListoPca } from "../mixto-listo-parser";
@@ -39,6 +43,7 @@ import type {
   BatchInvoice,
   BatchPermissions,
   InvoiceUploadLine,
+  InvoiceType,
   MixtoListoExtractionPreview,
   MixtoListoInvoiceLine,
   ReconciliationOrderDetail,
@@ -69,10 +74,10 @@ function draftLine(line?: Partial<MixtoListoInvoiceLine>): DraftLine {
 }
 
 function statusTone(status: string) {
-  if (status === "MATCHED" || status === "CLOSED")
+  if (["MATCHED", "CLOSED", "COMPLETED"].includes(status))
     return "bg-success-soft text-success";
   if (
-    ["WITH_DIFFERENCES", "REQUIRES_REVIEW", "ORDER_MISMATCH"].includes(status)
+    ["WITH_DIFFERENCES", "REQUIRES_REVIEW", "ORDER_MISMATCH", "REINVOICING"].includes(status)
   )
     return "bg-destructive-soft text-destructive";
   return "bg-muted text-foreground-muted";
@@ -80,12 +85,14 @@ function statusTone(status: string) {
 
 function UploadDialog({
   detail,
+  invoiceType,
   replacement,
   initialPreview,
   canConfirm,
   onClose,
 }: {
   detail: ReconciliationOrderDetail;
+  invoiceType: InvoiceType;
   replacement: BatchInvoice | null;
   initialPreview?: MixtoListoExtractionPreview | null;
   canConfirm: boolean;
@@ -124,7 +131,11 @@ function UploadDialog({
     );
   useGlobalPending(
     busy,
-    preview ? "Confirmando factura…" : "Extrayendo factura Mixto Listo…",
+    preview
+      ? "Confirmando factura…"
+      : invoiceType === "SERVICE"
+        ? "Guardando factura de servicio…"
+        : "Extrayendo factura Mixto Listo…",
     preview
       ? "Validando nuevamente el PCA y asociando la factura al Pedido."
       : "Leyendo el PDF y detectando PCA, Pedido y líneas.",
@@ -169,6 +180,7 @@ function UploadDialog({
       return;
     }
     if (
+      invoiceType === "PRODUCT" &&
       inspected.metadata.detectedOrderNumber &&
       inspected.metadata.detectedOrderNumber !== detail.orderNumber
     ) {
@@ -178,11 +190,64 @@ function UploadDialog({
       );
       return;
     }
+    if (invoiceType === "SERVICE") {
+      const prepared = await prepareOrderServiceInvoiceUpload({
+        projectId: detail.projectId,
+        batchId: detail.batchId,
+        orderId: detail.id,
+        invoiceNumber: inspected.metadata.invoiceNumber,
+        invoiceDate: inspected.metadata.invoiceDate,
+        currency: inspected.metadata.currency,
+        subtotal: inspected.metadata.subtotal,
+        total: inspected.metadata.total,
+        fileName: file.name,
+        fileSize: file.size,
+        replacesInvoiceId: replacement?.id,
+      });
+      if (prepared.status === "error") {
+        setBusy(false);
+        setMessage(prepared.message);
+        return;
+      }
+      const uploaded = await createClient()
+        .storage.from(prepared.upload.bucket)
+        .uploadToSignedUrl(prepared.upload.path, prepared.upload.token, file, {
+          contentType: "application/pdf",
+          upsert: false,
+        });
+      if (uploaded.error) {
+        await failInvoiceUpload(
+          detail.projectId,
+          prepared.upload.documentId,
+          prepared.upload.versionId,
+          uploaded.error.message,
+        );
+        setBusy(false);
+        setMessage("Falló la carga privada; la versión se marcó como fallida.");
+        return;
+      }
+      const finalized = await finalizeOrderServiceInvoiceUpload({
+        projectId: detail.projectId,
+        batchId: detail.batchId,
+        orderId: detail.id,
+        invoiceId: prepared.invoiceId,
+        documentId: prepared.upload.documentId,
+        versionId: prepared.upload.versionId,
+      });
+      setBusy(false);
+      if (finalized.status === "error") {
+        setMessage(finalized.message);
+        return;
+      }
+      router.refresh();
+      onClose();
+      return;
+    }
     const prepared = await prepareMixtoListoInvoiceUpload({
       projectId: detail.projectId,
       batchId: detail.batchId,
       orderId: detail.id,
-      invoiceType: replacement?.type ?? inspected.metadata.invoiceType,
+      invoiceType: "PRODUCT",
       invoiceNumber: inspected.metadata.invoiceNumber,
       invoiceDate: inspected.metadata.invoiceDate,
       currency: inspected.metadata.currency,
@@ -316,9 +381,13 @@ function UploadDialog({
         title={
           replacement
             ? `Refacturar ${replacement.number}`
-            : `Factura Mixto Listo · Pedido ${detail.orderNumber}`
+            : `Factura ${formatStatusLabel(invoiceType)} · Pedido ${detail.orderNumber}`
         }
-        description="Carga únicamente el PDF. La factura se creará después de validar la extracción y el PCA."
+        description={
+          invoiceType === "SERVICE"
+            ? "Carga únicamente el PDF. Se guardará como documento privado sin extracción ni conciliación de cantidades."
+            : "Carga únicamente el PDF. La factura se creará después de validar la extracción y el PCA."
+        }
         icon={FilePlus2}
         pending={busy}
         onClose={onClose}
@@ -335,7 +404,7 @@ function UploadDialog({
                 className="form-input"
               />
               <span className="mt-1 block text-xs text-foreground-muted">
-                PDF Mixto Listo, máximo 10 MiB. No se aceptan imágenes.
+                PDF {invoiceType === "PRODUCT" ? "Mixto Listo" : "de servicio"}, máximo 10 MiB. No se aceptan imágenes.
               </span>
             </label>
             {replacement && (
@@ -362,8 +431,7 @@ function UploadDialog({
               Cancelar
             </button>
             <button disabled={busy} className="primary-button">
-              {busy && <LoaderCircle className="size-4 animate-spin" />} Extraer
-              datos
+              {busy && <LoaderCircle className="size-4 animate-spin" />} {invoiceType === "SERVICE" ? "Guardar factura" : "Extraer datos"}
             </button>
           </div>
         </form>
@@ -835,6 +903,51 @@ function ReviewDialog({
   );
 }
 
+function InvoiceTypeDialog({
+  orderNumber,
+  onSelect,
+  onClose,
+}: {
+  orderNumber: string;
+  onSelect: (type: InvoiceType) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      title={`Validar Pedido ${orderNumber}`}
+      description="Elige el tipo de factura que deseas cargar."
+      icon={FilePlus2}
+      pending={false}
+      onClose={onClose}
+    >
+      <div className="grid gap-3 p-5 sm:grid-cols-2">
+        <button
+          type="button"
+          className="rounded-xl border border-border p-5 text-left transition hover:border-brand hover:bg-brand-soft/40"
+          onClick={() => onSelect("PRODUCT")}
+        >
+          <Package className="size-6 text-brand-strong" />
+          <strong className="mt-3 block">PRODUCT</strong>
+          <span className="mt-1 block text-sm text-foreground-muted">
+            Extrae PCA y líneas, permite corregir y concilia contra las guías.
+          </span>
+        </button>
+        <button
+          type="button"
+          className="rounded-xl border border-border p-5 text-left transition hover:border-brand hover:bg-brand-soft/40"
+          onClick={() => onSelect("SERVICE")}
+        >
+          <BriefcaseBusiness className="size-6 text-brand-strong" />
+          <strong className="mt-3 block">SERVICE</strong>
+          <span className="mt-1 block text-sm text-foreground-muted">
+            Guarda el PDF como documento privado, sin extracción ni conciliación.
+          </span>
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 export function OrderDetailView({
   detail,
   permissions,
@@ -843,7 +956,11 @@ export function OrderDetailView({
   permissions: BatchPermissions;
 }) {
   const router = useRouter();
-  const [upload, setUpload] = useState<BatchInvoice | "new" | null>(null);
+  const [typeChoiceOpen, setTypeChoiceOpen] = useState(false);
+  const [upload, setUpload] = useState<{
+    type: InvoiceType;
+    replacement: BatchInvoice | null;
+  } | null>(null);
   const [pendingPreview, setPendingPreview] =
     useState<MixtoListoExtractionPreview | null>(null);
   const [review, setReview] = useState<BatchInvoice | null>(null);
@@ -854,35 +971,28 @@ export function OrderDetailView({
     "Actualizando conciliación…",
     "Aplicando los contratos del Pedido.",
   );
-  async function recalc() {
-    const invoice = detail.invoices.find(
-      (item) => !["SUPERSEDED", "CANCELLED"].includes(item.status),
-    );
-    if (!invoice) return;
+  async function validateOrder() {
     setBusy(true);
-    const result = await recalculateOrder({
+    const result = await startOrderValidation({
+      projectId: detail.projectId,
+      batchId: detail.batchId,
+      orderId: detail.id,
+    });
+    setBusy(false);
+    if (result.status === "error") setMessage(result.message);
+    else {
+      setMessage(undefined);
+      setTypeChoiceOpen(true);
+      router.refresh();
+    }
+  }
+  async function requestReinvoicing(invoice: BatchInvoice) {
+    setBusy(true);
+    const result = await requestOrderProductReinvoicing({
       projectId: detail.projectId,
       batchId: detail.batchId,
       orderId: detail.id,
       invoiceId: invoice.id,
-    });
-    setBusy(false);
-    if (result.status === "error") setMessage(result.message);
-    else router.refresh();
-  }
-  async function close() {
-    if (
-      !window.confirm(
-        `Cerrar documentación del Pedido ${detail.orderNumber}? Las diferencias no se borrarán.`,
-      )
-    )
-      return;
-    setBusy(true);
-    const result = await closeReconciliationOrder({
-      projectId: detail.projectId,
-      batchId: detail.batchId,
-      orderId: detail.id,
-      expectedVersion: detail.version,
     });
     setBusy(false);
     if (result.status === "error") setMessage(result.message);
@@ -921,38 +1031,29 @@ export function OrderDetailView({
               >
                 {formatStatusLabel(detail.reconciliationStatus)}
               </span>
+              <span
+                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusTone(detail.effectiveStatus)}`}
+              >
+                {formatStatusLabel(detail.effectiveStatus)}
+              </span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
             {permissions.canCreateInvoice &&
-              detail.documentStatus !== "CLOSED" && (
+              detail.effectiveStatus !== "COMPLETED" &&
+              permissions.canMatchInvoice && (
                 <button
                   className="primary-button gap-2"
-                  onClick={() => {
-                    setPendingPreview(null);
-                    setUpload("new");
-                  }}
+                  onClick={() => void validateOrder()}
                 >
-                  <FilePlus2 className="size-4" /> Cargar factura PDF
+                  <FileCheck2 className="size-4" /> Validar pedido
                 </button>
               )}
-            {permissions.canMatchInvoice && detail.invoices.length > 0 && (
-              <button
-                className="secondary-button gap-2"
-                onClick={() => void recalc()}
-              >
-                <RefreshCcw className="size-4" /> Recalcular
-              </button>
+            {detail.effectiveStatus === "COMPLETED" && (
+              <span className="inline-flex items-center gap-2 rounded-lg bg-success-soft px-4 py-2 text-sm font-semibold text-success">
+                <CheckCircle2 className="size-4" /> Pedido completado
+              </span>
             )}
-            {permissions.canMatchInvoice &&
-              detail.documentStatus !== "CLOSED" && (
-                <button
-                  className="secondary-button gap-2"
-                  onClick={() => void close()}
-                >
-                  <LockKeyhole className="size-4" /> Cerrar documentación
-                </button>
-              )}
           </div>
         </div>
         {message && (
@@ -985,7 +1086,7 @@ export function OrderDetailView({
                   className="secondary-button mt-3 text-xs"
                   onClick={() => {
                     setPendingPreview(intake);
-                    setUpload("new");
+                    setUpload({ type: "PRODUCT", replacement: null });
                   }}
                 >
                   Abrir preview
@@ -1062,9 +1163,15 @@ export function OrderDetailView({
           </div>
         </div>
         <div className="rounded-xl border border-border bg-surface p-5">
-          <h2 className="font-semibold">
-            Facturas del pedido ({detail.invoices.length})
-          </h2>
+          <h2 className="font-semibold">Facturas del pedido ({detail.invoices.length})</h2>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+            <span className="rounded-full bg-brand-soft px-2.5 py-1 text-brand-strong">
+              PRODUCT {detail.productInvoiceCount}
+            </span>
+            <span className="rounded-full bg-muted px-2.5 py-1">
+              SERVICE {detail.serviceInvoiceCount}
+            </span>
+          </div>
           <div className="mt-3 space-y-3">
             {detail.invoices.map((invoice) => (
               <article
@@ -1082,8 +1189,12 @@ export function OrderDetailView({
                       {invoice.pcaOriginal ? ` · ${invoice.pcaOriginal}` : ""}
                     </p>
                     <p className="mt-1 text-xs text-foreground-muted">
-                      Pedido detectado {invoice.orderNumber ?? "—"} · Extracción{" "}
-                      {formatStatusLabel(invoice.extractionStatus, "Sin verificar")}
+                      {invoice.type === "SERVICE" ? (
+                        <>Extracción y conciliación: No aplica</>
+                      ) : (
+                        <>Pedido detectado {invoice.orderNumber ?? "—"} · Extracción{" "}
+                          {formatStatusLabel(invoice.extractionStatus, "Sin verificar")}</>
+                      )}
                     </p>
                     <p className="mt-1 text-xs text-foreground-muted">
                       {invoice.fileName ?? "Sin PDF"} · {invoice.createdByName}{" "}
@@ -1094,7 +1205,7 @@ export function OrderDetailView({
                     <DocumentActions projectId={detail.projectId} documentId={invoice.documentId} fileName={invoice.fileName} mimeType="application/pdf" getSignedUrl={getInvoiceDownloadUrl} compact />
                   )}
                 </div>
-                <details className="mt-3 rounded-lg bg-muted/35 p-3">
+                {invoice.type === "PRODUCT" && <details className="mt-3 rounded-lg bg-muted/35 p-3">
                   <summary className="cursor-pointer text-xs font-semibold">
                     Líneas de factura ({invoice.lines.length})
                   </summary>
@@ -1115,7 +1226,7 @@ export function OrderDetailView({
                       </div>
                     ))}
                   </div>
-                </details>
+                </details>}
                 <div className="mt-3 flex flex-wrap gap-2">
                   {permissions.canMatchInvoice &&
                     invoice.extractionStatus === "PENDING" && (
@@ -1127,16 +1238,29 @@ export function OrderDetailView({
                         histórica
                       </button>
                     )}
-                  {permissions.canCreateInvoice &&
-                    !["SUPERSEDED", "CANCELLED"].includes(invoice.status) && (
+                  {permissions.canMatchInvoice &&
+                    invoice.type === "PRODUCT" &&
+                    detail.effectiveStatus === "REINVOICING" &&
+                    !["SUPERSEDED", "CANCELLED", "REINVOICING"].includes(invoice.status) && (
                       <button
                         className="secondary-button text-xs"
+                        onClick={() => void requestReinvoicing(invoice)}
+                      >
+                        Solicitar refacturación
+                      </button>
+                    )}
+                  {permissions.canCreateInvoice &&
+                    invoice.type === "PRODUCT" &&
+                    detail.effectiveStatus === "REINVOICING" &&
+                    invoice.status === "REINVOICING" && (
+                      <button
+                        className="primary-button text-xs"
                         onClick={() => {
                           setPendingPreview(null);
-                          setUpload(invoice);
+                          setUpload({ type: "PRODUCT", replacement: invoice });
                         }}
                       >
-                        Refacturar
+                        Cargar replacement PRODUCT
                       </button>
                     )}
                 </div>
@@ -1163,10 +1287,10 @@ export function OrderDetailView({
       </section>
       <section className="overflow-hidden rounded-xl border border-border bg-surface">
         <div className="border-b border-border p-5">
-          <h2 className="font-semibold">Comparación por producto + UM</h2>
+          <h2 className="font-semibold">Comparación de cantidades</h2>
           <p className="mt-1 text-xs text-foreground-muted">
-            Los totales despachados usan líneas documentales de las guías, no
-            received_quantity.
+            Se compara la cantidad PRODUCT facturada contra la despachada por
+            medida. Código y descripción son únicamente informativos.
           </p>
         </div>
         <div className="divide-y divide-border">
@@ -1233,10 +1357,22 @@ export function OrderDetailView({
           )}
         </div>
       </section>
+      {typeChoiceOpen && (
+        <InvoiceTypeDialog
+          orderNumber={detail.orderNumber}
+          onSelect={(type) => {
+            setTypeChoiceOpen(false);
+            setPendingPreview(null);
+            setUpload({ type, replacement: null });
+          }}
+          onClose={() => setTypeChoiceOpen(false)}
+        />
+      )}
       {upload && (
         <UploadDialog
           detail={detail}
-          replacement={upload === "new" ? null : upload}
+          invoiceType={upload.type}
+          replacement={upload.replacement}
           initialPreview={pendingPreview}
           canConfirm={permissions.canMatchInvoice}
           onClose={() => {

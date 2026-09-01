@@ -15,6 +15,7 @@ import { formatDate } from "../formatters";
 import type { CompanyDetail } from "../types";
 import { CompanyStatusBadge } from "./company-status-badge";
 import { CompanyStatusDialog } from "./company-status-dialog";
+import { ProjectSupplierManager } from "./project-supplier-manager";
 
 function RecordStatus({ status }: { status: string }) {
   const active = status === "ACTIVE";
@@ -112,6 +113,32 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
 
       <MotionSection className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="border-b border-border p-6 sm:px-8">
+          <h2 className="text-lg font-semibold text-foreground">
+            Proveedores por proyecto
+          </h2>
+          <p className="mt-1 text-sm text-foreground-muted">
+            Selecciona uno o varios proveedores de la empresa para habilitarlos
+            operacionalmente en cada proyecto.
+          </p>
+        </div>
+        {company.projects.length ? (
+          <ProjectSupplierManager
+            companyId={company.id}
+            projects={company.projects}
+            suppliers={company.suppliers}
+          />
+        ) : (
+          <div className="p-6 sm:p-8">
+            <EmptyState
+              title="Sin proyectos"
+              description="Crea un proyecto antes de asignarle proveedores."
+            />
+          </div>
+        )}
+      </MotionSection>
+
+      <MotionSection className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface">
+        <div className="border-b border-border p-6 sm:px-8">
           <h2 className="text-lg font-semibold text-foreground">Proyectos</h2>
           <p className="mt-1 text-sm text-foreground-muted">
             Proyectos registrados para esta empresa. Vista de solo lectura.
@@ -132,6 +159,7 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
                   <th className="px-6 py-3.5 sm:px-8">Proyecto</th>
                   <th className="px-4 py-3.5">Código</th>
                   <th className="px-4 py-3.5">Estado</th>
+                  <th className="px-4 py-3.5">Proveedores</th>
                   <th className="px-4 py-3.5">Zona horaria</th>
                   <th className="px-4 py-3.5">Inicio</th>
                   <th className="px-6 py-3.5 sm:px-8">Fin estimado</th>
@@ -148,6 +176,9 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
                     </td>
                     <td className="px-4 py-4">
                       <RecordStatus status={project.status} />
+                    </td>
+                    <td className="px-4 py-4 text-sm font-semibold text-foreground">
+                      {project.supplierIds.length}
                     </td>
                     <td className="px-4 py-4 text-sm text-foreground-muted">
                       {project.timezone}

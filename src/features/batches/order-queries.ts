@@ -178,9 +178,11 @@ export async function getReconciliationOrderDetail(
   );
   const currentInvoices = invoices.filter(
     (invoice) =>
+      invoice.type === "PRODUCT" &&
       !["SUPERSEDED", "CANCELLED"].includes(invoice.status) &&
       !invoice.replacedByInvoiceId,
   );
+  const orderSummary = batchDetail.orders.find((item) => item.id === order.id);
   const guideById = new Map(
     guideRelations.map((relation) => [relation.guideId, relation]),
   );
@@ -192,14 +194,10 @@ export async function getReconciliationOrderDetail(
       (quantitiesByUnit.get(relation.unitCode) ?? 0) + relation.quantity,
     );
   }
-  const sameKey = (
-    code: string | null | undefined,
+  const sameUnit = (
     unit: string | null | undefined,
-    expectedCode: string,
     expectedUnit: string | null,
-  ) =>
-    (code?.trim().toUpperCase() || "__MISSING__") === expectedCode &&
-    (unit || null) === expectedUnit;
+  ) => (unit || null) === expectedUnit;
   return {
     id: order.id,
     batchId: order.batch_id,
@@ -207,9 +205,14 @@ export async function getReconciliationOrderDetail(
     supplierName: guideRelations[0]?.supplierName ?? "Proveedor por revisar",
     documentStatus: order.document_status,
     reconciliationStatus: order.reconciliation_status,
+    effectiveStatus: orderSummary?.effectiveStatus ?? "OPEN",
     version: order.version,
     guideCount: guideRelations.length,
     invoiceCount: invoices.length,
+    productInvoiceCount: invoices.filter((invoice) => invoice.type === "PRODUCT")
+      .length,
+    serviceInvoiceCount: invoices.filter((invoice) => invoice.type === "SERVICE")
+      .length,
     quantitiesByUnit: [...quantitiesByUnit.entries()]
       .map(([unitCode, quantity]) => ({ unitCode, quantity }))
       .sort((left, right) => left.unitCode.localeCompare(right.unitCode)),
@@ -270,12 +273,7 @@ export async function getReconciliationOrderDetail(
         : [],
       guideContributions: guideLines.flatMap((guideLine) => {
         if (
-          !sameKey(
-            guideLine.product_code,
-            guideLine.unit_code,
-            line.product_code,
-            line.unit_code,
-          )
+          !sameUnit(guideLine.unit_code, line.unit_code)
         )
           return [];
         const guide = guideById.get(guideLine.guide_id);
@@ -298,12 +296,7 @@ export async function getReconciliationOrderDetail(
       }),
       invoiceContributions: currentInvoices.flatMap((invoice: BatchInvoice) =>
         invoice.lines.flatMap((invoiceLine) =>
-          sameKey(
-            invoiceLine.code,
-            invoiceLine.unitCode,
-            line.product_code,
-            line.unit_code,
-          )
+          sameUnit(invoiceLine.unitCode, line.unit_code)
             ? [
                 {
                   invoiceId: invoice.id,

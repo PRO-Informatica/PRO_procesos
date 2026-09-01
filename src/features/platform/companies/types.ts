@@ -34,6 +34,14 @@ export type CompanyProject = {
   timezone: string;
   startDate: string | null;
   estimatedEndDate: string | null;
+  supplierIds: string[];
+};
+
+export type CompanySupplier = {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
 };
 
 export type CompanyUser = {
@@ -53,8 +61,14 @@ export type CompanyDetail = {
   createdAt: string;
   updatedAt: string;
   projects: CompanyProject[];
+  suppliers: CompanySupplier[];
   users: CompanyUser[];
   companyAdmins: string[];
+};
+
+export type ProjectSuppliersActionState = {
+  status: "idle" | "success" | "error";
+  message?: string;
 };
 
 export type CompanyActionState = {

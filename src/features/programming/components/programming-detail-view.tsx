@@ -597,7 +597,7 @@ export function ProgrammingDetailView({
           />
         )}
       </AnimatePresence>
-      {canRegisterDispatch && <RegisterDispatchDialog
+      {canRegisterDispatch && registerOpen && <RegisterDispatchDialog
         open={registerOpen}
         projectId={project.id}
         timezone={project.timezone || "America/Guatemala"}

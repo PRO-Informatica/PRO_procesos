@@ -34,6 +34,7 @@ import {
 import type { DispatchDetail, DispatchDocument, DispatchPermissions } from "../types";
 import { DispatchResultBadge, DispatchStatusBadge } from "./dispatch-badges";
 import { CorrectDispatchGuideDialog } from "./correct-dispatch-guide-dialog";
+import { CorrectDispatchOrderDialog } from "./correct-dispatch-order-dialog";
 import { DocumentUploader } from "./document-uploader";
 import { RegisterIncidentDialog } from "./register-incident-dialog";
 
@@ -131,11 +132,18 @@ export function DispatchDetailView({
 }) {
   const [incidentOpen, setIncidentOpen] = useState(false);
   const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [orderCorrectionOpen, setOrderCorrectionOpen] = useState(false);
+  const hasHistoricalBatch = detail.batches.some((batch) => batch.removedAt);
   const canCorrectGuide = permissions.canModify
-    && detail.status === "REGISTERED"
-    && detail.batches.length === 0
+    && (detail.status === "REGISTERED" || detail.status === "BATCHED")
+    && !hasHistoricalBatch
     && detail.invoices.length === 0
     && Boolean(detail.guideId && detail.guideTemplateVersionId);
+  const canCorrectOrder = (permissions.canModify || permissions.canManageBatch)
+    && (detail.status === "REGISTERED" || detail.status === "BATCHED")
+    && !hasHistoricalBatch
+    && detail.invoices.length === 0
+    && Boolean(detail.guideId);
   const guideDocuments = detail.documents.filter((document) => document.context === "guide");
   return (
     <MotionPage className="mx-auto w-full max-w-7xl space-y-6 pb-10">
@@ -157,7 +165,8 @@ export function DispatchDetailView({
           <p className="text-xs text-foreground-muted">Guía asociada</p>
           <p className="mt-1 font-semibold text-foreground">{detail.guideNumber ?? "Sin guía"}</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {canCorrectGuide && <button type="button" onClick={() => setCorrectionOpen(true)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold text-foreground hover:bg-muted"><PencilLine aria-hidden="true" className="size-4" /> Corregir guía</button>}
+            {canCorrectGuide && <button type="button" onClick={() => setCorrectionOpen(true)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold text-foreground hover:bg-muted"><PencilLine aria-hidden="true" className="size-4" /> Editar despacho</button>}
+            {canCorrectOrder && !canCorrectGuide && <button type="button" onClick={() => setOrderCorrectionOpen(true)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold text-foreground hover:bg-muted"><PencilLine aria-hidden="true" className="size-4" /> Corregir pedido</button>}
             {permissions.canRegisterIncident && <button type="button" onClick={() => setIncidentOpen(true)} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong"><Plus className="size-4" /> Registrar incidencia</button>}
             {permissions.canModify && detail.guideId && <DocumentUploader projectId={project.id} contextId={detail.guideId} context="guide" label="Adjuntar guía" />}
           </div>
@@ -184,7 +193,7 @@ export function DispatchDetailView({
           <div className="flex items-center gap-2"><ClipboardList aria-hidden="true" className="size-5 text-brand-strong" /><h2 className="font-semibold text-foreground">Guía y recepción</h2></div>
           <dl className="mt-5 grid gap-5 sm:grid-cols-2">
             <DataPoint label="Número de guía" value={detail.guideNumber ?? "No registrada"} />
-            <DataPoint label="Orden" value={detail.guideOrderNumber ?? "No registrada"} />
+            <DataPoint label="Número de pedido" value={detail.guideOrderNumber ?? "No registrado"} />
             <DataPoint label="Fecha de guía" value={formatDispatchDate(detail.guideDate)} />
             <DataPoint label="Cantidad documentada" value={detail.quantity === null ? "No registrada" : `${formatDispatchQuantity(detail.quantity)} ${detail.unitCode}`} />
             <DataPoint label="Cantidad enviada" value={detail.dispatchedQuantity === null ? "No registrada" : `${formatDispatchQuantity(detail.dispatchedQuantity)} ${detail.unitCode}`} />
@@ -247,6 +256,7 @@ export function DispatchDetailView({
       </div>
       <AnimatePresence>{incidentOpen && <RegisterIncidentDialog projectId={project.id} dispatchId={detail.id} types={detail.incidentTypes} onClose={() => setIncidentOpen(false)} />}</AnimatePresence>
       {correctionOpen && <CorrectDispatchGuideDialog open detail={detail} timezone={project.timezone || "America/Guatemala"} onClose={() => setCorrectionOpen(false)} />}
+      {orderCorrectionOpen && <CorrectDispatchOrderDialog open detail={detail} onClose={() => setOrderCorrectionOpen(false)} />}
     </MotionPage>
   );
 }

@@ -60,3 +60,21 @@ export function formatDispatchDateTime(value: string | null, timezone: string) {
 export function formatIdentifier(prefix: string, id: string) {
   return `${prefix}-${id.slice(0, 8).toUpperCase()}`;
 }
+
+export function formatGeneratedGuideNumber(
+  value: Date,
+  timezone: string,
+) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: timezone || "America/Guatemala",
+  }).formatToParts(value);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((candidate) => candidate.type === type)?.value ?? "00";
+  return `${part("day")}-${part("month")}-${part("year")}-${part("hour")}-${part("minute")}`;
+}

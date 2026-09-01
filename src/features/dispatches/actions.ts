@@ -13,6 +13,7 @@ import type {
   IncidentMutationState,
   UploadActionResult,
 } from "./types";
+import { formatGeneratedGuideNumber } from "./formatters";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -39,6 +40,18 @@ async function authorize(projectId: string, permission: string) {
     context.status !== "ready" ||
     context.activeProject?.id !== projectId ||
     !context.permissions.includes(permission)
+  )
+    return null;
+  return { profile, context };
+}
+
+async function authorizeAny(projectId: string, permissions: string[]) {
+  const profile = await requireActiveProfile();
+  const context = await getProjectContext(profile.id);
+  if (
+    context.status !== "ready" ||
+    context.activeProject?.id !== projectId ||
+    !permissions.some((permission) => context.permissions.includes(permission))
   )
     return null;
   return { profile, context };
@@ -99,6 +112,8 @@ function dispatchError(message: string) {
     return "No existe una plantilla publicada de guía aplicable a este proveedor.";
   if (value.includes("DISPATCH_MIXED_UNITS_NOT_SUPPORTED"))
     return "Todos los productos deben usar la misma unidad de medida.";
+  if (value.includes("DISPATCH_PROGRAMMING_UNIT_MISMATCH"))
+    return "La unidad del despacho debe coincidir con la unidad de la programación.";
   if (value.includes("DISPATCH_RESULT_QUANTITY_MISMATCH"))
     return "Las cantidades físicas no corresponden al resultado seleccionado.";
   if (value.includes("INVALID_OR_INACTIVE_UNIT_OF_MEASURE"))
@@ -107,6 +122,8 @@ function dispatchError(message: string) {
     return "Las horas deben cumplir carga ≤ llegada ≤ salida.";
   if (value.includes("GUIDE_NUMBER_REQUIRED"))
     return "Ingresa el número de guía.";
+  if (value.includes("ORDER_NUMBER_REQUIRED"))
+    return "Ingresa el número de pedido.";
   return "No fue posible registrar el despacho. Revisa los datos e intenta nuevamente.";
 }
 
@@ -131,7 +148,8 @@ function correctionError(
     };
   if (value.includes("DISPATCH_NOT_EDITABLE"))
     return {
-      message: "Solo los despachos en estado Registrado pueden corregirse.",
+      message:
+        "Solo los despachos registrados o dentro de un lote activo sin factura pueden corregirse.",
     };
   if (value.includes("DISPATCH_CORRECTION_REASON_REQUIRED"))
     return { message: "Indica el motivo de la corrección." };
@@ -161,6 +179,9 @@ export async function registerDispatchAction(
     };
 
   const result = text(formData, "result");
+  const orderNumber = text(formData, "orderNumber");
+  if (!orderNumber)
+    return { status: "error", message: "Ingresa el número de pedido." };
   const quantities = formData.getAll("lineQuantity").map(Number);
   const units = formData.getAll("lineUnitCode").map(String);
   const codes = formData
@@ -204,14 +225,20 @@ export async function registerDispatchAction(
   }
 
   const timezone = auth.context.activeProject?.timezone || "America/Guatemala";
+  const proposedGuideNumber = text(formData, "guideNumber");
+  const guideNumber = /^\d{2}-\d{2}-\d{4}-\d{2}-\d{2}$/.test(
+    proposedGuideNumber,
+  )
+    ? proposedGuideNumber
+    : formatGeneratedGuideNumber(new Date(), timezone);
   const loadAt = localToIso(text(formData, "loadAt"), timezone);
   const arrivalAt = localToIso(text(formData, "arrivalAt"), timezone);
   const departureAt = localToIso(text(formData, "departureAt"), timezone);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("register_dispatch_with_lines", {
     p_programming_id: programmingId,
-    p_guide_number: text(formData, "guideNumber"),
-    p_order_number: text(formData, "orderNumber") || null,
+    p_guide_number: guideNumber,
+    p_order_number: orderNumber,
     p_guide_date: text(formData, "guideDate"),
     p_received_by_name: text(formData, "receivedByName"),
     p_lines: lines,
@@ -241,6 +268,60 @@ export async function registerDispatchAction(
     dispatchId,
     guideId: guide?.id,
     message: "Despacho y guía registrados correctamente.",
+  };
+}
+
+export async function correctDispatchOrderNumberAction(
+  _state: CorrectionMutationState,
+  formData: FormData,
+): Promise<CorrectionMutationState> {
+  const projectId = text(formData, "projectId");
+  const dispatchId = text(formData, "dispatchId");
+  const programmingId = text(formData, "programmingId");
+  const expectedVersion = Number(text(formData, "expectedVersion"));
+  const orderNumber = text(formData, "orderNumber");
+  const reason = text(formData, "reason");
+  if (
+    !UUID.test(projectId) ||
+    !UUID.test(dispatchId) ||
+    !UUID.test(programmingId) ||
+    !Number.isInteger(expectedVersion) ||
+    expectedVersion <= 0
+  )
+    return {
+      status: "error",
+      message: "Los datos del despacho están desactualizados. Recarga la página.",
+    };
+  if (!orderNumber)
+    return { status: "error", message: "Ingresa el número de pedido." };
+  if (!reason)
+    return { status: "error", message: "Indica el motivo de la corrección." };
+  if (!(await authorizeAny(projectId, ["dispatch.modify", "batch.modify"])))
+    return {
+      status: "error",
+      message: "No tienes permiso para corregir el número de pedido.",
+    };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc(
+    "correct_dispatch_guide_order_number",
+    {
+      p_dispatch_id: dispatchId,
+      p_expected_version: expectedVersion,
+      p_order_number: orderNumber,
+      p_reason: reason,
+    },
+  );
+  if (error) return { status: "error", ...correctionError(error.message) };
+
+  revalidatePath("/dispatches");
+  revalidatePath(`/dispatches/${dispatchId}`);
+  revalidatePath(`/programming/${programmingId}`);
+  revalidatePath("/batches");
+  return {
+    status: "success",
+    newVersion: Number(data),
+    message: "Número de pedido corregido y conciliación actualizada.",
   };
 }
 

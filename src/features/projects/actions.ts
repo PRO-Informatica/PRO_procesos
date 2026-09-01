@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 
@@ -13,6 +14,7 @@ export async function switchProject(
   formData: FormData,
 ): Promise<SwitchProjectState> {
   const projectId = formData.get("projectId");
+  const returnTo = formData.get("returnTo");
 
   if (typeof projectId !== "string" || !/^[0-9a-f-]{36}$/i.test(projectId)) {
     return { status: "error", message: "El proyecto seleccionado no es válido." };
@@ -48,5 +50,13 @@ export async function switchProject(
   });
 
   revalidatePath("/", "layout");
-  return { status: "success" };
+  const moduleRoot =
+    typeof returnTo === "string"
+      ? ["programming", "dispatches", "batches", "invoices", "reconciliation"].find(
+          (segment) =>
+            returnTo === `/${segment}` || returnTo.startsWith(`/${segment}/`),
+        )
+      : null;
+  const safeReturnTo = moduleRoot ? `/${moduleRoot}` : "/";
+  redirect(safeReturnTo);
 }
