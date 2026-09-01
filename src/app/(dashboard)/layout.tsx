@@ -6,6 +6,7 @@ import { PlatformProvider } from "@/features/platform/platform-context";
 import { isPlatformAdmin } from "@/features/platform/queries";
 import { ProjectProvider } from "@/features/projects/project-context";
 import { getProjectContext } from "@/features/projects/queries";
+import { getUnreadNotificationCount } from "@/features/notifications/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,9 @@ export default async function DashboardLayout({
     getProjectContext(profile.id),
   ]);
   const hasOperationalAccess = projectContext.status === "ready";
+  const unreadNotifications = projectContext.status === "ready" && projectContext.activeProject
+    ? await getUnreadNotificationCount({ projectId: projectContext.activeProject.id, projectName: projectContext.activeProject.name, userId: profile.id, permissions: projectContext.permissions })
+    : 0;
 
   if (platformAdmin && projectContext.status === "empty") {
     redirect("/platform");
@@ -30,7 +34,7 @@ export default async function DashboardLayout({
       value={{ isPlatformAdmin: platformAdmin, hasOperationalAccess }}
     >
       <ProjectProvider value={projectContext}>
-        <AppShell profile={profile}>{children}</AppShell>
+        <AppShell profile={profile} unreadNotifications={unreadNotifications}>{children}</AppShell>
       </ProjectProvider>
     </PlatformProvider>
   );

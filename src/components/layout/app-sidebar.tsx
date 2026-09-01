@@ -2,6 +2,7 @@
 
 import {
   Bell,
+  BarChart3,
   Building2,
   CalendarDays,
   ChevronLeft,
@@ -12,7 +13,6 @@ import {
   ReceiptText,
   Scale,
   Settings,
-  ShieldCheck,
   Truck,
   Users,
   X,
@@ -64,6 +64,7 @@ const navigation: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "Gestión",
     items: [
+      { label: "Reportería", icon: BarChart3, href: "/reports", permission: "dispatch.view" },
       { label: "Lotes", icon: FolderKanban, href: "/batches", permission: "batch.view" },
       { label: "Facturas", icon: ReceiptText, href: "/invoices", permission: "invoice.view" },
       {
@@ -77,13 +78,8 @@ const navigation: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "Control",
     items: [
-      {
-        label: "Autorizaciones",
-        icon: ShieldCheck,
-        anyPermission: ["batch.final_authorize", "batch.request_authorization"],
-      },
-      { label: "Documentos", icon: Files, permission: "document.view" },
-      { label: "Notificaciones", icon: Bell },
+      { label: "Documentos", icon: Files, href: "/documents", anyPermission: ["document.view", "dispatch.view", "invoice.view"] },
+      { label: "Notificaciones", icon: Bell, href: "/notifications" },
     ],
   },
   {

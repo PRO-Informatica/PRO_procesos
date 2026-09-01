@@ -1,90 +1,16 @@
-export type ProgrammingStatus =
-  | "DRAFT"
-  | "PENDING_CONFIRMATION"
-  | "CONFIRMED"
-  | "IN_EXECUTION"
-  | "COMPLETED"
-  | "CANCELLED";
-
-export type BatchStatus =
-  | "DRAFT"
-  | "ASSEMBLING"
-  | "READY_FOR_REVIEW"
-  | "UNDER_REVIEW"
-  | "NEEDS_CORRECTION"
-  | "VALIDATED"
-  | "PENDING_FINAL_AUTHORIZATION"
-  | "AUTHORIZED"
-  | "CLOSED"
-  | "CANCELLED";
-
-export type DashboardProgramming = {
-  id: string;
-  scheduledAt: string;
-  quantity: number;
-  unitCode: string;
-  status: ProgrammingStatus;
-  supplierName: string;
-};
-
-export type DashboardWeekDay = {
-  date: string;
-  label: string;
-  shortLabel: string;
-  programmingCount: number;
-  programmedM3: number;
-  isToday: boolean;
-};
-
-export type DashboardIncident = {
-  id: string;
-  createdAt: string;
-  typeName: string;
-  responsibility: string;
-  notes: string | null;
-};
-
-export type DashboardBatch = {
-  id: string;
-  code: string;
-  periodStart: string;
-  periodEnd: string;
-  accountingPeriod: string;
-  status: BatchStatus;
-  activeGuideCount: number;
-  pendingInvoiceCount: number;
-  reinvoicingCount: number;
-  pendingAuthorizationCount: number;
-};
-
-export type DashboardActivity = {
-  id: string;
-  action: string;
-  entityType: string;
-  createdAt: string;
-  actorName: string;
-};
-
+export type ProgrammingStatus = "DRAFT" | "PENDING_CONFIRMATION" | "CONFIRMED" | "IN_EXECUTION" | "COMPLETED" | "CANCELLED";
+export type BatchStatus = "DRAFT" | "ASSEMBLING" | "READY_FOR_REVIEW" | "UNDER_REVIEW" | "NEEDS_CORRECTION" | "VALIDATED" | "PENDING_FINAL_AUTHORIZATION" | "AUTHORIZED" | "CLOSED" | "CANCELLED";
+export type DashboardWeekDay = { date: string; shortLabel: string; programmingCount: number; programmedM3: number; receivedM3: number; isToday: boolean };
+export type DashboardActivity = { id: string; action: string; entityType: string; entityId: string; createdAt: string; actorName: string };
+export type DashboardBatch = { id: string; code: string; periodStart: string; periodEnd: string; accountingPeriod: string; status: BatchStatus; activeGuideCount: number };
 export type ProjectDashboardData = {
-  today: string;
-  weekStart: string;
-  weekEnd: string;
-  timezone: string;
-  programmingToday: DashboardProgramming[];
-  weekDays: DashboardWeekDay[];
+  today: string; weekStart: string; weekEnd: string; timezone: string; weekDays: DashboardWeekDay[]; currentBatch: DashboardBatch | null; activity: DashboardActivity[];
   metrics: {
-    programmingTodayCount: number;
-    programmingWeekCount: number;
-    dispatchTodayCount: number;
-    programmedTodayM3: number;
-    dispatchedTodayM3: number;
-    pendingInvoiceCount: number;
-    reinvoicingCount: number;
-    openDiscrepancyCount: number;
-    pendingReviewBatchCount: number;
-    pendingAuthorizationBatchCount: number;
+    today: { total: number; completed: number; pending: number; programmedM3: number };
+    week: { total: number; completed: number; pending: number; compliance: number };
+    month: { programmedM3: number; receivedM3: number; execution: number };
+    orders: { pending: number; completed: number; reinvoicing: number };
+    reconciliation: { matched: number; differences: number; withoutInvoice: number };
+    attention: { reinvoicing: number; overdueProgramming: number; pendingInvoice: number; differences: number };
   };
-  incidents: DashboardIncident[];
-  currentBatch: DashboardBatch | null;
-  activity: DashboardActivity[];
 };

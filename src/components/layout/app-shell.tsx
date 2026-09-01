@@ -9,9 +9,11 @@ import { Topbar } from "./topbar";
 
 export function AppShell({
   profile,
+  unreadNotifications,
   children,
 }: {
   profile: SessionProfile;
+  unreadNotifications: number;
   children: React.ReactNode;
 }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -33,6 +35,7 @@ export function AppShell({
       >
         <Topbar
           profile={profile}
+          unreadNotifications={unreadNotifications}
           onOpenNavigation={() => setMobileSidebarOpen(true)}
         />
         <main className="p-4 sm:p-6 lg:p-8">{children}</main>

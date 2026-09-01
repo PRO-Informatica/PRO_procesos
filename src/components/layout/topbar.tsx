@@ -3,6 +3,7 @@
 import { Bell, ChevronDown, LogOut, Menu } from "lucide-react";
 
 import { ThemeToggle } from "@/components/shared/theme-toggle";
+import Link from "next/link";
 import { signOut } from "@/features/auth/actions";
 import type { SessionProfile } from "@/features/auth/types";
 import { useProjectContext } from "@/features/projects/project-context";
@@ -19,9 +20,11 @@ function initials(name: string) {
 export function Topbar({
   profile,
   onOpenNavigation,
+  unreadNotifications,
 }: {
   profile: SessionProfile;
   onOpenNavigation: () => void;
+  unreadNotifications: number;
 }) {
   const projectContext = useProjectContext();
 
@@ -47,15 +50,15 @@ export function Topbar({
 
       <div className="ml-auto flex items-center gap-2">
         <ThemeToggle />
-        <button
-          type="button"
-          disabled
-          className="relative grid size-9 cursor-not-allowed place-items-center rounded-lg border border-border bg-surface text-foreground-muted opacity-55"
-          aria-label="Notificaciones disponibles en una fase posterior"
-          title="Notificaciones · Próxima fase"
+        <Link
+          href="/notifications"
+          className="relative grid size-9 place-items-center rounded-lg border border-border bg-surface text-foreground-muted hover:bg-muted hover:text-foreground"
+          aria-label={`${unreadNotifications} notificaciones sin leer`}
+          title="Notificaciones"
         >
           <Bell aria-hidden="true" className="size-4" />
-        </button>
+          {unreadNotifications > 0 && <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-brand px-1 text-[9px] font-bold leading-4 text-white">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
+        </Link>
 
         <details className="group relative ml-1">
           <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 pr-2 transition-colors hover:bg-muted [&::-webkit-details-marker]:hidden">
