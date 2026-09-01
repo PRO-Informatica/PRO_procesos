@@ -267,6 +267,25 @@ begin
         v_signature;
     end if;
   end loop;
+
+  if not exists (
+    select 1
+    from pg_policies p
+    where p.schemaname = 'public'
+      and p.tablename = 'batches'
+      and p.cmd = 'SELECT'
+      and position('is_platform_admin' in coalesce(p.qual, '')) > 0
+  )
+  or not exists (
+    select 1
+    from pg_policies p
+    where p.schemaname = 'public'
+      and p.tablename = 'batch_guides'
+      and p.cmd = 'SELECT'
+      and position('is_platform_admin' in coalesce(p.qual, '')) > 0
+  ) then
+    raise exception 'WEEKLY_BATCH_PLATFORM_ADMIN_POLICY_LOST';
+  end if;
 end;
 $$;
 

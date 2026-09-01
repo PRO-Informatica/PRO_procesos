@@ -64,7 +64,7 @@ const navigation: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "Gestión",
     items: [
-      { label: "Lotes", icon: FolderKanban, permission: "batch.view" },
+      { label: "Lotes", icon: FolderKanban, href: "/batches", permission: "batch.view" },
       { label: "Facturas", icon: ReceiptText, permission: "invoice.view" },
       {
         label: "Conciliación",

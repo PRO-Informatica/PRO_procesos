@@ -872,19 +872,19 @@ begin
     bg.id,
     bg.guide_id,
     dg.dispatch_id,
-    app_private.guide_ready_for_batch(bg.guide_id, v_batch.id),
+    readiness.is_ready,
     case
-      when app_private.guide_ready_for_batch(bg.guide_id, v_batch.id)
+      when readiness.is_ready
         then 'STAY'
       else 'MOVE'
     end,
     case
-      when app_private.guide_ready_for_batch(bg.guide_id, v_batch.id)
+      when readiness.is_ready
         then 'READY_FOR_REVIEW'
       else 'PENDING_WEEKLY_CONTINUATION'
     end,
     case
-      when app_private.guide_ready_for_batch(bg.guide_id, v_batch.id)
+      when readiness.is_ready
         then null::text
       else 'SYSTEM'
     end,
@@ -896,6 +896,12 @@ begin
   join public.dispatch_guides dg
     on dg.id = bg.guide_id
    and dg.project_id = bg.project_id
+  cross join lateral (
+    select app_private.guide_ready_for_batch(
+      bg.guide_id,
+      v_batch.id
+    ) as is_ready
+  ) readiness
   left join public.batches next_batch
     on next_batch.project_id = v_batch.project_id
    and next_batch.period_start = v_next_period.period_start
@@ -1205,7 +1211,8 @@ begin
   if position('REGISTERED' in v_definition) = 0
      or position('BATCHED' in v_definition) = 0
      or position('guide_date' in v_definition) = 0
-     or position('GUIDE_ADDED_TO_BATCH' in v_definition) = 0 then
+     or position('GUIDE_ADDED_TO_BATCH' in v_definition) = 0
+     or position('v_dispatch.result' in v_definition) > 0 then
     raise exception 'WEEKLY_BATCH_ADD_CONTRACT_NOT_ALIGNED';
   end if;
 
@@ -1226,7 +1233,8 @@ begin
   if position('READY_FOR_REVIEW' in v_definition) = 0
      or position('WEEKLY_BATCH_ROLLOVER_COMPLETED' in v_definition) = 0
      or position('SERVICE_ROLE_REQUIRED' in v_definition) = 0
-     or position('guide_ready_for_batch' in v_definition) = 0 then
+     or position('guide_ready_for_batch' in v_definition) = 0
+     or position('update public.dispatches' in lower(v_definition)) > 0 then
     raise exception 'WEEKLY_BATCH_ROLLOVER_CONTRACT_NOT_ALIGNED';
   end if;
 
