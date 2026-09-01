@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
+import { canCreateDispatchForProgramming } from "@/features/programming/availability";
 
 import type {
   DispatchBatchRelation,
@@ -249,6 +250,7 @@ export async function getDispatchPageData(projectId: string): Promise<DispatchPa
     };
   });
 
+  const availabilityNow = Date.now();
   const eligibleProgramming: EligibleProgramming[] = eligible.map((row) => {
     const related = dispatchesByProgramming.get(row.id) ?? [];
     const receivedTotal = related.reduce(
@@ -272,7 +274,12 @@ export async function getDispatchPageData(projectId: string): Promise<DispatchPa
       remaining: Math.max(target - receivedTotal, 0),
       excess: Math.max(receivedTotal - target, 0),
     };
-  });
+  }).filter((programming) => canCreateDispatchForProgramming({
+    status: programming.status,
+    scheduledAt: programming.scheduledAt,
+    operationStarted: programming.dispatchCount > 0,
+    hasPermission: true,
+  }, availabilityNow));
 
   return {
     items,
@@ -619,6 +626,45 @@ export async function getDispatchDetail(
     }];
   });
 
+  let orderContext: DispatchDetail["orderContext"] = null;
+  const activeBatchLink = batchLinks.find((link) => !link.removed_at);
+  const normalizeOrder = (value: string | null | undefined) => {
+    let normalized = value?.trim() ?? "";
+    if (!normalized) return null;
+    if (normalized.toUpperCase().startsWith("PCA-")) normalized = normalized.replace(/^.*-/, "");
+    if (/^[0-9]+$/.test(normalized)) return normalized.replace(/^0+/, "") || "0";
+    return normalized.toUpperCase().replace(/\s+/g, "");
+  };
+  const normalizedOrder = normalizeOrder(guide?.order_number);
+  if (activeBatchLink && normalizedOrder) {
+    const orderResult = await supabase.from("reconciliation_orders")
+      .select("id, batch_id, normalized_order_number, document_status, reconciliation_status")
+      .eq("project_id", projectId).eq("batch_id", activeBatchLink.batch_id)
+      .eq("normalized_order_number", normalizedOrder).maybeSingle();
+    if (orderResult.error) throw new Error(`No fue posible resolver el Pedido del despacho. ${orderResult.error.message}`);
+    if (orderResult.data) {
+      const [orderInvoicesResult, activeRelationsResult] = await Promise.all([
+        supabase.from("reconciliation_order_invoices").select("invoice_id").eq("project_id", projectId).eq("reconciliation_order_id", orderResult.data.id),
+        supabase.from("batch_guides").select("guide_id").eq("project_id", projectId).eq("batch_id", activeBatchLink.batch_id).is("removed_at", null),
+      ]);
+      const contextError = orderInvoicesResult.error ?? activeRelationsResult.error;
+      if (contextError) throw new Error(`No fue posible resumir el Pedido. ${contextError.message}`);
+      const orderGuideIds = (activeRelationsResult.data ?? []).map((row) => row.guide_id);
+      const orderGuidesResult = orderGuideIds.length ? await supabase.from("dispatch_guides").select("id, order_number").eq("project_id", projectId).in("id", orderGuideIds) : { data: [], error: null };
+      if (orderGuidesResult.error) throw new Error(`No fue posible contar las guías del Pedido. ${orderGuidesResult.error.message}`);
+      orderContext = {
+        orderId: orderResult.data.id,
+        batchId: activeBatchLink.batch_id,
+        batchCode: batchById.get(activeBatchLink.batch_id)?.code ?? "Lote",
+        orderNumber: orderResult.data.normalized_order_number,
+        guideCount: (orderGuidesResult.data ?? []).filter((row) => normalizeOrder(row.order_number) === normalizedOrder).length,
+        invoiceCount: (orderInvoicesResult.data ?? []).length,
+        documentStatus: orderResult.data.document_status,
+        reconciliationStatus: orderResult.data.reconciliation_status,
+      };
+    }
+  }
+
   return {
     id: dispatch.id,
     projectId: dispatch.project_id,
@@ -659,5 +705,6 @@ export async function getDispatchDetail(
     invoices,
     incidentTypes: (incidentTypesResult.data ?? []).map((row) => ({ id: row.id, name: row.name })),
     units: (unitsResult.data ?? []).map((row) => ({ code: row.code, name: row.name })),
+    orderContext,
   };
 }

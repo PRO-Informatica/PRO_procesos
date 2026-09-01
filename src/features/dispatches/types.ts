@@ -152,6 +152,18 @@ export type DispatchDetail = DispatchListItem & {
   invoices: DispatchInvoiceRelation[];
   incidentTypes: IncidentTypeOption[];
   units: DispatchUnit[];
+  orderContext: DispatchOrderContext | null;
+};
+
+export type DispatchOrderContext = {
+  orderId: string;
+  batchId: string;
+  batchCode: string;
+  orderNumber: string;
+  guideCount: number;
+  invoiceCount: number;
+  documentStatus: string;
+  reconciliationStatus: string;
 };
 
 export type DispatchPermissions = {

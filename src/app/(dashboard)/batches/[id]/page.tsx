@@ -18,5 +18,12 @@ export default async function BatchDetailPage({ params }: { params: Promise<{ id
   if (!context.permissions.includes("batch.view")) return <div className="mx-auto max-w-3xl"><EmptyState title="Sin acceso a lotes" description="Tu rol actual no incluye batch.view para este proyecto." /></div>;
   const detail = await getBatchDetail(context.activeProject.id, id, context.activeProject.timezone);
   if (!detail) notFound();
-  return <BatchDetailView detail={detail} project={context.activeProject} permissions={{ canCreate: context.permissions.includes("batch.create"), canAddGuide: context.permissions.includes("batch.add_guide"), canModify: context.permissions.includes("batch.modify") }} />;
+  return <BatchDetailView detail={detail} project={context.activeProject} permissions={{
+    canCreate: context.permissions.includes("batch.create"),
+    canAddGuide: context.permissions.includes("batch.add_guide"),
+    canModify: context.permissions.includes("batch.modify"),
+    canCreateInvoice: context.permissions.includes("invoice.create"),
+    canMatchInvoice: context.permissions.includes("invoice.match"),
+    canReviewInvoice: context.permissions.includes("invoice.review"),
+  }} />;
 }

@@ -8,14 +8,14 @@ import { createClient } from "@/lib/supabase/server";
 
 import { getProgrammingItems } from "./queries";
 import {
-  PROGRAMMING_STATUSES,
+  PROGRAMMING_EFFECTIVE_STATUSES,
   type CreateProgrammingState,
   type ProgrammingFilters,
   type ProgrammingLoadResult,
   type ProgrammingMutationIntent,
   type ProgrammingMutationState,
   type ProgrammingRange,
-  type ProgrammingStatus,
+  type ProgrammingEffectiveStatus,
 } from "./types";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -100,6 +100,9 @@ function databaseErrorMessage(error: { code?: string; message: string }) {
   }
   if (message.includes("PROGRAMMING_NOT_FOUND")) {
     return "La programación ya no está disponible.";
+  }
+  if (message.includes("PROGRAMMING_SCHEDULE_MUST_BE_FUTURE")) {
+    return "La fecha y hora programadas deben estar en el futuro.";
   }
   if (message.includes("PROGRAMMING_NOT_EDITABLE")) {
     return "Solo las programaciones en borrador pueden editarse.";
@@ -261,6 +264,13 @@ export async function mutateProgrammingAction(
         message: "La fecha y hora programadas no son válidas.",
       };
     }
+    if (new Date(scheduledAtIso).valueOf() <= Date.now()) {
+      return {
+        status: "error",
+        intent,
+        message: "La fecha y hora programadas deben estar en el futuro.",
+      };
+    }
 
     ({ error } = await supabase.rpc("update_programming_with_lines", {
       p_programming_id: programmingId,
@@ -351,7 +361,9 @@ export async function loadProgrammingRange(
       filters.supplierId && UUID_PATTERN.test(filters.supplierId)
         ? filters.supplierId
         : undefined,
-    status: PROGRAMMING_STATUSES.includes(filters.status as ProgrammingStatus)
+    status: PROGRAMMING_EFFECTIVE_STATUSES.includes(
+      filters.status as ProgrammingEffectiveStatus,
+    )
       ? filters.status
       : undefined,
   };
@@ -434,6 +446,13 @@ export async function createProgrammingAction(
     return {
       status: "error",
       message: "La fecha y hora programadas no son válidas.",
+      fields,
+    };
+  }
+  if (new Date(scheduledAtIso).valueOf() <= Date.now()) {
+    return {
+      status: "error",
+      message: "La fecha y hora programadas deben estar en el futuro.",
       fields,
     };
   }

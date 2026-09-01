@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 
+import { getEffectiveProgrammingStatus } from "./availability";
 import type {
   ProgrammingFilters,
   ProgrammingDetail,
@@ -159,10 +160,6 @@ export async function getProgrammingItems(
   if (filters.supplierId) {
     programmingQuery = programmingQuery.eq("supplier_id", filters.supplierId);
   }
-  if (filters.status) {
-    programmingQuery = programmingQuery.eq("status", filters.status);
-  }
-
   const { data, error } = await programmingQuery;
   if (error) {
     throw new Error(`No fue posible cargar las programaciones. ${error.message}`);
@@ -270,7 +267,10 @@ export async function getProgrammingItems(
     linesByProgramming.set(line.programming_id, current);
   }
 
-  return rows.map((row) => ({
+  const now = Date.now();
+  const items = rows.map((row) => {
+    const rowDispatches = dispatchesByProgramming.get(row.id) ?? [];
+    return {
     id: row.id,
     projectId: row.project_id,
     supplierId: row.supplier_id,
@@ -286,6 +286,14 @@ export async function getProgrammingItems(
       ? workItemLabels.get(row.estimated_work_item_id) ?? "Renglón no disponible"
       : null,
     status: row.status,
+    effectiveStatus: getEffectiveProgrammingStatus(
+      {
+        status: row.status,
+        scheduledAt: row.scheduled_at,
+        operationStarted: rowDispatches.length > 0,
+      },
+      now,
+    ),
     notes: row.notes,
     createdByName: profileNames.get(row.created_by) ?? "Usuario no disponible",
     confirmedAt: row.confirmed_at,
@@ -298,7 +306,7 @@ export async function getProgrammingItems(
       unitCode: line.unit_code,
       position: line.position,
     })),
-    dispatches: (dispatchesByProgramming.get(row.id) ?? []).map((dispatch) => ({
+    dispatches: rowDispatches.map((dispatch) => ({
       ...(() => {
         const guide = guidesByDispatch.get(dispatch.id);
         return {
@@ -313,7 +321,12 @@ export async function getProgrammingItems(
       result: dispatch.result,
       createdAt: dispatch.created_at,
     })),
-  }));
+    } satisfies ProgrammingItem;
+  });
+
+  return filters.status
+    ? items.filter((item) => item.effectiveStatus === filters.status)
+    : items;
 }
 
 export async function getProgrammingCatalogs(projectId: string) {
@@ -543,6 +556,11 @@ export async function getProgrammingDetailPageData(
     estimatedWorkItemId: row.estimated_work_item_id,
     estimatedWorkItemLabel: null,
     status: row.status,
+    effectiveStatus: getEffectiveProgrammingStatus({
+      status: row.status,
+      scheduledAt: row.scheduled_at,
+      operationStarted: mappedDispatches.length > 0,
+    }),
     notes: row.notes,
     createdByName: names.get(row.created_by) || "Usuario no disponible",
     confirmedAt: row.confirmed_at,

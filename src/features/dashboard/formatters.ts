@@ -1,26 +1,5 @@
 import type { BatchStatus, ProgrammingStatus } from "./types";
-
-const programmingLabels: Record<ProgrammingStatus, string> = {
-  DRAFT: "Borrador",
-  PENDING_CONFIRMATION: "Pendiente de confirmación",
-  CONFIRMED: "Confirmada",
-  IN_EXECUTION: "En ejecución",
-  COMPLETED: "Completada",
-  CANCELLED: "Cancelada",
-};
-
-const batchLabels: Record<BatchStatus, string> = {
-  DRAFT: "Borrador",
-  ASSEMBLING: "En preparación",
-  READY_FOR_REVIEW: "Listo para revisión",
-  UNDER_REVIEW: "En revisión",
-  NEEDS_CORRECTION: "Requiere corrección",
-  VALIDATED: "Validado",
-  PENDING_FINAL_AUTHORIZATION: "Pendiente de autorización final",
-  AUTHORIZED: "Autorizado",
-  CLOSED: "Cerrado",
-  CANCELLED: "Cancelado",
-};
+import { formatStatusLabel, humanizeInternalCode } from "@/lib/status-labels";
 
 const activityLabels: Record<string, string> = {
   DISPATCH_REGISTERED: "Despacho registrado",
@@ -35,24 +14,16 @@ const activityLabels: Record<string, string> = {
   WEEKLY_BATCH_CLOSED_AFTER_ROLLOVER: "Lote semanal cerrado",
 };
 
-function titleFromCode(value: string) {
-  return value
-    .trim()
-    .replace(/[_-]+/g, " ")
-    .toLocaleLowerCase("es-GT")
-    .replace(/(^|\s)\p{L}/gu, (letter) => letter.toLocaleUpperCase("es-GT"));
-}
-
 export function formatProgrammingStatus(status: ProgrammingStatus) {
-  return programmingLabels[status];
+  return formatStatusLabel(status);
 }
 
 export function formatBatchStatus(status: BatchStatus) {
-  return batchLabels[status];
+  return formatStatusLabel(status);
 }
 
 export function formatDashboardActivity(action: string) {
-  return activityLabels[action] ?? titleFromCode(action);
+  return activityLabels[action] ?? humanizeInternalCode(action);
 }
 
 export function formatQuantity(value: number) {

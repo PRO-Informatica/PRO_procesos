@@ -1,27 +1,19 @@
 import type { BatchStatus } from "./types";
-
-const labels: Record<BatchStatus, string> = {
-  DRAFT: "Borrador",
-  ASSEMBLING: "En preparación",
-  READY_FOR_REVIEW: "Listo para revisión",
-  UNDER_REVIEW: "En revisión",
-  NEEDS_CORRECTION: "Necesita corrección",
-  VALIDATED: "Validado",
-  PENDING_FINAL_AUTHORIZATION: "Pendiente de autorización final",
-  AUTHORIZED: "Autorizado",
-  CLOSED: "Cerrado",
-  CANCELLED: "Cancelado",
-};
+import { formatStatusLabel } from "@/lib/status-labels";
 
 export function formatBatchStatus(status: BatchStatus) {
-  return labels[status] ?? status;
+  return formatStatusLabel(status);
 }
 
 export function batchStatusTone(status: BatchStatus) {
   if (status === "NEEDS_CORRECTION" || status === "CANCELLED") {
     return "bg-destructive-soft text-destructive";
   }
-  if (status === "CLOSED" || status === "AUTHORIZED" || status === "VALIDATED") {
+  if (
+    status === "CLOSED" ||
+    status === "AUTHORIZED" ||
+    status === "VALIDATED"
+  ) {
     return "bg-success-soft text-success";
   }
   if (status === "READY_FOR_REVIEW" || status === "UNDER_REVIEW") {
@@ -34,7 +26,9 @@ export function formatBatchDate(value: string) {
   return new Intl.DateTimeFormat("es-GT", {
     dateStyle: "medium",
     timeZone: "UTC",
-  }).format(new Date(`${value}T12:00:00Z`));
+  })
+    .format(new Date(`${value}T12:00:00Z`))
+    .replace(/[\u00a0\u202f]/g, " ");
 }
 
 export function formatBatchDateTime(value: string, timezone: string) {
@@ -42,11 +36,15 @@ export function formatBatchDateTime(value: string, timezone: string) {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: timezone,
-  }).format(new Date(value));
+  })
+    .format(new Date(value))
+    .replace(/[\u00a0\u202f]/g, " ");
 }
 
 export function formatBatchQuantity(value: number) {
-  return new Intl.NumberFormat("es-GT", { maximumFractionDigits: 3 }).format(value);
+  return new Intl.NumberFormat("es-GT", { maximumFractionDigits: 3 }).format(
+    value,
+  );
 }
 
 export function formatProgrammingCode(id: string) {

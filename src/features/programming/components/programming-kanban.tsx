@@ -13,9 +13,9 @@ import {
   programmingStatusTone,
 } from "../formatters";
 import {
-  PROGRAMMING_STATUSES,
+  PROGRAMMING_EFFECTIVE_STATUSES,
+  type ProgrammingEffectiveStatus,
   type ProgrammingItem,
-  type ProgrammingStatus,
 } from "../types";
 
 function ProgrammingCard({
@@ -62,8 +62,8 @@ function ProgrammingCard({
         </p>
       )}
       <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
-        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${programmingStatusTone(item.status)}`}>
-          {formatProgrammingStatus(item.status)}
+        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${programmingStatusTone(item.effectiveStatus)}`}>
+          {formatProgrammingStatus(item.effectiveStatus)}
         </span>
         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground-muted">
           <Truck aria-hidden="true" className="size-3.5" />
@@ -83,13 +83,13 @@ export function ProgrammingKanban({
   timezone: string;
   onSelect: (item: ProgrammingItem) => void;
 }) {
-  const [mobileStatus, setMobileStatus] = useState<ProgrammingStatus>("DRAFT");
+  const [mobileStatus, setMobileStatus] = useState<ProgrammingEffectiveStatus>("DRAFT");
   const grouped = Object.fromEntries(
-    PROGRAMMING_STATUSES.map((status) => [
+    PROGRAMMING_EFFECTIVE_STATUSES.map((status) => [
       status,
-      items.filter((item) => item.status === status),
+      items.filter((item) => item.effectiveStatus === status),
     ]),
-  ) as Record<ProgrammingStatus, ProgrammingItem[]>;
+  ) as Record<ProgrammingEffectiveStatus, ProgrammingItem[]>;
 
   return (
     <>
@@ -100,10 +100,10 @@ export function ProgrammingKanban({
         <select
           id="kanban-mobile-status"
           value={mobileStatus}
-          onChange={(event) => setMobileStatus(event.target.value as ProgrammingStatus)}
+          onChange={(event) => setMobileStatus(event.target.value as ProgrammingEffectiveStatus)}
           className="form-input"
         >
-          {PROGRAMMING_STATUSES.map((status) => (
+          {PROGRAMMING_EFFECTIVE_STATUSES.map((status) => (
             <option key={status} value={status}>
               {formatProgrammingStatus(status)} ({grouped[status].length})
             </option>
@@ -130,8 +130,8 @@ export function ProgrammingKanban({
       </div>
 
       <div className="hidden overflow-x-auto pb-3 lg:block">
-        <div className="grid min-w-[1240px] grid-cols-6 gap-3">
-          {PROGRAMMING_STATUSES.map((status) => (
+        <div className="grid min-w-[1440px] grid-cols-7 gap-3">
+          {PROGRAMMING_EFFECTIVE_STATUSES.map((status) => (
             <section key={status} className="rounded-xl border border-border bg-muted/35 p-3">
               <div className="flex items-center justify-between gap-2 px-1 pb-3">
                 <h2 className="text-xs font-semibold text-foreground">

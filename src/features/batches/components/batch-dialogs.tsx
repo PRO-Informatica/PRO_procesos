@@ -23,7 +23,7 @@ import {
   type EligibleBatchGuide,
 } from "../types";
 
-function Modal({
+export function Modal({
   title,
   description,
   icon: Icon,

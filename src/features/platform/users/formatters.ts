@@ -1,4 +1,5 @@
 import type { PlatformUserAuthStatus } from "./types";
+import { formatStatusLabel } from "@/lib/status-labels";
 
 export function formatUserDate(value: string | null, includeTime = false) {
   if (!value) return "Nunca";
@@ -10,12 +11,5 @@ export function formatUserDate(value: string | null, includeTime = false) {
 }
 
 export function authStatusLabel(status: PlatformUserAuthStatus) {
-  const labels: Record<PlatformUserAuthStatus, string> = {
-    BANNED: "Bloqueado en Auth",
-    CONFIRMED: "Email confirmado",
-    INVITED: "Invitación pendiente",
-    UNCONFIRMED: "Email sin confirmar",
-  };
-
-  return labels[status];
+  return formatStatusLabel(status);
 }

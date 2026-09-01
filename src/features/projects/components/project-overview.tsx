@@ -14,14 +14,9 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { ErrorState } from "@/components/feedback/error-state";
 import { MotionPage } from "@/components/motion/motion-page";
 import { fadeUp, staggerContainer } from "@/lib/motion/variants";
+import { formatStatusLabel } from "@/lib/status-labels";
 
 import { useProjectContext } from "../project-context";
-
-const statusLabels = {
-  ACTIVE: "Activo",
-  INACTIVE: "Inactivo",
-  CLOSED: "Cerrado",
-};
 
 export function ProjectOverview() {
   const context = useProjectContext();
@@ -85,7 +80,7 @@ export function ProjectOverview() {
                   project.status === "ACTIVE" ? "bg-success" : "bg-foreground-muted"
                 }`}
               />
-              {statusLabels[project.status]}
+              {formatStatusLabel(project.status)}
             </span>
           </div>
         </div>

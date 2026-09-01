@@ -1,30 +1,12 @@
 import type { DispatchResult, DispatchStatus } from "./types";
-
-const statusLabels: Record<DispatchStatus, string> = {
-  EXPECTED: "Esperado",
-  REGISTERED: "Registrado",
-  BATCHED: "En lote",
-  UNDER_REVIEW: "En revisión",
-  RECONCILED: "Conciliado",
-  REQUIRES_CORRECTION: "Requiere corrección",
-  CLOSED: "Cerrado",
-};
-
-const resultLabels: Record<DispatchResult, string> = {
-  COMPLETE: "Completo",
-  PARTIAL: "Parcial",
-  NOT_DISPATCHED: "No despachado",
-  RETURNED: "Devuelto",
-  REJECTED: "Rechazado",
-  CANCELLED: "Cancelado",
-};
+import { formatStatusLabel } from "@/lib/status-labels";
 
 export function formatDispatchStatus(status: DispatchStatus) {
-  return statusLabels[status] ?? status;
+  return formatStatusLabel(status);
 }
 
 export function formatDispatchResult(result: DispatchResult | null) {
-  return result ? (resultLabels[result] ?? result) : "Sin resultado";
+  return formatStatusLabel(result, "Sin resultado");
 }
 
 export function dispatchStatusTone(status: DispatchStatus) {

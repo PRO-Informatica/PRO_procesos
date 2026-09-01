@@ -9,6 +9,7 @@ import {
   PackageOpen,
   PencilLine,
   ReceiptText,
+  ShoppingCart,
   Truck,
   UserRound,
   Plus,
@@ -18,9 +19,12 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { EmptyState } from "@/components/feedback/empty-state";
+import { DocumentActions } from "@/components/documents/document-preview-dialog";
 import { MotionPage } from "@/components/motion/motion-page";
 import type { ProjectSummary } from "@/features/projects/types";
+import { formatStatusLabel } from "@/lib/status-labels";
 
+import { getDocumentDownloadUrl } from "../actions";
 import {
   formatDispatchDate,
   formatDispatchDateTime,
@@ -30,7 +34,7 @@ import {
 import type { DispatchDetail, DispatchDocument, DispatchPermissions } from "../types";
 import { DispatchResultBadge, DispatchStatusBadge } from "./dispatch-badges";
 import { CorrectDispatchGuideDialog } from "./correct-dispatch-guide-dialog";
-import { DocumentDownloadButton, DocumentUploader } from "./document-uploader";
+import { DocumentUploader } from "./document-uploader";
 import { RegisterIncidentDialog } from "./register-incident-dialog";
 
 function DataPoint({ label, value }: { label: string; value: React.ReactNode }) {
@@ -101,7 +105,9 @@ function DocumentList({
               <p className="mt-1 text-xs text-foreground-muted">{formatDispatchDateTime(document.createdAt, project.timezone)} · {document.createdByName}</p>
               <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${document.uploadStatus === "UPLOADED" ? "bg-success-soft text-success" : document.uploadStatus === "FAILED" ? "bg-destructive-soft text-destructive" : "bg-muted text-foreground-muted"}`}>{documentStatusLabel(document.uploadStatus)}</span>
             </div>
-            {document.uploadStatus === "UPLOADED" && <DocumentDownloadButton projectId={project.id} documentId={document.id} />}
+            {document.uploadStatus === "UPLOADED" && document.fileName && document.mimeType && (
+              <DocumentActions projectId={project.id} documentId={document.id} fileName={document.fileName} mimeType={document.mimeType} getSignedUrl={getDocumentDownloadUrl} compact />
+            )}
           </div>
           {canRetry && document.uploadStatus === "FAILED" && (
             <div className="mt-3">
@@ -164,7 +170,7 @@ export function DispatchDetailView({
           <dl className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             <DataPoint label="Proveedor" value={detail.supplierName} />
             <DataPoint label="Programación" value={<Link href={`/programming/${detail.programmingId}`} className="font-mono text-brand-strong hover:underline">{detail.programmingCode}</Link>} />
-            <DataPoint label="Estado programación" value={detail.programmingStatus.replaceAll("_", " ")} />
+            <DataPoint label="Estado programación" value={formatStatusLabel(detail.programmingStatus)} />
             <DataPoint label="Fecha programada" value={formatDispatchDateTime(detail.programmingScheduledAt, project.timezone)} />
             <DataPoint label="Creado por" value={detail.createdByName} />
             <DataPoint label="Creado" value={formatDispatchDateTime(detail.createdAt, project.timezone)} />
@@ -208,6 +214,10 @@ export function DispatchDetailView({
       </section>
 
       <div className="grid gap-6 xl:grid-cols-2">
+        <section className="overflow-hidden rounded-2xl border border-border bg-surface xl:col-span-2">
+          <SectionHeader icon={ShoppingCart} title="Contexto del pedido" />
+          {detail.orderContext ? <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-5 sm:p-6"><DataPoint label="Pedido" value={detail.orderContext.orderNumber} /><DataPoint label="Lote" value={detail.orderContext.batchCode} /><DataPoint label="Guías del pedido" value={detail.orderContext.guideCount} /><DataPoint label="Facturas del pedido" value={detail.orderContext.invoiceCount} /><div><DataPoint label="Conciliación" value={formatStatusLabel(detail.orderContext.reconciliationStatus)} /><Link href={`/batches/${detail.orderContext.batchId}/orders/${detail.orderContext.orderId}`} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-brand-strong hover:underline">Ver conciliación del pedido</Link></div><p className="text-xs text-foreground-muted sm:col-span-2 lg:col-span-5">Las facturas pertenecen al Pedido completo y pueden consolidar varias guías; no son exclusivas de esta guía.</p></div> : <div className="p-5 sm:p-6"><EmptyState title="Sin contexto de pedido conciliable" description="La guía necesita una relación activa de lote y un número de pedido para formar el agregado." /></div>}
+        </section>
         <section className="overflow-hidden rounded-2xl border border-border bg-surface">
           <SectionHeader icon={FileText} title="Documentos de guía" count={guideDocuments.length} />
           {guideDocuments.length && detail.guideId ? (
@@ -227,12 +237,12 @@ export function DispatchDetailView({
 
         <section className="overflow-hidden rounded-2xl border border-border bg-surface">
           <SectionHeader icon={CalendarClock} title="Lotes" count={detail.batches.length} />
-          {detail.batches.length ? <ul className="divide-y divide-border">{detail.batches.map((relation) => <li key={relation.relationId} className="px-5 py-4 sm:px-6"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold text-foreground">{relation.code}</p><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${relation.removedAt ? "bg-muted text-foreground-muted" : "bg-success-soft text-success"}`}>{relation.removedAt ? "Histórico" : "Activo"}</span></div><p className="mt-2 text-xs text-foreground-muted">{formatDispatchDate(relation.periodStart)} — {formatDispatchDate(relation.periodEnd)} · período {relation.accountingPeriod}</p><p className="mt-1 text-xs text-foreground-muted">{relation.status} · asignación {relation.assignmentSource}</p></li>)}</ul> : <div className="p-5 sm:p-6"><EmptyState title="Sin lote" description="La guía todavía no tiene asignaciones de lote visibles." /></div>}
+          {detail.batches.length ? <ul className="divide-y divide-border">{detail.batches.map((relation) => <li key={relation.relationId} className="px-5 py-4 sm:px-6"><div className="flex flex-wrap items-center justify-between gap-2"><Link href={`/batches/${relation.batchId}`} className="font-semibold text-brand-strong hover:underline">{relation.code}</Link><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${relation.removedAt ? "bg-muted text-foreground-muted" : "bg-success-soft text-success"}`}>{relation.removedAt ? "Histórico" : "Activo"}</span></div><p className="mt-2 text-xs text-foreground-muted">{formatDispatchDate(relation.periodStart)} — {formatDispatchDate(relation.periodEnd)} · período {relation.accountingPeriod}</p><p className="mt-1 text-xs text-foreground-muted">{formatStatusLabel(relation.status)} · asignación {formatStatusLabel(relation.assignmentSource)}</p></li>)}</ul> : <div className="p-5 sm:p-6"><EmptyState title="Sin lote" description="La guía todavía no tiene asignaciones de lote visibles." /></div>}
         </section>
 
         <section className="overflow-hidden rounded-2xl border border-border bg-surface">
-          <SectionHeader icon={ReceiptText} title="Facturas relacionadas" count={detail.invoices.length} />
-          {detail.invoices.length ? <ul className="divide-y divide-border">{detail.invoices.map((invoice) => <li key={invoice.id} className="px-5 py-4 sm:px-6"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold text-foreground">{invoice.number}</p><span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-foreground-muted">{invoice.status}</span></div><p className="mt-2 text-xs text-foreground-muted">{invoice.invoiceType} · {formatDispatchDate(invoice.invoiceDate)}</p><p className="mt-2 font-semibold text-foreground">{invoice.currency} {formatDispatchQuantity(invoice.total)}</p></li>)}</ul> : <div className="p-5 sm:p-6"><EmptyState title="Sin facturas" description="No hay facturas relacionadas con esta guía." /></div>}
+          <SectionHeader icon={ReceiptText} title="Referencia documental heredada" count={detail.invoices.length} />
+          <div className="p-5 sm:p-6"><p className="text-sm text-foreground-muted">Estas relaciones técnicas conservan trazabilidad histórica. La operación y los totales se consultan en la conciliación del Pedido.</p></div>
         </section>
       </div>
       <AnimatePresence>{incidentOpen && <RegisterIncidentDialog projectId={project.id} dispatchId={detail.id} types={detail.incidentTypes} onClose={() => setIncidentOpen(false)} />}</AnimatePresence>

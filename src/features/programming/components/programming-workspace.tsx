@@ -1,8 +1,8 @@
 "use client";
 
-import { CalendarDays, KanbanSquare, Plus, SlidersHorizontal, X } from "lucide-react";
+import { CalendarDays, History, KanbanSquare, Plus, SlidersHorizontal, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { ErrorState } from "@/components/feedback/error-state";
 import { useGlobalPending } from "@/components/feedback/global-loading-provider";
@@ -11,14 +11,15 @@ import { MotionSection } from "@/components/motion/motion-section";
 import type { ProjectSummary } from "@/features/projects/types";
 
 import { loadProgrammingRange } from "../actions";
+import { isActiveProgramming, isHistoricalProgramming } from "../availability";
 import { formatProgrammingStatus } from "../formatters";
 import {
-  PROGRAMMING_STATUSES,
+  PROGRAMMING_EFFECTIVE_STATUSES,
+  type ProgrammingEffectiveStatus,
   type ProgrammingFilters,
   type ProgrammingItem,
   type ProgrammingPageData,
   type ProgrammingRange,
-  type ProgrammingStatus,
 } from "../types";
 import { CreateProgrammingDialog } from "./create-programming-dialog";
 import { ProgrammingCalendar } from "./programming-calendar";
@@ -26,6 +27,7 @@ import { ProgrammingKanban } from "./programming-kanban";
 import { ProgrammingPreviewDrawer } from "./programming-preview-drawer";
 
 type ViewMode = "calendar" | "kanban";
+type ProgrammingScope = "active" | "history";
 
 function defaultScheduledAt(timezone: string) {
   const value = new Date(Date.now() + 60 * 60 * 1000);
@@ -76,10 +78,12 @@ export function ProgrammingWorkspace({
   initialData: ProgrammingPageData;
 }) {
   const [view, setView] = useState<ViewMode>("calendar");
+  const [scope, setScope] = useState<ProgrammingScope>("active");
+  const [availabilityNow] = useState(() => Date.now());
   const [items, setItems] = useState(initialData.items);
   const [range, setRange] = useState(initialData.range);
   const [supplierId, setSupplierId] = useState("");
-  const [status, setStatus] = useState<ProgrammingStatus | "">("");
+  const [status, setStatus] = useState<ProgrammingEffectiveStatus | "">("");
   const [selected, setSelected] = useState<ProgrammingItem | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [dialogScheduledAt, setDialogScheduledAt] = useState(() =>
@@ -167,6 +171,18 @@ export function ProgrammingWorkspace({
     },
     [project.timezone],
   );
+  const scopedItems = useMemo(() => {
+    return items.filter((item) => {
+      const availability = {
+        status: item.status,
+        scheduledAt: item.scheduledAt,
+        operationStarted: item.dispatches.length > 0,
+      };
+      return scope === "active"
+        ? isActiveProgramming(availability, availabilityNow)
+        : isHistoricalProgramming(availability, availabilityNow);
+    });
+  }, [availabilityNow, items, scope]);
 
   return (
     <MotionPage className="mx-auto max-w-[1600px]">
@@ -183,6 +199,26 @@ export function ProgrammingWorkspace({
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="inline-flex rounded-xl border border-border bg-surface p-1" role="group" aria-label="Alcance temporal">
+            <button
+              type="button"
+              onClick={() => setScope("active")}
+              className={`inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition sm:flex-none ${
+                scope === "active" ? "bg-brand text-white" : "text-foreground-muted hover:bg-muted"
+              }`}
+            >
+              <CalendarDays aria-hidden="true" className="size-4" /> Activas
+            </button>
+            <button
+              type="button"
+              onClick={() => setScope("history")}
+              className={`inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition sm:flex-none ${
+                scope === "history" ? "bg-sidebar text-white" : "text-foreground-muted hover:bg-muted"
+              }`}
+            >
+              <History aria-hidden="true" className="size-4" /> Historial
+            </button>
+          </div>
           <div className="inline-flex rounded-xl border border-border bg-surface p-1" role="group" aria-label="Vista de programación">
             <button
               type="button"
@@ -256,11 +292,11 @@ export function ProgrammingWorkspace({
             <select
               id="programming-filter-status"
               value={status}
-              onChange={(event) => setStatus(event.target.value as ProgrammingStatus | "")}
+              onChange={(event) => setStatus(event.target.value as ProgrammingEffectiveStatus | "")}
               className="form-input"
             >
               <option value="">Todos los estados</option>
-              {PROGRAMMING_STATUSES.map((value) => (
+              {PROGRAMMING_EFFECTIVE_STATUSES.map((value) => (
                 <option key={value} value={value}>
                   {formatProgrammingStatus(value)}
                 </option>
@@ -298,7 +334,7 @@ export function ProgrammingWorkspace({
                   También puedes seleccionar una hora en las vistas Semana o Día.
                 </p>
               </div>
-              {canCreate && (
+              {canCreate && scope === "active" && (
                 <ContextCreateButton
                   label="Nueva programación"
                   disabled={!initialData.suppliers.length}
@@ -307,12 +343,14 @@ export function ProgrammingWorkspace({
               )}
             </div>
             <ProgrammingCalendar
-              items={items}
+              items={scopedItems}
               timezone={project.timezone}
               onRangeChange={handleRangeChange}
               onSelect={handleSelectId}
               onCreateAt={
-                canCreate && initialData.suppliers.length ? openCreate : undefined
+                canCreate && scope === "active" && initialData.suppliers.length
+                  ? openCreate
+                  : undefined
               }
             />
           </div>
@@ -325,7 +363,7 @@ export function ProgrammingWorkspace({
                   Toda programación nueva inicia en la columna Borrador.
                 </p>
               </div>
-              {canCreate && (
+              {canCreate && scope === "active" && (
                 <ContextCreateButton
                   label="Nueva programación"
                   disabled={!initialData.suppliers.length}
@@ -334,7 +372,7 @@ export function ProgrammingWorkspace({
               )}
             </div>
             <ProgrammingKanban
-              items={items}
+              items={scopedItems}
               timezone={project.timezone}
               onSelect={handleSelectItem}
             />

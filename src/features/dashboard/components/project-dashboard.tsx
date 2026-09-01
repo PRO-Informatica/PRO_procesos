@@ -20,6 +20,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { MotionPage } from "@/components/motion/motion-page";
 import { MotionSection } from "@/components/motion/motion-section";
 import type { ProjectSummary } from "@/features/projects/types";
+import { formatStatusLabel } from "@/lib/status-labels";
 
 import {
   formatAccountingPeriod,
@@ -364,7 +365,7 @@ export function ProjectDashboard({
                   <dd className="mt-1 text-lg font-semibold text-foreground">{data.currentBatch.pendingInvoiceCount}</dd>
                 </div>
                 <div className="rounded-lg bg-destructive-soft p-3">
-                  <dt className="text-[10px] text-destructive">REINVOICING</dt>
+                  <dt className="text-[10px] text-destructive">Refacturación</dt>
                   <dd className="mt-1 text-lg font-semibold text-destructive">{data.currentBatch.reinvoicingCount}</dd>
                 </div>
                 <div className="rounded-lg bg-brand-soft p-3">
@@ -438,7 +439,7 @@ export function ProjectDashboard({
                   <div className="flex items-start justify-between gap-3">
                     <p className="text-sm font-semibold text-foreground">{incident.typeName}</p>
                     <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[9px] font-semibold text-foreground-muted">
-                      {incident.responsibility}
+                      {formatStatusLabel(incident.responsibility)}
                     </span>
                   </div>
                   {incident.notes && (

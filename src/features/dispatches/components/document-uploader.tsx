@@ -1,17 +1,15 @@
 "use client";
 
-import { Camera, Download, FileUp, LoaderCircle, RotateCcw } from "lucide-react";
+import { Camera, FileUp, LoaderCircle, RotateCcw } from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
-import { useGlobalPending } from "@/components/feedback/global-loading-provider";
 import { createClient } from "@/lib/supabase/client";
 
 import {
   failDispatchUpload,
   finalizeDispatchUpload,
-  getDocumentDownloadUrl,
   prepareDispatchUpload,
 } from "../actions";
 
@@ -186,12 +184,4 @@ export function DocumentUploader({
       )}
     </div>
   );
-}
-
-export function DocumentDownloadButton({ projectId, documentId }: { projectId: string; documentId: string }) {
-  const reduceMotion = useReducedMotion();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-  useGlobalPending(busy, "Preparando descarga…", "Generando un enlace privado de corta duración.");
-  return <div className="text-right"><button type="button" disabled={busy} onClick={async () => { setBusy(true); setError(undefined); const result = await getDocumentDownloadUrl(projectId, documentId); setBusy(false); if (result.status === "success") window.open(result.url, "_blank", "noopener,noreferrer"); else setError(result.message); }} className="inline-grid size-11 place-items-center rounded-lg border border-border text-foreground-muted hover:bg-muted hover:text-foreground" aria-label="Ver o descargar documento">{busy ? <LoaderCircle className={`size-4 ${reduceMotion ? "" : "animate-spin"}`} /> : <Download className="size-4" />}</button>{error && <p className="mt-1 text-xs text-destructive">{error}</p>}</div>;
 }

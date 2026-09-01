@@ -3,6 +3,7 @@
 import { CalendarClock, ExternalLink, PackageOpen, Truck, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
+import { formatStatusLabel } from "@/lib/status-labels";
 
 import {
   formatProgrammingDateTime,
@@ -81,8 +82,8 @@ export function ProgrammingPreviewDrawer({
 
             <div className="flex-1 overflow-y-auto p-5 sm:p-6">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.status)}`}>
-                  {formatProgrammingStatus(item.status)}
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.effectiveStatus)}`}>
+                  {formatProgrammingStatus(item.effectiveStatus)}
                 </span>
                 <span className="text-xs text-foreground-muted">
                   {formatProgrammingDateTime(item.scheduledAt, timezone)}
@@ -199,7 +200,7 @@ export function ProgrammingPreviewDrawer({
                     {item.dispatches.map((dispatch) => (
                       <li key={dispatch.id} className="flex items-center justify-between gap-3 px-4 py-3 text-xs">
                         <span className="font-mono text-foreground">#{dispatch.id.slice(0, 8)}</span>
-                        <span className="text-foreground-muted">{dispatch.status}</span>
+                        <span className="text-foreground-muted">{formatStatusLabel(dispatch.status)}</span>
                       </li>
                     ))}
                   </ul>

@@ -9,6 +9,14 @@ export const PROGRAMMING_STATUSES = [
 
 export type ProgrammingStatus = (typeof PROGRAMMING_STATUSES)[number];
 
+export const PROGRAMMING_EFFECTIVE_STATUSES = [
+  ...PROGRAMMING_STATUSES,
+  "EXPIRED",
+] as const;
+
+export type ProgrammingEffectiveStatus =
+  (typeof PROGRAMMING_EFFECTIVE_STATUSES)[number];
+
 export type ProgrammingDispatch = {
   id: string;
   status: string;
@@ -41,6 +49,7 @@ export type ProgrammingItem = {
   estimatedWorkItemId: string | null;
   estimatedWorkItemLabel: string | null;
   status: ProgrammingStatus;
+  effectiveStatus: ProgrammingEffectiveStatus;
   notes: string | null;
   createdByName: string;
   confirmedAt: string | null;
@@ -110,7 +119,7 @@ export type ProgrammingRange = {
 
 export type ProgrammingFilters = {
   supplierId?: string;
-  status?: ProgrammingStatus;
+  status?: ProgrammingEffectiveStatus;
 };
 
 export type ProgrammingPageData = {

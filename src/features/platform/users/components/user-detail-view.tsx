@@ -12,6 +12,7 @@ import Link from "next/link";
 
 import { EmptyState } from "@/components/feedback/empty-state";
 import { MotionSection } from "@/components/motion/motion-section";
+import { humanizeInternalCode } from "@/lib/status-labels";
 
 import { authStatusLabel, formatUserDate } from "../formatters";
 import type {
@@ -387,7 +388,7 @@ export function UserDetailView({ user }: { user: PlatformUserDetail }) {
               <li key={event.id} className="flex flex-col gap-1 py-4 first:pt-0 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-foreground">
-                    {event.action.replaceAll("_", " ")}
+                    {humanizeInternalCode(event.action)}
                   </p>
                   <p className="mt-1 text-xs text-foreground-muted">{event.entityType}</p>
                 </div>

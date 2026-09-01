@@ -23,8 +23,13 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import { LoadingButton } from "@/components/feedback/loading-button";
 import { useGlobalPending } from "@/components/feedback/global-loading-provider";
 import type { ProjectSummary } from "@/features/projects/types";
+import { formatStatusLabel } from "@/lib/status-labels";
 
 import { mutateProgrammingAction } from "../actions";
+import {
+  canCreateDispatchForProgramming,
+  getEffectiveProgrammingStatus,
+} from "../availability";
 import {
   formatProgrammingDateTime,
   formatProgrammingQuantity,
@@ -368,10 +373,25 @@ export function ProgrammingDetailView({
 }) {
   const [intent, setIntent] = useState<ProgrammingMutationIntent | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [availabilityNow] = useState(() => Date.now());
   const detail = data.detail;
+  const operationStarted = detail.dispatches.length > 0;
+  const effectiveStatus = getEffectiveProgrammingStatus({
+    status: detail.status,
+    scheduledAt: detail.scheduledAt,
+    operationStarted,
+  }, availabilityNow);
+  const scheduleIsFuture = new Date(detail.scheduledAt).valueOf() >= availabilityNow;
+  const canRegisterDispatch = canCreateDispatchForProgramming({
+    status: detail.status,
+    scheduledAt: detail.scheduledAt,
+    operationStarted,
+    hasPermission: permissions.canCreateDispatch,
+  }, availabilityNow);
   const quantitySuffix = ` ${detail.unitCode}`;
   const canCancel =
     permissions.canCancel &&
+    effectiveStatus !== "EXPIRED" &&
     ["DRAFT", "PENDING_CONFIRMATION", "CONFIRMED"].includes(detail.status) &&
     !(detail.status === "CONFIRMED" && detail.dispatches.length > 0);
   const revisionCountLabel = `${detail.revisions.length} ${detail.revisions.length === 1 ? "evento" : "eventos"}`;
@@ -379,18 +399,22 @@ export function ProgrammingDetailView({
     const result: Array<{ intent: ProgrammingMutationIntent; label: string; icon: typeof Pencil }> = [];
     if (detail.status === "DRAFT" && permissions.canModify) {
       result.push({ intent: "edit", label: "Editar", icon: Pencil });
-      result.push({ intent: "submit", label: "Enviar a confirmación", icon: Send });
+      if (scheduleIsFuture) {
+        result.push({ intent: "submit", label: "Enviar a confirmación", icon: Send });
+      }
     }
     if (detail.status === "PENDING_CONFIRMATION" && permissions.canConfirm) {
       result.push({ intent: "return-to-draft", label: "Solicitar corrección", icon: RotateCcw });
-      result.push({ intent: "confirm", label: "Confirmar", icon: CheckCircle2 });
+      if (scheduleIsFuture) {
+        result.push({ intent: "confirm", label: "Confirmar", icon: CheckCircle2 });
+      }
     }
     if (detail.status === "IN_EXECUTION" && permissions.canClose) {
       result.push({ intent: "close", label: "Cerrar programación", icon: ClipboardCheck });
     }
     if (canCancel) result.push({ intent: "cancel", label: "Cancelar", icon: XCircle });
     return result;
-  }, [canCancel, detail.status, permissions.canClose, permissions.canConfirm, permissions.canModify]);
+  }, [canCancel, detail.status, permissions.canClose, permissions.canConfirm, permissions.canModify, scheduleIsFuture]);
 
   return (
     <>
@@ -402,8 +426,8 @@ export function ProgrammingDetailView({
             </Link>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Detalle de programación</h1>
-              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(detail.status)}`}>
-                {formatProgrammingStatus(detail.status)}
+              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(effectiveStatus)}`}>
+                {formatProgrammingStatus(effectiveStatus)}
               </span>
             </div>
             <p className="mt-2 font-mono text-xs text-foreground-muted">
@@ -427,13 +451,22 @@ export function ProgrammingDetailView({
                 </button>
               );
             })}
-            {(detail.status === "CONFIRMED" || detail.status === "IN_EXECUTION") && permissions.canCreateDispatch && (
+            {canRegisterDispatch && (
               <button type="button" onClick={() => setRegisterOpen(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong">
                 <Truck aria-hidden="true" className="size-4" /> Registrar despacho
               </button>
             )}
           </div>
         </div>
+
+        {effectiveStatus === "EXPIRED" && (
+          <div className="flex gap-3 rounded-xl border border-slate-300 bg-slate-100 p-4 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+            <AlertTriangle aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+            <p>
+              Esta programación venció el {formatProgrammingDateTime(detail.scheduledAt, project.timezone)} y ya no acepta nuevos despachos.
+            </p>
+          </div>
+        )}
 
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Metric label="Solicitado" value={`${formatProgrammingQuantity(detail.requestedQuantity)}${quantitySuffix}`} />
@@ -497,7 +530,7 @@ export function ProgrammingDetailView({
                       <div><span className="form-label">Despacho</span><span className="font-mono text-xs text-foreground">#{dispatch.id.slice(0, 8).toUpperCase()}</span></div>
                       <div><span className="form-label">Fecha</span><span className="font-medium text-foreground">{formatProgrammingDateTime(dispatch.createdAt, project.timezone)}</span></div>
                       <div><span className="form-label">Guía</span><span className="font-medium text-foreground">{dispatch.guideNumber ?? "Pendiente"}</span></div>
-                      <div><span className="form-label">Estado del proceso</span><span className="font-medium text-foreground">{dispatch.status}</span><span className="form-label mt-2">Resultado físico</span><span className="font-medium text-foreground">{dispatch.result ?? "Sin resultado"}</span></div>
+                      <div><span className="form-label">Estado del proceso</span><span className="font-medium text-foreground">{formatStatusLabel(dispatch.status)}</span><span className="form-label mt-2">Resultado físico</span><span className="font-medium text-foreground">{formatStatusLabel(dispatch.result, "Sin resultado")}</span></div>
                       <div><span className="form-label">Cantidad</span><span className="font-medium text-foreground">{dispatch.quantity === null ? "—" : `${formatProgrammingQuantity(dispatch.quantity)} ${dispatch.unitCode}`}</span></div>
                       </Link>
                     </li>
@@ -564,7 +597,7 @@ export function ProgrammingDetailView({
           />
         )}
       </AnimatePresence>
-      <RegisterDispatchDialog
+      {canRegisterDispatch && <RegisterDispatchDialog
         open={registerOpen}
         projectId={project.id}
         timezone={project.timezone || "America/Guatemala"}
@@ -588,7 +621,7 @@ export function ProgrammingDetailView({
         units={data.units}
         canAttachDocument={permissions.canModifyDispatch}
         onClose={() => setRegisterOpen(false)}
-      />
+      />}
     </>
   );
 }

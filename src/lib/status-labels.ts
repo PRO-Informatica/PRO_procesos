@@ -1,0 +1,84 @@
+const STATUS_LABELS: Readonly<Record<string, string>> = {
+  ACTIVE: "Activo",
+  INACTIVE: "Inactivo",
+  INVITED: "Invitado",
+  UNCONFIRMED: "Sin confirmar",
+  BANNED: "Bloqueado",
+  DRAFT: "Borrador",
+  ASSEMBLING: "En preparación",
+  READY_FOR_REVIEW: "Listo para revisión",
+  UNDER_REVIEW: "En revisión",
+  NEEDS_CORRECTION: "Necesita corrección",
+  VALIDATED: "Validado",
+  PENDING_FINAL_AUTHORIZATION: "Pendiente de autorización final",
+  AUTHORIZED: "Autorizado",
+  CLOSED: "Cerrado",
+  CANCELLED: "Cancelado",
+  PENDING_CONFIRMATION: "Pendiente de confirmación",
+  CONFIRMED: "Confirmado",
+  IN_EXECUTION: "En ejecución",
+  COMPLETED: "Completado",
+  EXPIRED: "Vencido",
+  EXPECTED: "Esperado",
+  REGISTERED: "Registrado",
+  BATCHED: "En lote",
+  RECONCILED: "Conciliado",
+  REQUIRES_CORRECTION: "Requiere corrección",
+  COMPLETE: "Completo",
+  PARTIAL: "Parcial",
+  NOT_DISPATCHED: "No despachado",
+  RETURNED: "Devuelto",
+  REJECTED: "Rechazado",
+  OPEN: "Abierto",
+  DOCUMENTS_LOADING: "Documentos en carga",
+  READY_TO_RECONCILE: "Listo para conciliar",
+  NOT_EVALUATED: "Sin evaluar",
+  NO_INVOICES: "Sin facturas",
+  MATCHED: "Conciliado",
+  WITH_DIFFERENCES: "Con diferencias",
+  REQUIRES_REVIEW: "Requiere revisión",
+  MISSING_INVOICE: "Sin factura",
+  INVOICED_WITHOUT_GUIDE: "Facturado sin guía",
+  INVOICED_OVER_DISPATCHED: "Facturado mayor que despachado",
+  DISPATCHED_OVER_INVOICED: "Despachado mayor que facturado",
+  UPLOAD_PENDING: "Carga pendiente",
+  EXTRACTION_PENDING: "Extracción pendiente",
+  READY_TO_CONFIRM: "Listo para confirmar",
+  ORDER_MISMATCH: "Pedido no coincide",
+  FAILED: "Fallido",
+  PENDING: "Pendiente",
+  UPLOADED: "Disponible",
+  CORRECTED: "Corregido",
+  APPROVED: "Aprobado",
+  REINVOICING: "En refacturación",
+  SUPERSEDED: "Reemplazada",
+  USER: "Usuario",
+  SYSTEM: "Sistema",
+  HUMAN: "Humano",
+  BACKFILL: "Carga histórica",
+  MANUAL_ASSISTED: "Manual asistido",
+  PRODUCT: "Producto",
+  SERVICE: "Servicio",
+  PROJECT: "Proyecto",
+  COMPANY: "Empresa",
+  SUPPLIER: "Proveedor",
+  DISPATCH_GUIDE: "Guía de despacho",
+  INVOICE: "Factura",
+  EVIDENCE: "Evidencia",
+};
+
+export function formatStatusLabel(
+  value: string | null | undefined,
+  emptyLabel = "Sin estado",
+) {
+  if (!value) return emptyLabel;
+  return STATUS_LABELS[value] ?? humanizeInternalCode(value);
+}
+
+export function humanizeInternalCode(value: string) {
+  return value
+    .trim()
+    .replace(/[_-]+/gu, " ")
+    .toLocaleLowerCase("es-GT")
+    .replace(/(^|\s)\p{L}/gu, (letter) => letter.toLocaleUpperCase("es-GT"));
+}

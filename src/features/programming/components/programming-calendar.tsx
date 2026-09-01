@@ -27,18 +27,19 @@ const calendarByStatus = {
   IN_EXECUTION: "execution",
   COMPLETED: "completed",
   CANCELLED: "cancelled",
+  EXPIRED: "expired",
 } as const;
 
 function toCalendarEvent(item: ProgrammingItem, timezone: string): CalendarEvent {
   const point = Temporal.Instant.from(item.scheduledAt).toZonedDateTimeISO(timezone);
-  const compact = `${formatProgrammingTime(item.scheduledAt, timezone)} · ${formatProgrammingQuantity(item.requestedQuantity)} ${item.unitCode} · ${item.supplierName} · ${formatProgrammingStatus(item.status)}`;
+  const compact = `${formatProgrammingTime(item.scheduledAt, timezone)} · ${formatProgrammingQuantity(item.requestedQuantity)} ${item.unitCode} · ${item.supplierName} · ${formatProgrammingStatus(item.effectiveStatus)}`;
   return {
     id: item.id,
     start: point as unknown as CalendarEvent["start"],
     end: point as unknown as CalendarEvent["end"],
     title: `${formatProgrammingQuantity(item.requestedQuantity)} ${item.unitCode} · ${item.supplierName}`,
-    description: formatProgrammingStatus(item.status),
-    calendarId: calendarByStatus[item.status],
+    description: formatProgrammingStatus(item.effectiveStatus),
+    calendarId: calendarByStatus[item.effectiveStatus],
     _customContent: {
       timeGrid: compact,
       dateGrid: compact,
@@ -128,6 +129,11 @@ export function ProgrammingCalendar({
           colorName: "cancelled",
           lightColors: { main: "#b42318", container: "#fef3f2", onContainer: "#912018" },
           darkColors: { main: "#fda29b", container: "#3b1717", onContainer: "#fecaca" },
+        },
+        expired: {
+          colorName: "expired",
+          lightColors: { main: "#64748b", container: "#e2e8f0", onContainer: "#334155" },
+          darkColors: { main: "#94a3b8", container: "#1e293b", onContainer: "#cbd5e1" },
         },
       },
       callbacks: {

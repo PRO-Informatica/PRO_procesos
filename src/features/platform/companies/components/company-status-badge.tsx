@@ -1,4 +1,5 @@
 import type { CompanyStatus } from "../types";
+import { formatStatusLabel } from "@/lib/status-labels";
 
 export function CompanyStatusBadge({ status }: { status: CompanyStatus }) {
   const active = status === "ACTIVE";
@@ -15,7 +16,7 @@ export function CompanyStatusBadge({ status }: { status: CompanyStatus }) {
         aria-hidden="true"
         className={`size-1.5 rounded-full ${active ? "bg-success" : "bg-foreground-muted"}`}
       />
-      {active ? "Activa" : "Inactiva"}
+      {formatStatusLabel(status)}
     </span>
   );
 }
