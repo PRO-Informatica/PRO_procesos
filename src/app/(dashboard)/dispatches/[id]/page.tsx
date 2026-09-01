@@ -24,5 +24,9 @@ export default async function DispatchDetailPage({ params }: { params: Promise<{
 
   const detail = await getDispatchDetail(context.activeProject.id, id);
   if (!detail) notFound();
-  return <DispatchDetailView detail={detail} project={context.activeProject} />;
+  return <DispatchDetailView detail={detail} project={context.activeProject} permissions={{
+    canCreate: context.permissions.includes("dispatch.create"),
+    canModify: context.permissions.includes("dispatch.modify"),
+    canRegisterIncident: context.permissions.includes("dispatch.register_incident"),
+  }} />;
 }

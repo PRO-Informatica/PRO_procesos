@@ -69,7 +69,10 @@ export function formatDispatchDateTime(value: string | null, timezone: string) {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: timezone,
-  }).format(new Date(value));
+  })
+    .format(new Date(value))
+    .replace(/\s+/gu, " ")
+    .trim();
 }
 
 export function formatIdentifier(prefix: string, id: string) {

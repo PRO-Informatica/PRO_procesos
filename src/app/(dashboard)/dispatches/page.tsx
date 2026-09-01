@@ -25,5 +25,11 @@ export default async function DispatchesPage() {
   }
 
   const data = await getDispatchPageData(context.activeProject.id);
-  return <DispatchesWorkspace project={context.activeProject} canCreate={context.permissions.includes("dispatch.create")} data={data} />;
+  return <DispatchesWorkspace
+    project={context.activeProject}
+    canCreate={context.permissions.includes("dispatch.create")}
+    canModify={context.permissions.includes("dispatch.modify")}
+    receiverName={profile.fullName}
+    data={data}
+  />;
 }

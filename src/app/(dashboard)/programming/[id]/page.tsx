@@ -48,12 +48,14 @@ export default async function ProgrammingDetailPage({
     <ProgrammingDetailView
       data={data}
       project={context.activeProject}
+      receiverName={profile.fullName}
       permissions={{
         canModify: context.permissions.includes("programming.modify"),
         canConfirm: context.permissions.includes("programming.confirm"),
         canCancel: context.permissions.includes("programming.cancel"),
         canClose: context.permissions.includes("programming.close"),
         canCreateDispatch: context.permissions.includes("dispatch.create"),
+        canModifyDispatch: context.permissions.includes("dispatch.modify"),
       }}
     />
   );

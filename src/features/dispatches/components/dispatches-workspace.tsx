@@ -36,6 +36,7 @@ import {
   type DispatchStatus,
 } from "../types";
 import { DispatchResultBadge, DispatchStatusBadge } from "./dispatch-badges";
+import { RegisterDispatchDialog } from "./register-dispatch-dialog";
 
 function Metric({
   label,
@@ -59,13 +60,12 @@ function Metric({
   );
 }
 
-function DisabledRegisterButton({ compact = false }: { compact?: boolean }) {
+function RegisterButton({ compact = false, onClick }: { compact?: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
-      disabled
-      title="Disponible en la fase de registro de guía"
-      className={`${compact ? "min-h-10 px-3" : "min-h-11 px-4"} inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-brand text-sm font-semibold text-white opacity-55`}
+      onClick={onClick}
+      className={`${compact ? "min-h-10 px-3" : "min-h-11 px-4"} inline-flex items-center justify-center gap-2 rounded-lg bg-brand text-sm font-semibold text-white hover:bg-brand-strong`}
     >
       <Plus aria-hidden="true" className="size-4" />
       Registrar despacho
@@ -76,12 +76,18 @@ function DisabledRegisterButton({ compact = false }: { compact?: boolean }) {
 export function DispatchesWorkspace({
   project,
   canCreate,
+  canModify,
   data,
+  receiverName,
 }: {
   project: ProjectSummary;
   canCreate: boolean;
+  canModify: boolean;
   data: DispatchPageData;
+  receiverName: string;
 }) {
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [fixedProgrammingId, setFixedProgrammingId] = useState<string>();
   const [status, setStatus] = useState<DispatchStatus | "">("");
   const [result, setResult] = useState<DispatchResult | "NONE" | "">("");
   const [supplierId, setSupplierId] = useState("");
@@ -136,17 +142,11 @@ export function DispatchesWorkspace({
             Despachos
           </h1>
           <p className="mt-2 text-sm text-foreground-muted">
-            Seguimiento read-only de despachos, guías y recepción en {project.name}.
+            Registra despachos y administra sus guías, productos, recepción e incidencias en {project.name}.
           </p>
         </div>
-        {canCreate && <DisabledRegisterButton />}
+        {canCreate && data.eligibleProgramming.length > 0 && <RegisterButton onClick={() => { setFixedProgrammingId(undefined); setRegisterOpen(true); }} />}
       </MotionSection>
-
-      {canCreate && (
-        <p className="-mt-2 text-xs text-foreground-muted sm:text-right">
-          El registro estará disponible en la fase de registro de guía.
-        </p>
-      )}
 
       <MotionSection className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Metric label="Total despachos" value={metrics.total} icon={Truck} />
@@ -217,9 +217,9 @@ export function DispatchesWorkspace({
             icon={Truck}
             title={data.eligibleProgramming.length ? "Aún no hay despachos registrados" : "No hay despachos disponibles"}
             description={data.eligibleProgramming.length
-              ? "Hay programaciones confirmadas listas para despacho. El registro estará disponible en la fase de guía."
+              ? "Hay programaciones confirmadas listas para despacho. Usa Registrar despacho para iniciar la recepción."
               : "Primero debes confirmar una programación para iniciar el flujo de despacho."}
-            action={canCreate && data.eligibleProgramming.length ? <DisabledRegisterButton compact /> : undefined}
+            action={canCreate && data.eligibleProgramming.length ? <RegisterButton compact onClick={() => { setFixedProgrammingId(undefined); setRegisterOpen(true); }} /> : undefined}
           />
         ) : filtered.length === 0 ? (
           <EmptyState
@@ -239,7 +239,7 @@ export function DispatchesWorkspace({
                       <th className="px-4 py-3 font-semibold">Guía</th>
                       <th className="px-4 py-3 font-semibold">Programación</th>
                       <th className="px-4 py-3 font-semibold">Proveedor</th>
-                      <th className="px-4 py-3 font-semibold">Cantidad</th>
+                      <th className="px-4 py-3 font-semibold">Cantidad recibida</th>
                       <th className="px-4 py-3 font-semibold">Receptor</th>
                       <th className="px-4 py-3 font-semibold">Estado del proceso</th>
                       <th className="px-4 py-3 font-semibold">Resultado físico</th>
@@ -253,7 +253,7 @@ export function DispatchesWorkspace({
                         <td className="px-4 py-4 font-semibold text-foreground">{item.guideNumber ?? "Sin guía"}</td>
                         <td className="px-4 py-4"><Link href={`/programming/${item.programmingId}`} className="font-mono text-xs font-semibold text-brand-strong hover:underline">{item.programmingCode}</Link></td>
                         <td className="px-4 py-4 font-medium text-foreground">{item.supplierName}</td>
-                        <td className="px-4 py-4 font-semibold text-foreground">{item.quantity === null ? "—" : `${formatDispatchQuantity(item.quantity)} ${item.unitCode}`}</td>
+                        <td className="px-4 py-4 font-semibold text-foreground">{item.receivedQuantity === null ? "—" : `${formatDispatchQuantity(item.receivedQuantity)} ${item.unitCode}`}</td>
                         <td className="px-4 py-4 text-foreground-muted">{item.receivedByName ?? "No registrado"}</td>
                         <td className="px-4 py-4"><DispatchStatusBadge status={item.status} /></td>
                         <td className="px-4 py-4"><DispatchResultBadge result={item.result} /></td>
@@ -275,7 +275,7 @@ export function DispatchesWorkspace({
                     </div>
                     <ChevronRight aria-hidden="true" className="mt-1 size-4 shrink-0 text-foreground-muted" />
                   </div>
-                  <p className="mt-4 text-xl font-semibold text-foreground">{item.quantity === null ? "—" : `${formatDispatchQuantity(item.quantity)} ${item.unitCode}`}</p>
+                  <p className="mt-4 text-xl font-semibold text-foreground">{item.receivedQuantity === null ? "—" : `${formatDispatchQuantity(item.receivedQuantity)} ${item.unitCode}`}</p>
                   <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
                     <div><p className="text-foreground-muted">Programación</p><p className="mt-1 font-mono font-semibold text-foreground">{item.programmingCode}</p></div>
                     <div><p className="text-foreground-muted">Fecha</p><p className="mt-1 font-semibold text-foreground">{formatDispatchDate(item.guideDate)}</p></div>
@@ -300,7 +300,7 @@ export function DispatchesWorkspace({
           </div>
           <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
             {data.eligibleProgramming.map((item) => (
-              <Link key={item.id} href={`/programming/${item.id}`} className="rounded-xl border border-border p-4 hover:bg-muted/35">
+              <article key={item.id} className="rounded-xl border border-border p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div><p className="font-mono text-xs font-semibold text-brand-strong">{formatIdentifier("PRG", item.id)}</p><p className="mt-1 font-semibold text-foreground">{item.supplierName}</p></div>
                   <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-foreground-muted">{item.status === "CONFIRMED" ? "Confirmada" : "En ejecución"}</span>
@@ -312,11 +312,16 @@ export function DispatchesWorkspace({
                   <div><p className="text-foreground-muted">Despachos</p><p className="mt-1 font-semibold text-foreground">{item.dispatchCount}</p></div>
                 </div>
                 <p className="mt-4 flex items-center gap-2 border-t border-border pt-3 text-xs text-foreground-muted"><CalendarClock aria-hidden="true" className="size-3.5" /> {formatDispatchDateTime(item.scheduledAt, project.timezone)}</p>
-              </Link>
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                  <Link href={`/programming/${item.id}`} className="inline-flex min-h-10 flex-1 items-center justify-center rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted">Ver programación</Link>
+                  {canCreate && <button type="button" onClick={() => { setFixedProgrammingId(item.id); setRegisterOpen(true); }} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong"><Plus aria-hidden="true" className="size-4" /> Registrar despacho</button>}
+                </div>
+              </article>
             ))}
           </div>
         </MotionSection>
       )}
+      {registerOpen && <RegisterDispatchDialog open projectId={project.id} timezone={project.timezone || "America/Guatemala"} receiverName={receiverName} programming={data.eligibleProgramming} units={data.units} fixedProgrammingId={fixedProgrammingId} canAttachDocument={canModify} onClose={() => setRegisterOpen(false)} />}
     </MotionPage>
   );
 }

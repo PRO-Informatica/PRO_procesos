@@ -20,7 +20,7 @@ export function GlobalLoaderOverlay({
       {state && (
         <motion.div
           className="fixed inset-0 z-[9999] grid cursor-wait place-items-center bg-black/35 p-4 backdrop-blur-[2px]"
-          initial={{ opacity: 0 }}
+          initial={reducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: reducedMotion ? 0 : 0.16 }}
@@ -31,9 +31,9 @@ export function GlobalLoaderOverlay({
         >
           <motion.div
             className="w-full max-w-xs rounded-2xl border border-border bg-surface px-6 py-7 text-center shadow-2xl"
-            initial={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
+            initial={reducedMotion ? false : { opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.99 }}
+            exit={reducedMotion ? undefined : { opacity: 0, scale: 0.99 }}
             transition={{ duration: reducedMotion ? 0 : 0.18 }}
           >
             <motion.div

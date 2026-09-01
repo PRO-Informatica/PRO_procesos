@@ -240,7 +240,7 @@ export function ProjectDashboard({
           icon={<CalendarDays aria-hidden="true" className="size-4" />}
         />
         <MetricCard
-          label="Despachado hoy"
+          label="Recibido hoy"
           value={`${formatQuantity(data.metrics.dispatchedTodayM3)} M3`}
           detail={`${data.metrics.dispatchTodayCount} despachos con guía`}
           icon={<Truck aria-hidden="true" className="size-4" />}

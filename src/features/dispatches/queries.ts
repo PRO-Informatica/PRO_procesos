@@ -32,15 +32,20 @@ type DispatchRow = {
 type GuideRow = {
   id: string;
   dispatch_id: string;
+  template_version_id: string | null;
   guide_number: string;
   order_number: string | null;
   guide_date: string;
   quantity: number | string;
+  dispatched_quantity: number | string;
+  received_quantity: number | string;
+  returned_quantity: number | string;
   unit_code: string;
   load_at: string | null;
   arrival_at: string | null;
   departure_at: string | null;
   received_by_name: string;
+  provider_extra_data: Record<string, unknown>;
 };
 
 type ProgrammingRow = {
@@ -80,7 +85,7 @@ function emptyResult<T>() {
 
 export async function getDispatchPageData(projectId: string): Promise<DispatchPageData> {
   const supabase = await createClient();
-  const [dispatchesResult, eligibleResult] = await Promise.all([
+  const [dispatchesResult, eligibleResult, unitsResult] = await Promise.all([
     supabase
       .from("dispatches")
       .select(
@@ -97,9 +102,14 @@ export async function getDispatchPageData(projectId: string): Promise<DispatchPa
       .eq("project_id", projectId)
       .in("status", ["CONFIRMED", "IN_EXECUTION"])
       .order("scheduled_at"),
+    supabase
+      .from("units_of_measure")
+      .select("code, name")
+      .eq("active", true)
+      .order("code"),
   ]);
 
-  const rootError = dispatchesResult.error ?? eligibleResult.error;
+  const rootError = dispatchesResult.error ?? eligibleResult.error ?? unitsResult.error;
   if (rootError) {
     throw new Error(`No fue posible cargar los despachos. ${rootError.message}`);
   }
@@ -177,7 +187,7 @@ export async function getDispatchPageData(projectId: string): Promise<DispatchPa
       ? supabase
           .from("dispatch_guides")
           .select(
-            "id, dispatch_id, guide_number, order_number, guide_date, quantity, unit_code, load_at, arrival_at, departure_at, received_by_name",
+            "id, dispatch_id, template_version_id, guide_number, order_number, guide_date, quantity, dispatched_quantity, received_quantity, returned_quantity, unit_code, load_at, arrival_at, departure_at, received_by_name, provider_extra_data",
           )
           .eq("project_id", projectId)
           .in("dispatch_id", allDispatchIds)
@@ -229,6 +239,9 @@ export async function getDispatchPageData(projectId: string): Promise<DispatchPa
       guideNumber: guide?.guide_number ?? null,
       guideDate: guide?.guide_date ?? null,
       quantity: numeric(guide?.quantity),
+      dispatchedQuantity: numeric(guide?.dispatched_quantity),
+      receivedQuantity: numeric(guide?.received_quantity),
+      returnedQuantity: numeric(guide?.returned_quantity),
       unitCode: guide?.unit_code ?? programming?.unit_code ?? null,
       receivedByName: guide?.received_by_name ?? null,
       incidentCount: incidentCount.get(row.id) ?? 0,
@@ -238,10 +251,11 @@ export async function getDispatchPageData(projectId: string): Promise<DispatchPa
 
   const eligibleProgramming: EligibleProgramming[] = eligible.map((row) => {
     const related = dispatchesByProgramming.get(row.id) ?? [];
-    const receivedTotal = related.reduce((total, dispatch) => {
-      if (dispatch.result !== "COMPLETE" && dispatch.result !== "PARTIAL") return total;
-      return total + (numeric(guidesByDispatch.get(dispatch.id)?.quantity) ?? 0);
-    }, 0);
+    const receivedTotal = related.reduce(
+      (total, dispatch) =>
+        total + (numeric(guidesByDispatch.get(dispatch.id)?.received_quantity) ?? 0),
+      0,
+    );
     const target = numeric(row.confirmed_quantity) ?? numeric(row.requested_quantity) ?? 0;
     return {
       id: row.id,
@@ -266,6 +280,7 @@ export async function getDispatchPageData(projectId: string): Promise<DispatchPa
     suppliers: [...supplierNames.entries()]
       .map(([id, name]) => ({ id, name }))
       .sort((left, right) => left.name.localeCompare(right.name)),
+    units: (unitsResult.data ?? []).map((unit) => ({ code: unit.code, name: unit.name })),
   };
 }
 
@@ -292,7 +307,7 @@ export async function getDispatchDetail(
       supabase
         .from("dispatch_guides")
         .select(
-          "id, dispatch_id, guide_number, order_number, guide_date, quantity, unit_code, load_at, arrival_at, departure_at, received_by_name",
+          "id, dispatch_id, template_version_id, guide_number, order_number, guide_date, quantity, dispatched_quantity, received_quantity, returned_quantity, unit_code, load_at, arrival_at, departure_at, received_by_name, provider_extra_data",
         )
         .eq("project_id", projectId)
         .eq("dispatch_id", dispatchId)
@@ -334,7 +349,7 @@ export async function getDispatchDetail(
   const incidentTypeIds = [...new Set(incidents.map((row) => row.incident_type_id))];
   const reporterIds = [...new Set(incidents.map((row) => row.reported_by))];
 
-  const [linesResult, linksResult, batchLinksResult, invoiceLinksResult, typesResult, reportersResult] =
+  const [linesResult, linksResult, incidentLinksResult, batchLinksResult, invoiceLinksResult, typesResult, reportersResult, incidentTypesResult, unitsResult] =
     await Promise.all([
       guide
         ? supabase
@@ -358,6 +373,13 @@ export async function getDispatchDetail(
             .eq("project_id", projectId)
             .eq("guide_id", guide.id)
         : emptyResult<{ guide_id: string; document_id: string; purpose: string }>(),
+      incidents.length
+        ? supabase
+            .from("incident_documents")
+            .select("incident_id, document_id, purpose")
+            .eq("project_id", projectId)
+            .in("incident_id", incidents.map((incident) => incident.id))
+        : emptyResult<{ incident_id: string; document_id: string; purpose: string }>(),
       guide
         ? supabase
             .from("batch_guides")
@@ -388,21 +410,47 @@ export async function getDispatchDetail(
       reporterIds.length
         ? supabase.from("profiles").select("id, full_name").in("id", reporterIds)
         : emptyResult<{ id: string; full_name: string | null }>(),
+      supabase
+        .from("incident_types")
+        .select("id, name")
+        .eq("active", true)
+        .order("name"),
+      supabase
+        .from("units_of_measure")
+        .select("code, name")
+        .eq("active", true)
+        .order("code"),
     ]);
 
   const relationError = [
     linesResult.error,
     linksResult.error,
+    incidentLinksResult.error,
     batchLinksResult.error,
     invoiceLinksResult.error,
     typesResult.error,
     reportersResult.error,
+    incidentTypesResult.error,
+    unitsResult.error,
   ].find(Boolean);
   if (relationError) {
     throw new Error(`No fue posible cargar las relaciones del despacho. ${relationError.message}`);
   }
 
-  const documentLinks = linksResult.data ?? [];
+  const documentLinks = [
+    ...(linksResult.data ?? []).map((link) => ({
+      document_id: link.document_id,
+      purpose: link.purpose,
+      context: "guide" as const,
+      incident_id: null,
+    })),
+    ...(incidentLinksResult.data ?? []).map((link) => ({
+      document_id: link.document_id,
+      purpose: link.purpose,
+      context: "incident" as const,
+      incident_id: link.incident_id,
+    })),
+  ];
   const batchLinks = batchLinksResult.data ?? [];
   const invoiceLinks = invoiceLinksResult.data ?? [];
   const documentIds = documentLinks.map((row) => row.document_id);
@@ -413,18 +461,20 @@ export async function getDispatchDetail(
     documentIds.length
       ? supabase
           .from("documents")
-          .select("id, category, created_at")
+          .select("id, category, created_by, created_at")
           .eq("project_id", projectId)
           .in("id", documentIds)
-      : emptyResult<{ id: string; category: string; created_at: string }>(),
+      : emptyResult<{ id: string; category: string; created_by: string; created_at: string }>(),
     documentIds.length
       ? supabase
           .from("document_versions")
-          .select("document_id, file_name, mime_type, upload_status, created_at")
+          .select("id, document_id, version, file_name, mime_type, upload_status, created_at")
           .in("document_id", documentIds)
-          .eq("is_current", true)
+          .order("version", { ascending: false })
       : emptyResult<{
           document_id: string;
+          id: string;
+          version: number;
           file_name: string;
           mime_type: string;
           upload_status: string;
@@ -471,13 +521,33 @@ export async function getDispatchDetail(
     throw new Error(`No fue posible resolver documentos, lotes o facturas. ${nestedError.message}`);
   }
 
+  const documentCreatorIds = [
+    ...new Set((documentsResult.data ?? []).map((document) => document.created_by)),
+  ];
+  const documentCreatorsResult = documentCreatorIds.length
+    ? await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", documentCreatorIds)
+    : { data: [], error: null };
+  if (documentCreatorsResult.error) {
+    throw new Error(`No fue posible resolver los autores de documentos. ${documentCreatorsResult.error.message}`);
+  }
+
   const typeNames = new Map((typesResult.data ?? []).map((row) => [row.id, row.name]));
   const reporterNames = new Map(
     (reportersResult.data ?? []).map((row) => [row.id, row.full_name]),
   );
   const documentById = new Map((documentsResult.data ?? []).map((row) => [row.id, row]));
-  const versionByDocument = new Map(
-    (versionsResult.data ?? []).map((row) => [row.document_id, row]),
+  const versionByDocument = new Map<
+    string,
+    NonNullable<typeof versionsResult.data>[number]
+  >();
+  for (const row of versionsResult.data ?? []) {
+    if (!versionByDocument.has(row.document_id)) versionByDocument.set(row.document_id, row);
+  }
+  const documentCreatorNames = new Map(
+    (documentCreatorsResult.data ?? []).map((profile) => [profile.id, profile.full_name]),
   );
   const batchById = new Map((batchesResult.data ?? []).map((row) => [row.id, row]));
   const invoiceById = new Map((invoicesResult.data ?? []).map((row) => [row.id, row]));
@@ -507,9 +577,13 @@ export async function getDispatchDetail(
       id: document.id,
       category: document.category,
       purpose: link.purpose,
+      context: link.context,
+      incidentId: link.incident_id,
       fileName: version?.file_name ?? null,
       mimeType: version?.mime_type ?? null,
       uploadStatus: version?.upload_status ?? null,
+      versionId: version?.id ?? null,
+      createdByName: documentCreatorNames.get(document.created_by) || "Usuario no disponible",
       createdAt: version?.created_at ?? document.created_at,
     }];
   });
@@ -558,6 +632,9 @@ export async function getDispatchDetail(
     guideNumber: guide?.guide_number ?? null,
     guideDate: guide?.guide_date ?? null,
     quantity: numeric(guide?.quantity),
+    dispatchedQuantity: numeric(guide?.dispatched_quantity),
+    receivedQuantity: numeric(guide?.received_quantity),
+    returnedQuantity: numeric(guide?.returned_quantity),
     unitCode: guide?.unit_code ?? programming?.unit_code ?? null,
     receivedByName: guide?.received_by_name ?? null,
     incidentCount: incidents.length,
@@ -571,6 +648,8 @@ export async function getDispatchDetail(
     loadAt: guide?.load_at ?? null,
     arrivalAt: guide?.arrival_at ?? null,
     departureAt: guide?.departure_at ?? null,
+    guideTemplateVersionId: guide?.template_version_id ?? null,
+    guideProviderExtraData: guide?.provider_extra_data ?? {},
     createdByName: creatorResult.data?.full_name || "Usuario no disponible",
     updatedAt: dispatch.updated_at,
     guideLines,
@@ -578,5 +657,7 @@ export async function getDispatchDetail(
     documents,
     batches,
     invoices,
+    incidentTypes: (incidentTypesResult.data ?? []).map((row) => ({ id: row.id, name: row.name })),
+    units: (unitsResult.data ?? []).map((row) => ({ code: row.code, name: row.name })),
   };
 }

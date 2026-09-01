@@ -11,9 +11,9 @@ export const DISPATCH_STATUSES = [
 export const DISPATCH_RESULTS = [
   "COMPLETE",
   "PARTIAL",
-  "NOT_DISPATCHED",
   "RETURNED",
   "REJECTED",
+  "NOT_DISPATCHED",
   "CANCELLED",
 ] as const;
 
@@ -33,6 +33,9 @@ export type DispatchListItem = {
   guideNumber: string | null;
   guideDate: string | null;
   quantity: number | null;
+  dispatchedQuantity: number | null;
+  receivedQuantity: number | null;
+  returnedQuantity: number | null;
   unitCode: string | null;
   receivedByName: string | null;
   incidentCount: number;
@@ -64,7 +67,11 @@ export type DispatchPageData = {
   items: DispatchListItem[];
   eligibleProgramming: EligibleProgramming[];
   suppliers: DispatchSupplierOption[];
+  units: DispatchUnit[];
 };
+
+export type DispatchUnit = { code: string; name: string };
+export type IncidentTypeOption = { id: string; name: string };
 
 export type DispatchGuideLine = {
   id: string;
@@ -89,9 +96,13 @@ export type DispatchDocument = {
   id: string;
   category: string;
   purpose: string;
+  context: "guide" | "incident";
+  incidentId: string | null;
   fileName: string | null;
   mimeType: string | null;
   uploadStatus: string | null;
+  versionId: string | null;
+  createdByName: string;
   createdAt: string;
 };
 
@@ -130,6 +141,8 @@ export type DispatchDetail = DispatchListItem & {
   loadAt: string | null;
   arrivalAt: string | null;
   departureAt: string | null;
+  guideTemplateVersionId: string | null;
+  guideProviderExtraData: Record<string, unknown>;
   createdByName: string;
   updatedAt: string;
   guideLines: DispatchGuideLine[];
@@ -137,4 +150,52 @@ export type DispatchDetail = DispatchListItem & {
   documents: DispatchDocument[];
   batches: DispatchBatchRelation[];
   invoices: DispatchInvoiceRelation[];
+  incidentTypes: IncidentTypeOption[];
+  units: DispatchUnit[];
 };
+
+export type DispatchPermissions = {
+  canCreate: boolean;
+  canModify: boolean;
+  canRegisterIncident: boolean;
+};
+
+export type DispatchMutationState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  dispatchId?: string;
+  guideId?: string;
+};
+
+export const initialDispatchMutationState: DispatchMutationState = { status: "idle" };
+
+export type CorrectionMutationState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  newVersion?: number;
+  conflict?: boolean;
+};
+
+export const initialCorrectionMutationState: CorrectionMutationState = { status: "idle" };
+
+export type IncidentMutationState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  incidentId?: string;
+};
+
+export const initialIncidentMutationState: IncidentMutationState = { status: "idle" };
+
+export type PreparedUpload = {
+  documentId: string;
+  versionId: string;
+  versionNumber: number;
+  bucket: string;
+  path: string;
+  token: string;
+  expiresAt: string;
+};
+
+export type UploadActionResult =
+  | { status: "success"; upload: PreparedUpload }
+  | { status: "error"; message: string };

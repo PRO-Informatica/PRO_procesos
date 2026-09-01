@@ -47,6 +47,7 @@ type DispatchGuideRow = {
   guide_number: string;
   guide_date: string;
   quantity: number | string;
+  received_quantity: number | string;
   unit_code: string;
 };
 
@@ -245,7 +246,7 @@ export async function getProgrammingItems(
   const guidesResult = dispatchIds.length
     ? await supabase
         .from("dispatch_guides")
-        .select("dispatch_id, guide_number, guide_date, quantity, unit_code")
+        .select("dispatch_id, guide_number, guide_date, quantity, received_quantity, unit_code")
         .in("dispatch_id", dispatchIds)
     : { data: [], error: null };
   if (guidesResult.error) {
@@ -303,7 +304,7 @@ export async function getProgrammingItems(
         return {
           guideNumber: guide?.guide_number ?? null,
           guideDate: guide?.guide_date ?? null,
-          quantity: numeric(guide?.quantity ?? null),
+          quantity: numeric(guide?.received_quantity ?? null),
           unitCode: guide?.unit_code ?? null,
         };
       })(),
@@ -468,7 +469,7 @@ export async function getProgrammingDetailPageData(
       dispatchIds.length
         ? supabase
             .from("dispatch_guides")
-            .select("dispatch_id, guide_number, guide_date, quantity, unit_code")
+            .select("dispatch_id, guide_number, guide_date, quantity, received_quantity, unit_code")
             .in("dispatch_id", dispatchIds)
         : Promise.resolve({ data: [], error: null }),
       actorIds.length
@@ -515,7 +516,7 @@ export async function getProgrammingDetailPageData(
       createdAt: dispatch.created_at,
       guideNumber: guide?.guide_number ?? null,
       guideDate: guide?.guide_date ?? null,
-      quantity: numeric(guide?.quantity ?? null),
+      quantity: numeric(guide?.received_quantity ?? null),
       unitCode: guide?.unit_code ?? null,
     };
   });

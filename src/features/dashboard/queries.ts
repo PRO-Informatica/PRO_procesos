@@ -34,7 +34,7 @@ type ProjectSupplierRow = {
 
 type GuideRow = {
   dispatch_id: string;
-  quantity: number | string;
+  received_quantity: number | string;
   unit_code: string;
 };
 
@@ -206,7 +206,7 @@ export async function getProjectDashboard(
       .order("scheduled_at"),
     supabase
       .from("dispatch_guides")
-      .select("dispatch_id, quantity, unit_code")
+      .select("dispatch_id, received_quantity, unit_code")
       .eq("project_id", projectId)
       .eq("guide_date", today),
     supabase
@@ -413,7 +413,7 @@ export async function getProjectDashboard(
         .reduce((sum, item) => sum + item.quantity, 0),
       dispatchedTodayM3: guides
         .filter((guide) => guide.unit_code === "M3")
-        .reduce((sum, guide) => sum + numeric(guide.quantity), 0),
+        .reduce((sum, guide) => sum + numeric(guide.received_quantity), 0),
       pendingInvoiceCount: pendingInvoicesResult.count ?? 0,
       reinvoicingCount: reinvoicingResult.count ?? 0,
       openDiscrepancyCount: discrepanciesResult.count ?? 0,

@@ -83,6 +83,7 @@ export type ProgrammingDetailPermissions = {
   canCancel: boolean;
   canClose: boolean;
   canCreateDispatch: boolean;
+  canModifyDispatch: boolean;
 };
 
 export type ProgrammingDetailPageData = {

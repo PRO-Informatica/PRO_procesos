@@ -28,6 +28,8 @@ begin
     'dispatch_guide_lines',
     'programming',
     'programming_lines',
+    'profiles',
+    'units_of_measure',
     'suppliers',
     'project_suppliers',
     'projects',
@@ -121,6 +123,27 @@ begin
     )
   ) then
     raise exception 'DISPATCH_TEMPLATE_PLATFORM_ADMIN_READ_POLICY_MISSING';
+  end if;
+
+  if exists (
+    select 1
+    from (
+      values
+        ('supplier_templates'),
+        ('supplier_template_versions'),
+        ('supplier_template_fields')
+    ) expected(table_name)
+    where not exists (
+      select 1
+      from pg_class c
+      join pg_namespace n
+        on n.oid = c.relnamespace
+      where n.nspname = 'public'
+        and c.relname = expected.table_name
+        and c.relrowsecurity is true
+    )
+  ) then
+    raise exception 'DISPATCH_TEMPLATE_RLS_NOT_ENABLED';
   end if;
 end;
 $$;
@@ -390,14 +413,14 @@ begin
   if exists (
     select 1
     from jsonb_array_elements(p_lines) item(value)
-    where jsonb_typeof(item.value) <> 'object'
-       or jsonb_typeof(item.value -> 'quantity') <> 'number'
+    where jsonb_typeof(item.value) is distinct from 'object'
+       or jsonb_typeof(item.value -> 'quantity') is distinct from 'number'
        or (item.value ->> 'quantity')::numeric <= 0
-       or jsonb_typeof(item.value -> 'unit_code') <> 'string'
+       or jsonb_typeof(item.value -> 'unit_code') is distinct from 'string'
        or nullif(btrim(item.value ->> 'unit_code'), '') is null
-       or jsonb_typeof(item.value -> 'product_code') <> 'string'
+       or jsonb_typeof(item.value -> 'product_code') is distinct from 'string'
        or nullif(btrim(item.value ->> 'product_code'), '') is null
-       or jsonb_typeof(item.value -> 'product_description') <> 'string'
+       or jsonb_typeof(item.value -> 'product_description') is distinct from 'string'
        or nullif(btrim(item.value ->> 'product_description'), '') is null
   ) then
     raise exception 'INVALID_DISPATCH_GUIDE_PRODUCT_LINE';
@@ -452,6 +475,7 @@ begin
   join public.projects project
     on project.id = p.project_id
   where p.id = p_programming_id
+    and project.status = 'ACTIVE'
   for update of p;
 
   if not found
@@ -488,7 +512,15 @@ begin
   end if;
 
   if v_template_version_id is null then
-    select count(*)::integer, min(stv.id)
+    select
+      count(*)::integer,
+      (array_agg(
+        stv.id
+        order by
+          stv.published_at desc nulls last,
+          stv.version desc,
+          stv.id
+      ))[1]
     into v_template_count, v_template_version_id
     from public.supplier_templates st
     join public.supplier_template_versions stv
@@ -1225,6 +1257,27 @@ begin
     )
   ) then
     raise exception 'DISPATCH_TEMPLATE_PLATFORM_ADMIN_READ_POLICY_LOST';
+  end if;
+
+  if exists (
+    select 1
+    from (
+      values
+        ('supplier_templates'),
+        ('supplier_template_versions'),
+        ('supplier_template_fields')
+    ) expected(table_name)
+    where not exists (
+      select 1
+      from pg_class c
+      join pg_namespace n
+        on n.oid = c.relnamespace
+      where n.nspname = 'public'
+        and c.relname = expected.table_name
+        and c.relrowsecurity is true
+    )
+  ) then
+    raise exception 'DISPATCH_TEMPLATE_RLS_LOST';
   end if;
 end;
 $$;

@@ -38,6 +38,7 @@ import {
   type ProgrammingMutationIntent,
 } from "../types";
 import { ProgrammingLinesFields } from "./programming-lines-fields";
+import { RegisterDispatchDialog } from "@/features/dispatches/components/register-dispatch-dialog";
 
 const actionCopy: Record<
   ProgrammingMutationIntent,
@@ -316,7 +317,7 @@ function MutationDialog({
               <>
                 <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                   <Metric label="Objetivo" value={`${formatProgrammingQuantity(detail.confirmedQuantity ?? detail.requestedQuantity)} ${detail.unitCode}`} />
-                  <Metric label="Despachado" value={`${formatProgrammingQuantity(detail.dispatchedQuantity)} ${detail.unitCode}`} />
+                  <Metric label="Recibido" value={`${formatProgrammingQuantity(detail.dispatchedQuantity)} ${detail.unitCode}`} />
                   <Metric label="Restante" value={`${formatProgrammingQuantity(detail.remainingQuantity)} ${detail.unitCode}`} />
                   <Metric label="Excedente" value={`${formatProgrammingQuantity(detail.excessQuantity)} ${detail.unitCode}`} />
                 </div>
@@ -358,12 +359,15 @@ export function ProgrammingDetailView({
   data,
   project,
   permissions,
+  receiverName,
 }: {
   data: ProgrammingDetailPageData;
   project: ProjectSummary;
   permissions: ProgrammingDetailPermissions;
+  receiverName: string;
 }) {
   const [intent, setIntent] = useState<ProgrammingMutationIntent | null>(null);
+  const [registerOpen, setRegisterOpen] = useState(false);
   const detail = data.detail;
   const quantitySuffix = ` ${detail.unitCode}`;
   const canCancel =
@@ -424,7 +428,7 @@ export function ProgrammingDetailView({
               );
             })}
             {(detail.status === "CONFIRMED" || detail.status === "IN_EXECUTION") && permissions.canCreateDispatch && (
-              <button type="button" disabled title="Disponible en la fase de registro de guía" className="inline-flex min-h-10 cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-brand px-3 text-sm font-semibold text-white opacity-55">
+              <button type="button" onClick={() => setRegisterOpen(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong">
                 <Truck aria-hidden="true" className="size-4" /> Registrar despacho
               </button>
             )}
@@ -434,7 +438,7 @@ export function ProgrammingDetailView({
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Metric label="Solicitado" value={`${formatProgrammingQuantity(detail.requestedQuantity)}${quantitySuffix}`} />
           <Metric label="Confirmado" value={detail.confirmedQuantity === null ? "Pendiente" : `${formatProgrammingQuantity(detail.confirmedQuantity)}${quantitySuffix}`} />
-          <Metric label="Despachado" value={`${formatProgrammingQuantity(detail.dispatchedQuantity)}${quantitySuffix}`} />
+          <Metric label="Recibido" value={`${formatProgrammingQuantity(detail.dispatchedQuantity)}${quantitySuffix}`} />
           <Metric label="Restante" value={`${formatProgrammingQuantity(detail.remainingQuantity)}${quantitySuffix}`} accent={detail.remainingQuantity > 0 ? "text-amber-700 dark:text-amber-300" : undefined} />
           <Metric label="Excedente" value={`${formatProgrammingQuantity(detail.excessQuantity)}${quantitySuffix}`} accent={detail.excessQuantity > 0 ? "text-destructive" : undefined} />
         </section>
@@ -560,6 +564,31 @@ export function ProgrammingDetailView({
           />
         )}
       </AnimatePresence>
+      <RegisterDispatchDialog
+        open={registerOpen}
+        projectId={project.id}
+        timezone={project.timezone || "America/Guatemala"}
+        receiverName={receiverName}
+        fixedProgrammingId={detail.id}
+        programming={[{
+          id: detail.id,
+          status: detail.status as "CONFIRMED" | "IN_EXECUTION",
+          scheduledAt: detail.scheduledAt,
+          supplierId: detail.supplierId,
+          supplierName: detail.supplierName,
+          requestedQuantity: detail.requestedQuantity,
+          confirmedQuantity: detail.confirmedQuantity,
+          unitCode: detail.unitCode,
+          lineCount: detail.lines.length,
+          dispatchCount: detail.dispatches.length,
+          receivedTotal: detail.dispatchedQuantity,
+          remaining: detail.remainingQuantity,
+          excess: detail.excessQuantity,
+        }]}
+        units={data.units}
+        canAttachDocument={permissions.canModifyDispatch}
+        onClose={() => setRegisterOpen(false)}
+      />
     </>
   );
 }
