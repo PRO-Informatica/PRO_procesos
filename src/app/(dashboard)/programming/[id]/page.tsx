@@ -41,7 +41,11 @@ export default async function ProgrammingDetailPage({
     );
   }
 
-  const data = await getProgrammingDetailPageData(context.activeProject.id, id);
+  const data = await getProgrammingDetailPageData(
+    context.activeProject.id,
+    id,
+    context.activeProject.timezone,
+  );
   if (!data) notFound();
 
   return (

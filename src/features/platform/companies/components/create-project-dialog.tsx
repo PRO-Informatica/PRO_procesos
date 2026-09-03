@@ -156,6 +156,14 @@ export function CreateProjectDialog({
                       placeholder="Ubicación o dirección del proyecto"
                     />
                   </div>
+                  <div>
+                    <label className="form-label" htmlFor="project-billing-name">Razón social de facturación *</label>
+                    <input id="project-billing-name" name="billingLegalName" required minLength={2} maxLength={200} defaultValue={state.fields?.billingLegalName} className="form-input" placeholder="Receptor de la factura" />
+                  </div>
+                  <div>
+                    <label className="form-label" htmlFor="project-billing-tax">NIT receptor *</label>
+                    <input id="project-billing-tax" name="billingTaxId" required maxLength={40} defaultValue={state.fields?.billingTaxId} className="form-input" />
+                  </div>
                   <div className="sm:col-span-2">
                     <label className="form-label" htmlFor="project-timezone">
                       Zona horaria *

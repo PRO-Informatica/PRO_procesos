@@ -20,7 +20,6 @@ export default async function BatchDetailPage({ params }: { params: Promise<{ id
   if (!detail) notFound();
   return <BatchDetailView detail={detail} project={context.activeProject} permissions={{
     canCreate: context.permissions.includes("batch.create"),
-    canAddGuide: context.permissions.includes("batch.add_guide"),
     canModify: context.permissions.includes("batch.modify"),
     canCreateInvoice: context.permissions.includes("invoice.create"),
     canMatchInvoice: context.permissions.includes("invoice.match"),

@@ -97,6 +97,14 @@ function dispatchError(message: string) {
     return "Selecciona el resultado de la operación.";
   if (value.includes("DISPATCH_DEPARTURE_REQUIRED"))
     return "Registra la hora de salida.";
+  if (value.includes("DISPATCH_ARRIVAL_DATE_MISMATCH"))
+    return "La hora de llegada debe corresponder al día de la programación.";
+  if (value.includes("DISPATCH_DEPARTURE_DATE_MISMATCH"))
+    return "La hora de salida debe corresponder al día de la programación.";
+  if (value.includes("DISPATCH_INVALID_TIME_SEQUENCE"))
+    return "La hora de salida no puede ser anterior a la hora de llegada.";
+  if (value.includes("DISPATCH_EVIDENCE_REQUIRED"))
+    return "Carga al menos una evidencia antes de finalizar el despacho.";
   if (value.includes("DISPATCH_ORDER_NUMBER_REQUIRED"))
     return "Ingresa el número de pedido.";
   if (value.includes("DISPATCH_REAL_VOLUME_REQUIRED"))
@@ -311,6 +319,49 @@ export async function completeDispatchAction(
   });
   if (error) return { status: "error", message: dispatchError(error.message) };
   revalidateDispatch(dispatchId, text(formData, "programmingId"));
+  return { status: "success", newVersion: Number(data), message: "Despacho completado." };
+}
+
+export async function finalizeDispatchAction(
+  _state: DispatchMutationState,
+  formData: FormData,
+): Promise<DispatchMutationState> {
+  const projectId = text(formData, "projectId");
+  const dispatchId = text(formData, "dispatchId");
+  const programmingId = text(formData, "programmingId");
+  const expectedVersion = version(formData);
+  if (!validId(projectId) || !validId(dispatchId) || expectedVersion === null)
+    return { status: "error", message: "Recarga el despacho antes de finalizar." };
+  const auth = await authorize(projectId, "dispatch.modify");
+  if (!auth)
+    return { status: "error", message: "No tienes permiso para finalizar el despacho." };
+
+  const timezone = auth.context.activeProject?.timezone || "America/Guatemala";
+  const arrivalAt = localToIso(text(formData, "arrivalAt"), timezone);
+  const departureAt = localToIso(text(formData, "departureAt"), timezone);
+  const result = text(formData, "result");
+  const rawVolume = text(formData, "realVolume");
+  const realVolume = rawVolume === "" ? null : Number(rawVolume);
+  if (!arrivalAt || !departureAt)
+    return { status: "error", message: "Registra las horas de llegada y salida." };
+  if (!RESULTS.includes(result))
+    return { status: "error", message: "Selecciona el resultado de la operación." };
+  if (realVolume !== null && (!Number.isFinite(realVolume) || realVolume < 0))
+    return { status: "error", message: "Ingresa un Volumen Real válido." };
+
+  const { data, error } = await (await createClient()).rpc("finalize_dispatch", {
+    p_dispatch_id: dispatchId,
+    p_expected_version: expectedVersion,
+    p_arrival_at: arrivalAt,
+    p_departure_at: departureAt,
+    p_received_by_name: text(formData, "receivedByName"),
+    p_result: result,
+    p_order_number: text(formData, "orderNumber") || null,
+    p_real_volume: result === "NOT_DISPATCHED" ? 0 : realVolume,
+    p_real_unit_code: text(formData, "realUnitCode") || null,
+  });
+  if (error) return { status: "error", message: dispatchError(error.message) };
+  revalidateDispatch(dispatchId, programmingId);
   return { status: "success", newVersion: Number(data), message: "Despacho completado." };
 }
 

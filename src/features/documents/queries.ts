@@ -33,19 +33,23 @@ export async function getGlobalDocuments(projects: ProjectInput[], filters: Docu
   const incidentIds = (incidents.data ?? []).map((r) => r.incident_id);
   const invoiceIds = (invoices.data ?? []).map((r) => r.invoice_id);
   const [guideRows, incidentRows, invoiceRows] = await Promise.all([
-    guideIds.length ? supabase.from("dispatch_guides").select("id, guide_number, order_number").in("id", guideIds) : empty<{ id: string; guide_number: string; order_number: string | null }>(),
+    guideIds.length ? supabase.from("dispatch_guides").select("id, dispatch_id, guide_number").in("id", guideIds) : empty<{ id: string; dispatch_id: string; guide_number: string }>(),
     incidentIds.length ? supabase.from("dispatch_incidents").select("id, dispatch_id").in("id", incidentIds) : empty<{ id: string; dispatch_id: string }>(),
     invoiceIds.length ? supabase.from("invoices").select("id, invoice_number, order_number").in("id", invoiceIds) : empty<{ id: string; invoice_number: string; order_number: string | null }>(),
   ]);
   if (guideRows.error ?? incidentRows.error ?? invoiceRows.error) throw new Error("No fue posible resolver Guías, incidencias o Facturas de Documentos.");
-  const incidentDispatchIds = (incidentRows.data ?? []).map((row) => row.dispatch_id);
-  const incidentGuides = incidentDispatchIds.length ? await supabase.from("dispatch_guides").select("dispatch_id, guide_number, order_number").in("dispatch_id", incidentDispatchIds) : { data: [], error: null };
-  if (incidentGuides.error) throw new Error("No fue posible resolver la Guía de las evidencias.");
+  const dispatchIds = [...new Set([...(guideRows.data ?? []).map((row) => row.dispatch_id), ...(incidentRows.data ?? []).map((row) => row.dispatch_id)])];
+  const [incidentGuides, dispatchRows] = await Promise.all([
+    dispatchIds.length ? supabase.from("dispatch_guides").select("dispatch_id, guide_number").in("dispatch_id", dispatchIds) : empty<{ dispatch_id: string; guide_number: string }>(),
+    dispatchIds.length ? supabase.from("dispatches").select("id, order_number").in("id", dispatchIds) : empty<{ id: string; order_number: string | null }>(),
+  ]);
+  if (incidentGuides.error ?? dispatchRows.error) throw new Error("No fue posible resolver el Despacho de las evidencias.");
 
   const versionMap = new Map((versions.data ?? []).map((v) => [v.document_id, v]));
   const guideMap = new Map((guideRows.data ?? []).map((g) => [g.id, g]));
   const incidentMap = new Map((incidentRows.data ?? []).map((i) => [i.id, i]));
   const dispatchGuideMap = new Map((incidentGuides.data ?? []).map((g) => [g.dispatch_id, g]));
+  const dispatchMap = new Map((dispatchRows.data ?? []).map((row) => [row.id, row]));
   const invoiceMap = new Map((invoiceRows.data ?? []).map((i) => [i.id, i]));
   const guideLink = new Map((guides.data ?? []).map((r) => [r.document_id, r.guide_id]));
   const incidentLink = new Map((incidents.data ?? []).map((r) => [r.document_id, r.incident_id]));
@@ -58,7 +62,8 @@ export async function getGlobalDocuments(projects: ProjectInput[], filters: Docu
     const incident = incidentMap.get(incidentLink.get(document.id) ?? "");
     const incidentGuide = incident ? dispatchGuideMap.get(incident.dispatch_id) : undefined;
     const invoice = invoiceMap.get(invoiceLink.get(document.id) ?? "");
-    return [{ id: document.id, projectId: document.project_id, projectName: projectNames.get(document.project_id) ?? "Proyecto", name: version.file_name, mimeType: version.mime_type, type: document.category, context: guide ? "GUIDE" : incident ? "INCIDENT" : invoice ? "INVOICE" : "OTHER", orderNumber: guide?.order_number ?? incidentGuide?.order_number ?? invoice?.order_number ?? null, guideNumber: guide?.guide_number ?? incidentGuide?.guide_number ?? null, invoiceNumber: invoice?.invoice_number ?? null, date: version.created_at ?? document.created_at, uploadedById: document.created_by, uploadedBy: profileMap.get(document.created_by) ?? "Usuario no disponible", status: version.upload_status }];
+    const dispatch = dispatchMap.get(guide?.dispatch_id ?? incident?.dispatch_id ?? "");
+    return [{ id: document.id, projectId: document.project_id, projectName: projectNames.get(document.project_id) ?? "Proyecto", name: version.file_name, mimeType: version.mime_type, type: document.category, context: guide ? "GUIDE" : incident ? "INCIDENT" : invoice ? "INVOICE" : "OTHER", orderNumber: dispatch?.order_number ?? invoice?.order_number ?? null, guideNumber: guide?.guide_number ?? incidentGuide?.guide_number ?? null, invoiceNumber: invoice?.invoice_number ?? null, date: version.created_at ?? document.created_at, uploadedById: document.created_by, uploadedBy: profileMap.get(document.created_by) ?? "Usuario no disponible", status: version.upload_status }];
   });
   if (filters.order) mapped = mapped.filter((d) => d.orderNumber?.toLowerCase().includes(filters.order!.toLowerCase()));
   if (filters.guide) mapped = mapped.filter((d) => d.guideNumber?.toLowerCase().includes(filters.guide!.toLowerCase()));

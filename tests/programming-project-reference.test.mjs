@@ -3,31 +3,32 @@ import test from "node:test";
 
 import {
   assertMixtoProjectReference,
-  MIXTO_PROJECT_CODE_MISSING_ERROR,
+  MIXTO_PROJECT_BILLING_NAME_MISSING_ERROR,
   MIXTO_PROJECT_MISMATCH_ERROR,
   MIXTO_PROJECT_REFERENCE_MISSING_ERROR,
   mixtoProjectMismatchMessage,
-  normalizeProjectReference,
 } from "../src/features/programming/project-reference.ts";
+import { normalizeBusinessIdentity } from "../src/lib/business-identity.ts";
 
-const projectCode = "Las Campanales - SA";
+const billingLegalName = "Las Campanales - Sociedad Anónima";
 
 test("normaliza únicamente formato y abreviaciones conocidas", () => {
   const equivalentValues = [
-    "Las Campanales - SA",
-    "LAS CAMPANALES - SA",
     "Las Campanales - S.A.",
     "Las Campanales - S. A.",
-    "Las Campanales - Sociedad Anónima",
+    "LAS CAMPANALES - SA",
     "Las   Campanales - Sociedad Anónima",
+    "Las Campanales, Sociedad, Anónima",
   ];
 
   for (const value of equivalentValues) {
     assert.equal(
-      normalizeProjectReference(value),
-      normalizeProjectReference(projectCode),
+      normalizeBusinessIdentity(value),
+      normalizeBusinessIdentity(billingLegalName),
     );
-    assert.doesNotThrow(() => assertMixtoProjectReference(projectCode, value));
+    assert.doesNotThrow(() =>
+      assertMixtoProjectReference(billingLegalName, value),
+    );
   }
 });
 
@@ -41,32 +42,37 @@ test("rechaza nombres de proyectos distintos sin fuzzy matching", () => {
 
   for (const value of differentValues) {
     assert.throws(
-      () => assertMixtoProjectReference(projectCode, value),
-      { message: mixtoProjectMismatchMessage(projectCode, value) },
+      () => assertMixtoProjectReference(billingLegalName, value),
+      { message: mixtoProjectMismatchMessage(billingLegalName, value) },
     );
   }
 });
 
 test("rechaza destinatario vacío o campo no identificado", () => {
   assert.throws(
-    () => assertMixtoProjectReference(projectCode, ""),
+    () => assertMixtoProjectReference(billingLegalName, ""),
     { message: MIXTO_PROJECT_REFERENCE_MISSING_ERROR },
   );
 });
 
-test("rechaza un proyecto seleccionado sin código", () => {
+test("rechaza un proyecto seleccionado sin Razón Social de facturación", () => {
   assert.throws(
     () => assertMixtoProjectReference("", "Las Campanales - SA"),
-    { message: MIXTO_PROJECT_CODE_MISSING_ERROR },
+    { message: MIXTO_PROJECT_BILLING_NAME_MISSING_ERROR },
   );
 });
 
-test("usa solo el código del proyecto seleccionado aunque el usuario tenga otros", () => {
-  const selectedProjectCode = "Proyecto A - SA";
+test("usa solo la Razón Social del proyecto seleccionado aunque el usuario tenga otros", () => {
+  const selectedBillingLegalName = "Proyecto A - SA";
   const workbookProject = "Proyecto B - S.A.";
   assert.throws(
-    () => assertMixtoProjectReference(selectedProjectCode, workbookProject),
-    { message: mixtoProjectMismatchMessage(selectedProjectCode, workbookProject) },
+    () => assertMixtoProjectReference(selectedBillingLegalName, workbookProject),
+    {
+      message: mixtoProjectMismatchMessage(
+        selectedBillingLegalName,
+        workbookProject,
+      ),
+    },
   );
 });
 

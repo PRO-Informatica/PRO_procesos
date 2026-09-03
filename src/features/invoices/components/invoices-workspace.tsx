@@ -2,7 +2,6 @@
 
 import {
   FileCheck2,
-  PackageSearch,
   ReceiptText,
   RefreshCcw,
   Search,
@@ -79,8 +78,8 @@ export function InvoicesWorkspace({
         </p>
         <h1 className="mt-2 text-2xl font-semibold sm:text-3xl">Facturas</h1>
         <p className="mt-2 text-sm text-foreground-muted">
-          Consulta documental global. La carga y conciliación se trabajan dentro
-          del Pedido.
+          Consulta documental global. La carga y conciliación se trabajan desde
+          el despacho dentro de su lote.
         </p>
       </header>
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-7">
@@ -115,7 +114,7 @@ export function InvoicesWorkspace({
             data.items.filter(
               (i) =>
                 i.extractionStatus === "PENDING" ||
-                ["REGISTERED", "UNDER_REVIEW"].includes(i.status),
+                ["REGISTERED", "NON_PROCEEDING"].includes(i.status),
             ).length
           }
         />
@@ -250,12 +249,12 @@ export function InvoicesWorkspace({
                   <td className="p-4">{item.fileName ?? "Sin PDF"}</td>
                   <td className="p-4">
                     <div className="flex gap-2">
-                      {item.orderId && item.batchId && (
+                      {item.dispatchId && (
                         <Link
-                          href={`/batches/${item.batchId}/orders/${item.orderId}`}
+                          href={`/dispatches/${item.dispatchId}`}
                           className="secondary-button text-xs"
                         >
-                          Ver Pedido
+                          Ver despacho
                         </Link>
                       )}
                       {item.documentId && item.fileName && (
@@ -305,12 +304,12 @@ export function InvoicesWorkspace({
                 </div>
               </dl>
               <div className="mt-4 flex gap-2">
-                {item.orderId && item.batchId && (
+                {item.dispatchId && (
                   <Link
-                    href={`/batches/${item.batchId}/orders/${item.orderId}`}
+                    href={`/dispatches/${item.dispatchId}`}
                     className="primary-button text-xs"
                   >
-                    <PackageSearch className="size-4" /> Ver Pedido
+                    Ver despacho
                   </Link>
                 )}
                 {item.documentId && item.fileName && (
@@ -323,7 +322,7 @@ export function InvoicesWorkspace({
             <EmptyState
               icon={FileCheck2}
               title="Sin facturas para estos filtros"
-              description="Ajusta los filtros o carga una factura desde un Pedido."
+              description="Ajusta los filtros o carga una factura desde un lote."
             />
           )}
         </div>

@@ -89,7 +89,9 @@ export async function createCompanyProject(
   const timezone = readText(formData, "timezone") || "America/Guatemala";
   const startDate = readText(formData, "startDate");
   const estimatedEndDate = readText(formData, "estimatedEndDate");
-  const fields = { name, code, address, timezone, startDate, estimatedEndDate };
+  const billingLegalName = readText(formData, "billingLegalName");
+  const billingTaxId = readText(formData, "billingTaxId");
+  const fields = { name, code, address, timezone, startDate, estimatedEndDate, billingLegalName, billingTaxId };
 
   if (!isUuid(companyId)) {
     return {
@@ -133,6 +135,12 @@ export async function createCompanyProject(
         "La fecha estimada de finalización no puede ser anterior al inicio.",
       fields,
     };
+  }
+  if (billingLegalName.length < 2 || billingLegalName.length > 200) {
+    return { status: "error", message: "La razón social de facturación es obligatoria y debe tener entre 2 y 200 caracteres.", fields };
+  }
+  if (billingTaxId.replace(/[^0-9A-Za-z]/g, "").length < 3) {
+    return { status: "error", message: "El NIT receptor es obligatorio.", fields };
   }
 
   const supabase = await authorizePlatformAction();
@@ -218,6 +226,15 @@ export async function createCompanyProject(
         "El proyecto fue creado, pero no recibimos un identificador válido.",
     };
   }
+  const billingResult = await supabase.rpc("platform_update_project_billing_identity", {
+    p_company_id: companyId,
+    p_project_id: data,
+    p_billing_legal_name: billingLegalName,
+    p_billing_tax_id: billingTaxId,
+  });
+  if (billingResult.error) {
+    return { status: "error", message: "El proyecto se creó, pero no fue posible guardar su identidad fiscal.", fields };
+  }
   redirect(`/platform/companies/${companyId}`);
 }
 
@@ -234,6 +251,8 @@ export async function updateCompanyProject(
   const status = readText(formData, "status").toUpperCase();
   const startDate = readText(formData, "startDate");
   const estimatedEndDate = readText(formData, "estimatedEndDate");
+  const billingLegalName = readText(formData, "billingLegalName");
+  const billingTaxId = readText(formData, "billingTaxId");
   const fields = {
     name,
     code,
@@ -242,6 +261,8 @@ export async function updateCompanyProject(
     status,
     startDate,
     estimatedEndDate,
+    billingLegalName,
+    billingTaxId,
   };
 
   if (!isUuid(companyId) || !isUuid(projectId)) {
@@ -280,6 +301,12 @@ export async function updateCompanyProject(
       message: "La fecha estimada de finalización no puede ser anterior al inicio.",
       fields,
     };
+  }
+  if (billingLegalName.length < 2 || billingLegalName.length > 200) {
+    return { status: "error", message: "La razón social de facturación es obligatoria y debe tener entre 2 y 200 caracteres.", fields };
+  }
+  if (billingTaxId.replace(/[^0-9A-Za-z]/g, "").length < 3) {
+    return { status: "error", message: "El NIT receptor es obligatorio.", fields };
   }
 
   const supabase = await authorizePlatformAction();
@@ -347,6 +374,16 @@ export async function updateCompanyProject(
       status: "error",
       message: "El proyecto fue actualizado, pero no recibimos una confirmación válida.",
     };
+  }
+
+  const billingResult = await supabase.rpc("platform_update_project_billing_identity", {
+    p_company_id: companyId,
+    p_project_id: projectId,
+    p_billing_legal_name: billingLegalName,
+    p_billing_tax_id: billingTaxId,
+  });
+  if (billingResult.error) {
+    return { status: "error", message: "El proyecto se actualizó, pero no fue posible guardar su identidad fiscal.", fields };
   }
 
   revalidatePath("/platform/companies");

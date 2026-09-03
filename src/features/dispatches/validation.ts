@@ -13,13 +13,14 @@ export function canCompleteDispatch(input: {
   result: DispatchResult | null;
   guideCount: number;
   incidentCount: number;
+  evidenceCount: number;
   arrivalAt: string | null;
   departureAt: string | null;
   orderNumber: string | null;
   realVolume: number | null;
   realUnitCode: string | null;
 }) {
-  if (!input.result) return false;
+  if (!input.result || input.evidenceCount < 1) return false;
   if (input.result === "NOT_DISPATCHED") {
     return input.incidentCount > 0 && input.realVolume === 0;
   }

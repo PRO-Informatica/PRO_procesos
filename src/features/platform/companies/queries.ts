@@ -32,6 +32,8 @@ type ProjectRow = {
   timezone: string | null;
   start_date: string | null;
   estimated_end_date: string | null;
+  billing_legal_name: string | null;
+  billing_tax_id: string | null;
 };
 
 type MembershipRow = {
@@ -255,7 +257,7 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
     supabase
       .from("projects")
       .select(
-        "id, company_id, name, code, address, status, timezone, start_date, estimated_end_date",
+        "id, company_id, name, code, address, status, timezone, start_date, estimated_end_date, billing_legal_name, billing_tax_id",
       )
       .eq("company_id", companyId)
       .order("name"),
@@ -360,6 +362,8 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
       timezone: project.timezone ?? "America/Guatemala",
       startDate: project.start_date,
       estimatedEndDate: project.estimated_end_date,
+      billingLegalName: project.billing_legal_name,
+      billingTaxId: project.billing_tax_id,
       supplierIds: activeSupplierIdsByProject.get(project.id) ?? [],
     }),
   );

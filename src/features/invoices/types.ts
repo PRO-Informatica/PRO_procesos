@@ -9,7 +9,8 @@ export type GlobalInvoiceItem = {
   supplierName: string;
   pcaOriginal: string | null;
   orderNumber: string | null;
-  orderId: string | null;
+  dispatchId: string;
+  programmingCode: string;
   batchId: string | null;
   batchCode: string | null;
   replacesInvoiceId: string | null;

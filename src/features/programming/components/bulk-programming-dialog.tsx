@@ -42,7 +42,7 @@ function notesFor(row: BulkProgrammingPreviewRow) {
 export function BulkProgrammingDialog({
   open,
   projectId,
-  projectCode,
+  billingLegalName,
   timezone,
   suppliers,
   today,
@@ -51,7 +51,7 @@ export function BulkProgrammingDialog({
 }: {
   open: boolean;
   projectId: string;
-  projectCode: string;
+  billingLegalName: string | null;
   timezone: string;
   suppliers: ProgrammingSupplier[];
   today: string;
@@ -115,7 +115,7 @@ export function BulkProgrammingDialog({
                 <div>
                   <h2 id="bulk-programming-title" className="font-semibold text-foreground">Cargar programaciones</h2>
                   <p className="mt-1 text-xs text-foreground-muted">
-                    Solicitud de Concreto de Mixto Listo · Código esperado: {projectCode} · {timezone}
+                    Solicitud de Concreto de Mixto Listo · Razón Social esperada: {billingLegalName || "Sin configurar"} · {timezone}
                   </p>
                 </div>
               </div>

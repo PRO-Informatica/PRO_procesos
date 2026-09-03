@@ -148,7 +148,7 @@ function extractInvoiceRecipient(sheet: Worksheet) {
 
 export async function extractMixtoProgrammingWorkbook(
   file: File,
-  projectCode: string,
+  billingLegalName: string,
 ) {
   if (
     file.size <= 0 ||
@@ -177,7 +177,7 @@ export async function extractMixtoProgrammingWorkbook(
   ) throw new Error(MIXTO_WORKBOOK_ERROR);
 
   const invoiceRecipient = extractInvoiceRecipient(sheet);
-  assertMixtoProjectReference(projectCode, invoiceRecipient);
+  assertMixtoProjectReference(billingLegalName, invoiceRecipient);
 
   const headerRow = findHeaderRow(sheet);
   if (!headerRow) throw new Error(MIXTO_WORKBOOK_ERROR);

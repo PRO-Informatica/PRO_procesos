@@ -29,8 +29,14 @@ export async function extractMixtoListoInvoicePdf(buffer: ArrayBuffer) {
     ]);
     const layoutText = linesFromItems(itemResult.items).join("\n");
     const layoutParsed = parseMixtoListoInvoiceText(layoutText);
-    if (layoutParsed.lines.length || layoutParsed.pca_original) return layoutParsed;
-    return parseMixtoListoInvoiceText(plainResult.text);
+    const selected = layoutParsed.lines.length || layoutParsed.pca_original
+      ? layoutParsed
+      : parseMixtoListoInvoiceText(plainResult.text);
+    return {
+      ...selected,
+      raw_text: layoutText || plainResult.text,
+      page_count: document.numPages,
+    };
   } finally {
     await document.cleanup();
   }

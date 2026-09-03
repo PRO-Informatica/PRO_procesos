@@ -91,7 +91,6 @@ export function ProgrammingWorkspace({
 }) {
   const [view, setView] = useState<ViewMode>("calendar");
   const [scope, setScope] = useState<ProgrammingScope>("active");
-  const [availabilityNow] = useState(() => Date.now());
   const [items, setItems] = useState(initialData.items);
   const [range, setRange] = useState(initialData.range);
   const [supplierId, setSupplierId] = useState("");
@@ -186,16 +185,18 @@ export function ProgrammingWorkspace({
   );
   const scopedItems = useMemo(() => {
     return items.filter((item) => {
-      const availability = {
-        status: item.status,
-        scheduledAt: item.scheduledAt,
-        operationStarted: item.dispatches.length > 0,
+      const reconciliation = {
+        effectiveStatus: item.effectiveStatus,
+        reconciliationStatus:
+          item.dispatches.find(
+            (dispatch) => dispatch.reconciliationStatus === "RECONCILED",
+          )?.reconciliationStatus ?? null,
       };
       return scope === "active"
-        ? isActiveProgramming(availability, availabilityNow)
-        : isHistoricalProgramming(availability, availabilityNow);
+        ? isActiveProgramming(reconciliation)
+        : isHistoricalProgramming(reconciliation);
     });
-  }, [availabilityNow, items, scope]);
+  }, [items, scope]);
   const today = useMemo(() => todayInTimezone(project.timezone), [project.timezone]);
   const creationActions = canCreate && scope === "active" && (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -444,7 +445,7 @@ export function ProgrammingWorkspace({
           key={bulkOpen ? "bulk-open" : "bulk-closed"}
           open={bulkOpen}
           projectId={project.id}
-          projectCode={project.code}
+          billingLegalName={project.billingLegalName}
           timezone={project.timezone}
           suppliers={initialData.suppliers}
           today={today}

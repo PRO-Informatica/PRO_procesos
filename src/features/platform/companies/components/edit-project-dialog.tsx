@@ -138,6 +138,14 @@ function EditProjectForm({
               />
             </div>
             <div>
+              <label className="form-label" htmlFor={`edit-project-billing-name-${project.id}`}>Razón social de facturación *</label>
+              <input id={`edit-project-billing-name-${project.id}`} name="billingLegalName" required minLength={2} maxLength={200} defaultValue={values?.billingLegalName ?? project.billingLegalName ?? ""} className="form-input" placeholder="Receptor de la factura" />
+            </div>
+            <div>
+              <label className="form-label" htmlFor={`edit-project-billing-tax-${project.id}`}>NIT receptor *</label>
+              <input id={`edit-project-billing-tax-${project.id}`} name="billingTaxId" required maxLength={40} defaultValue={values?.billingTaxId ?? project.billingTaxId ?? ""} className="form-input" />
+            </div>
+            <div>
               <label className="form-label" htmlFor={`edit-project-timezone-${project.id}`}>
                 Zona horaria *
               </label>

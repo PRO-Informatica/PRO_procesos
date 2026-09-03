@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 import { getEffectiveProgrammingStatus } from "./availability";
@@ -50,6 +51,11 @@ type DispatchGuideRow = {
   guide_date: string;
   quantity: number | string;
   unit_code: string;
+};
+
+type DispatchReconciliationRow = {
+  dispatch_id: string;
+  status: string;
 };
 
 type ProgrammingLineRow = {
@@ -148,9 +154,11 @@ export async function getProgrammingItems(
   projectId: string,
   range: ProgrammingRange,
   filters: ProgrammingFilters = {},
+  timezone = DEFAULT_TIMEZONE,
 ): Promise<ProgrammingItem[]> {
   validateRange(range);
   const supabase = await createClient();
+  const admin = createAdminClient();
   let programmingQuery = supabase
     .from("programming")
     .select(
@@ -245,15 +253,33 @@ export async function getProgrammingItems(
   const dispatchesByProgramming = new Map<string, DispatchRow[]>();
   const dispatchRows = (dispatchesResult.data ?? []) as DispatchRow[];
   const dispatchIds = dispatchRows.map((dispatch) => dispatch.id);
-  const guidesResult = dispatchIds.length
-    ? await supabase
-        .from("dispatch_guides")
-        .select("dispatch_id, guide_number, guide_date, quantity, unit_code")
-        .in("dispatch_id", dispatchIds)
-    : { data: [], error: null };
-  if (guidesResult.error) {
-    throw new Error(`No fue posible resolver las guías relacionadas. ${guidesResult.error.message}`);
+  const [guidesResult, reconciliationsResult] = dispatchIds.length
+    ? await Promise.all([
+        supabase
+          .from("dispatch_guides")
+          .select("dispatch_id, guide_number, guide_date, quantity, unit_code")
+          .in("dispatch_id", dispatchIds),
+        admin
+          .from("dispatch_reconciliations")
+          .select("dispatch_id, status")
+          .eq("project_id", projectId)
+          .in("dispatch_id", dispatchIds),
+      ])
+    : [
+        { data: [], error: null },
+        { data: [], error: null },
+      ];
+  const dispatchRelationError = guidesResult.error ?? reconciliationsResult.error;
+  if (dispatchRelationError) {
+    throw new Error(
+      `No fue posible resolver los datos del despacho. ${dispatchRelationError.message}`,
+    );
   }
+  const reconciliationByDispatch = new Map(
+    ((reconciliationsResult.data ?? []) as DispatchReconciliationRow[]).map(
+      (reconciliation) => [reconciliation.dispatch_id, reconciliation.status],
+    ),
+  );
   const guidesByDispatch = new Map<string, DispatchGuideRow[]>();
   for (const guide of (guidesResult.data ?? []) as DispatchGuideRow[]) {
     guidesByDispatch.set(guide.dispatch_id, [
@@ -298,6 +324,7 @@ export async function getProgrammingItems(
         status: row.status,
         scheduledAt: row.scheduled_at,
         operationStarted: rowDispatches.length > 0,
+        timezone,
       },
       now,
     ),
@@ -327,6 +354,7 @@ export async function getProgrammingItems(
       id: dispatch.id,
       status: dispatch.status,
       result: dispatch.result,
+      reconciliationStatus: reconciliationByDispatch.get(dispatch.id) ?? null,
       createdAt: dispatch.created_at,
     })),
     } satisfies ProgrammingItem;
@@ -416,8 +444,10 @@ type ProgrammingRevisionLineRow = ProgrammingLineRow & {
 export async function getProgrammingDetailPageData(
   projectId: string,
   programmingId: string,
+  timezone = DEFAULT_TIMEZONE,
 ): Promise<ProgrammingDetailPageData | null> {
   const supabase = await createClient();
+  const admin = createAdminClient();
   const { data: programmingData, error: programmingError } = await supabase
     .from("programming")
     .select(
@@ -478,7 +508,13 @@ export async function getProgrammingDetailPageData(
     ...revisions.map((revision) => revision.supplier_id),
   ];
 
-  const [revisionLinesResult, guidesResult, profilesResult, suppliersResult] =
+  const [
+    revisionLinesResult,
+    guidesResult,
+    reconciliationsResult,
+    profilesResult,
+    suppliersResult,
+  ] =
     await Promise.all([
       revisionIds.length
         ? supabase
@@ -493,6 +529,13 @@ export async function getProgrammingDetailPageData(
             .select("dispatch_id, guide_number, guide_date, quantity, unit_code")
             .in("dispatch_id", dispatchIds)
         : Promise.resolve({ data: [], error: null }),
+      dispatchIds.length
+        ? admin
+            .from("dispatch_reconciliations")
+            .select("dispatch_id, status")
+            .eq("project_id", projectId)
+            .in("dispatch_id", dispatchIds)
+        : Promise.resolve({ data: [], error: null }),
       actorIds.length
         ? supabase.rpc("get_programming_actor_labels", { p_project_id: projectId })
         : Promise.resolve({ data: [], error: null }),
@@ -505,6 +548,7 @@ export async function getProgrammingDetailPageData(
   const nestedError = [
     revisionLinesResult.error,
     guidesResult.error,
+    reconciliationsResult.error,
     profilesResult.error,
     suppliersResult.error,
   ].find(Boolean);
@@ -534,6 +578,11 @@ export async function getProgrammingDetailPageData(
       guide,
     ]);
   }
+  const reconciliationByDispatch = new Map(
+    ((reconciliationsResult.data ?? []) as DispatchReconciliationRow[]).map(
+      (reconciliation) => [reconciliation.dispatch_id, reconciliation.status],
+    ),
+  );
 
   const mappedDispatches = dispatches.map((dispatch) => {
     const guides = guideByDispatch.get(dispatch.id) ?? [];
@@ -542,6 +591,7 @@ export async function getProgrammingDetailPageData(
       id: dispatch.id,
       status: dispatch.status,
       result: dispatch.result,
+      reconciliationStatus: reconciliationByDispatch.get(dispatch.id) ?? null,
       createdAt: dispatch.created_at,
       guideNumber: guides.length > 1 ? `${guides.length} guías` : guide?.guide_number ?? null,
       guideDate: guide?.guide_date ?? null,
@@ -578,6 +628,7 @@ export async function getProgrammingDetailPageData(
       status: row.status,
       scheduledAt: row.scheduled_at,
       operationStarted: mappedDispatches.length > 0,
+      timezone,
     }),
     notes: row.notes,
     createdByName: names.get(row.created_by) || "Usuario no disponible",
@@ -630,7 +681,7 @@ export async function getProgrammingPageData(
 ): Promise<ProgrammingPageData> {
   const range = getInitialProgrammingRange(timezone);
   const [items, catalogs] = await Promise.all([
-    getProgrammingItems(projectId, range),
+    getProgrammingItems(projectId, range, {}, timezone),
     getProgrammingCatalogs(projectId),
   ]);
   return { items, range, ...catalogs };

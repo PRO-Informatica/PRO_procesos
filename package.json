@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:programming-project-reference": "node --no-warnings --experimental-strip-types --test tests/programming-project-reference.test.mjs",
-    "test:phase2-dispatch": "node --no-warnings --experimental-strip-types --test tests/phase2-dispatch.test.mjs"
+    "test:programming-scope": "node --no-warnings --experimental-strip-types --test tests/programming-scope.test.mjs",
+    "test:phase2-dispatch": "node --no-warnings --experimental-strip-types --test tests/phase2-dispatch.test.mjs",
+    "test:phase3-invoices": "node --no-warnings --experimental-strip-types --test tests/phase3-invoice-processing.test.mjs"
   },
   "dependencies": {
     "@schedule-x/calendar": "^4.7.0",

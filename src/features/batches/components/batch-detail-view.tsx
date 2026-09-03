@@ -1,16 +1,9 @@
 "use client";
 
-import {
-  ArrowLeft,
-  ChevronRight,
-  History,
-  Plus,
-  RotateCcw,
-  ShoppingCart,
-  Trash2,
-} from "lucide-react";
+import { ArrowLeft, FileSearch, Files, History, Plus, RotateCcw, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 
 import { EmptyState } from "@/components/feedback/empty-state";
 import { MotionPage } from "@/components/motion/motion-page";
@@ -18,469 +11,75 @@ import { MotionSection } from "@/components/motion/motion-section";
 import type { ProjectSummary } from "@/features/projects/types";
 import { formatStatusLabel } from "@/lib/status-labels";
 
-import {
-  formatBatchDate,
-  formatBatchDateTime,
-  formatBatchQuantity,
-} from "../formatters";
-import type {
-  BatchDetail,
-  BatchGuideRelation,
-  BatchInvoice,
-  BatchPermissions,
-} from "../types";
-import {
-  AddGuideDialog,
-  RemoveGuideDialog,
-  RolloverDialog,
-} from "./batch-dialogs";
+import { reconcileDispatchAction, requestDispatchReinvoicingAction } from "../actions";
+import { formatBatchDate, formatBatchDateTime, formatBatchQuantity } from "../formatters";
+import type { BatchDetail, BatchDispatchRelation, BatchPermissions, InvoiceType } from "../types";
+import { AddDispatchDialog, Modal, RemoveDispatchDialog, RolloverDialog } from "./batch-dialogs";
 import { BatchStatusBadge } from "./batch-status-badge";
+import { BulkInvoiceDialog, DispatchInvoiceDialog } from "./invoice-dialogs";
 
-function InvoiceState({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null;
-}) {
-  return (
-    <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground-muted">
-        {label}
-      </p>
-      <p
-        className={`mt-1 text-xs font-semibold ${value ? "text-foreground" : "text-foreground-muted"}`}
-      >
-        {value ?? "Sin factura"}
-      </p>
-    </div>
-  );
+type InvoiceSelection = { relation: BatchDispatchRelation; type: InvoiceType; replacement?: boolean };
+
+function InvoiceCell({ relation, type }: { relation: BatchDispatchRelation; type: InvoiceType }) {
+  const invoice = type === "PRODUCT" ? relation.productInvoice : relation.serviceInvoice;
+  return invoice ? <div><p className="font-semibold">{invoice.number}</p><p className="text-xs text-foreground-muted">{formatBatchDate(invoice.date)}</p></div> : <span className="text-foreground-muted">Pendiente</span>;
 }
 
-function GuideCard({
-  relation,
-  productInvoice,
-  timezone,
-  canRemove,
-  onRemove,
-}: {
-  relation: BatchGuideRelation;
-  productInvoice?: BatchInvoice;
-  timezone: string;
-  canRemove: boolean;
-  onRemove: () => void;
-}) {
-  return (
-    <article className="rounded-xl border border-border bg-surface p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold text-foreground">
-              {relation.guideNumber}
-            </h3>
-            <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-foreground-muted">
-              {formatStatusLabel(relation.assignmentSource)}
-            </span>
-            <span className="rounded-full bg-brand-soft px-2 py-1 text-[10px] font-semibold text-brand-strong">
-            {formatStatusLabel(relation.result, "Sin resultado")}
-            </span>
-          </div>
-          <p className="mt-1 text-sm text-foreground-muted">
-            {relation.supplierName} · {formatBatchDate(relation.guideDate)}
-          </p>
-        </div>
-        {canRemove && (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-destructive/25 px-3 text-xs font-semibold text-destructive hover:bg-destructive-soft"
-          >
-            <Trash2 className="size-3.5" /> Remover guía
-          </button>
-        )}
-      </div>
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div>
-          <p className="text-[10px] uppercase text-foreground-muted">
-            Cantidad guía
-          </p>
-          <p className="mt-1 font-semibold">
-            {formatBatchQuantity(relation.quantity)} {relation.unitCode}
-          </p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase text-foreground-muted">
-            Recibido físico
-          </p>
-          <p className="mt-1 font-semibold">
-            {formatBatchQuantity(relation.receivedQuantity)} {relation.unitCode}
-          </p>
-        </div>
-        <InvoiceState
-          label="Factura PRODUCT"
-          value={relation.productInvoiceStatus}
-        />
-        <InvoiceState
-          label="Factura SERVICE"
-          value={relation.serviceInvoiceStatus}
-        />
-      </div>
-      {productInvoice && (
-        <div className="mt-3 rounded-lg bg-muted/35 px-3 py-2 text-xs text-foreground-muted">
-          PRODUCT {productInvoice.number}: cantidad factura agregada para{" "}
-          {productInvoice.guideIds.length} guía(s){" "}
-          <strong className="text-foreground">
-            {formatBatchQuantity(productInvoice.invoiceQuantity)}{" "}
-            {productInvoice.unitCode ?? ""}
-          </strong>{" "}
-          · diferencia agregada{" "}
-          <strong
-            className={
-              productInvoice.difference === 0
-                ? "text-success"
-                : "text-destructive"
-            }
-          >
-            {productInvoice.difference === null
-              ? "UM no comparable"
-              : formatBatchQuantity(productInvoice.difference)}
-          </strong>
-          {productInvoice.replacedByInvoiceId ? " · reemplazada" : ""}
-        </div>
-      )}
-      <div className="mt-4 flex flex-wrap gap-3 border-t border-border pt-3 text-xs">
-        <Link
-          href={`/dispatches/${relation.dispatchId}`}
-          className="font-semibold text-brand-strong hover:underline"
-        >
-          Ver Dispatch <ChevronRight className="inline size-3" />
-        </Link>
-        <Link
-          href={`/programming/${relation.programmingId}`}
-          className="font-semibold text-brand-strong hover:underline"
-        >
-          {relation.programmingCode} <ChevronRight className="inline size-3" />
-        </Link>
-        <span className="text-foreground-muted">
-          Agregada {formatBatchDateTime(relation.addedAt, timezone)}
-        </span>
-      </div>
-    </article>
-  );
-}
+export function BatchDetailView({ detail, project, permissions }: { detail: BatchDetail; project: ProjectSummary; permissions: BatchPermissions }) {
+  const router = useRouter();
+  const [addOpen, setAddOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [rolloverOpen, setRolloverOpen] = useState(false);
+  const [remove, setRemove] = useState<BatchDispatchRelation | null>(null);
+  const [invoice, setInvoice] = useState<InvoiceSelection | null>(null);
+  const [reinvoicing, setReinvoicing] = useState<BatchDispatchRelation | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const editable = detail.status === "OPEN";
 
-export function BatchDetailView({
-  detail,
-  project,
-  permissions,
-}: {
-  detail: BatchDetail;
-  project: ProjectSummary;
-  permissions: BatchPermissions;
-}) {
-  const [addOpen, setAddOpen] = useState(false),
-    [rolloverOpen, setRolloverOpen] = useState(false),
-    [remove, setRemove] = useState<BatchGuideRelation | null>(null);
-  const editable = detail.status === "DRAFT" || detail.status === "ASSEMBLING";
-  return (
-    <MotionPage className="mx-auto max-w-[1500px] space-y-5 pb-10">
-      <MotionSection>
-        <Link
-          href="/batches"
-          className="inline-flex items-center gap-2 text-sm font-semibold text-foreground-muted hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" /> Volver a lotes
-        </Link>
-        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">
-              Lote semanal
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-                {detail.code}
-              </h1>
-              <BatchStatusBadge status={detail.status} />
-              <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted">
-                {formatStatusLabel(detail.source)}
-              </span>
-            </div>
-            <p className="mt-2 text-sm text-foreground-muted">
-              {formatBatchDate(detail.periodStart)} –{" "}
-              {formatBatchDate(detail.periodEnd)} · Período contable{" "}
-              {formatBatchDate(detail.accountingPeriod)}
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            {permissions.canAddGuide && editable && (
-              <button
-                type="button"
-                onClick={() => setAddOpen(true)}
-                className="secondary-button gap-2"
-              >
-                <Plus className="size-4" /> Agregar guía
-              </button>
-            )}
-            {permissions.canModify && detail.status === "ASSEMBLING" && (
-              <button
-                type="button"
-                onClick={() => setRolloverOpen(true)}
-                className="primary-button gap-2"
-              >
-                <RotateCcw className="size-4" /> Cerrar semana / Preparar
-                siguiente
-              </button>
-            )}
-          </div>
-        </div>
-      </MotionSection>
-      <MotionSection className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        {[
-          ["Pedidos completados", detail.orders.filter((order) => order.effectiveStatus === "COMPLETED").length],
-          ["Pedidos pendientes", detail.orders.filter((order) => !["COMPLETED", "REINVOICING"].includes(order.effectiveStatus)).length],
-          ["En refacturación", detail.orders.filter((order) => order.effectiveStatus === "REINVOICING").length],
-          ["Guías activas", detail.activeGuideCount],
-        ].map(([label, value]) => (
-          <div
-            key={String(label)}
-            className="rounded-xl border border-border bg-surface p-4"
-          >
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground-muted">
-              {label}
-            </p>
-            <p className="mt-2 text-2xl font-semibold">{value}</p>
-          </div>
-        ))}
-        <div className="col-span-2 rounded-xl border border-border bg-surface p-4 lg:col-span-1">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground-muted">
-            Recibido por UM
-          </p>
-          <p className="mt-2 text-sm font-semibold">
-            {detail.receivedByUnit.length
-              ? detail.receivedByUnit
-                  .map(
-                    (row) =>
-                      `${formatBatchQuantity(row.quantity)} ${row.unitCode}`,
-                  )
-                  .join(" · ")
-              : "Sin cantidades"}
-          </p>
-        </div>
-      </MotionSection>
-      <MotionSection>
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="size-5 text-brand-strong" />
-              <h2 className="font-semibold">Pedidos</h2>
-            </div>
-            <p className="mt-1 text-xs text-foreground-muted">
-              Nivel principal de documentación y conciliación del lote.
-            </p>
-          </div>
-          <span className="rounded-full bg-brand-soft px-2.5 py-1 text-xs font-semibold text-brand-strong">
-            {detail.orders.length}
-          </span>
-        </div>
-        {detail.orders.length ? (
-          <div className="grid gap-3 xl:grid-cols-2">
-            {detail.orders.map((order) => (
-              <article
-                key={order.id}
-                className="rounded-xl border border-border bg-surface p-4"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground-muted">
-                      Pedido
-                    </p>
-                    <h3 className="mt-1 text-lg font-semibold text-foreground">
-                      {order.orderNumber}
-                    </h3>
-                    <p className="mt-1 text-sm text-foreground-muted">
-                      {order.supplierName}
-                    </p>
-                  </div>
-                  <Link
-                    href={`/batches/${detail.id}/orders/${order.id}`}
-                    className="secondary-button gap-2"
-                  >
-                    Ver conciliación <ChevronRight className="size-4" />
-                  </Link>
-                </div>
-                <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-6">
-                  <DataCell label="Guías" value={order.guideCount} />
-                  <DataCell
-                    label="Cantidades"
-                    value={
-                      order.quantitiesByUnit.length
-                        ? order.quantitiesByUnit
-                            .map(
-                              (row) =>
-                                `${formatBatchQuantity(row.quantity)} ${row.unitCode}`,
-                            )
-                            .join(" · ")
-                        : "Sin cantidades"
-                    }
-                  />
-                  <DataCell label="PRODUCT" value={order.productInvoiceCount} />
-                  <DataCell label="SERVICE" value={order.serviceInvoiceCount} />
-                  <DataCell
-                    label="Documentos"
-                    value={formatStatusLabel(order.documentStatus)}
-                  />
-                  <DataCell
-                    label="Estado del pedido"
-                    value={formatStatusLabel(order.effectiveStatus)}
-                  />
-                </dl>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            title="Sin pedidos conciliables"
-            description="Las guías activas necesitan número de pedido para formar el agregado de conciliación."
-          />
-        )}
-      </MotionSection>
-      <MotionSection>
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <h2 className="font-semibold">Guías activas</h2>
-            <p className="mt-1 text-xs text-foreground-muted">
-              Movimientos físicos del lote, agrupados arriba por pedido.
-            </p>
-          </div>
-          <span className="rounded-full bg-brand-soft px-2.5 py-1 text-xs font-semibold text-brand-strong">
-            {detail.activeRelations.length}
-          </span>
-        </div>
-        {detail.activeRelations.length ? (
-          <div className="grid gap-3 xl:grid-cols-2">
-            {detail.activeRelations.map((relation) => (
-              <GuideCard
-                key={relation.relationId}
-                relation={relation}
-                productInvoice={detail.invoices.find(
-                  (invoice) =>
-                    invoice.type === "PRODUCT" &&
-                    invoice.guideIds.includes(relation.guideId) &&
-                    !["SUPERSEDED", "CANCELLED"].includes(invoice.status),
-                )}
-                timezone={project.timezone}
-                canRemove={permissions.canModify && editable}
-                onRemove={() => setRemove(relation)}
-              />
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            title="No hay guías activas"
-            description="Agrega una guía despachada de esta semana o espera un rollover del sistema."
-          />
-        )}
-      </MotionSection>
-      <MotionSection className="rounded-xl border border-border bg-surface">
-        <div className="flex items-center gap-2 border-b border-border px-5 py-4">
-          <History className="size-4 text-brand-strong" />
-          <div>
-            <h2 className="font-semibold">Historial de relaciones removidas</h2>
-            <p className="mt-1 text-xs text-foreground-muted">
-              Las relaciones HUMAN y SYSTEM nunca se borran del historial
-              operacional.
-            </p>
-          </div>
-        </div>
-        {detail.removedRelations.length ? (
-          <div className="divide-y divide-border">
-            {detail.removedRelations.map((relation) => (
-              <div
-                key={relation.relationId}
-                className="grid gap-3 px-5 py-4 text-sm md:grid-cols-[1fr_1fr_1fr_auto]"
-              >
-                <div>
-                  <p className="font-semibold">{relation.guideNumber}</p>
-                  <p className="mt-1 text-xs text-foreground-muted">
-                    {relation.supplierName}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-foreground-muted">Retiro</p>
-                  <p className="mt-1 font-semibold">
-                    {formatStatusLabel(relation.removalSource ?? "HUMAN")} ·{" "}
-                    {relation.removedAt
-                      ? formatBatchDateTime(
-                          relation.removedAt,
-                          project.timezone,
-                        )
-                      : "—"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-foreground-muted">Motivo</p>
-                  <p className="mt-1">
-                    {relation.removalReason ?? "Sin motivo"}
-                  </p>
-                </div>
-                <div className="self-center">
-                  {relation.rolledToBatchId ? (
-                    <Link
-                      href={`/batches/${relation.rolledToBatchId}`}
-                      className="text-xs font-semibold text-brand-strong hover:underline"
-                    >
-                      Ver destino
-                    </Link>
-                  ) : (
-                    <span className="text-xs text-foreground-muted">
-                      {relation.removedByName ?? "Sistema"}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="px-5 py-8 text-center text-sm text-foreground-muted">
-            Todavía no hay relaciones removidas.
-          </p>
-        )}
-      </MotionSection>
-      {addOpen && (
-        <AddGuideDialog
-          projectId={project.id}
-          batchId={detail.id}
-          guides={detail.eligibleGuides}
-          onClose={() => setAddOpen(false)}
-        />
-      )}
-      {remove && (
-        <RemoveGuideDialog
-          projectId={project.id}
-          batchId={detail.id}
-          relation={remove}
-          onClose={() => setRemove(null)}
-        />
-      )}
-      {rolloverOpen && (
-        <RolloverDialog
-          projectId={project.id}
-          batchId={detail.id}
-          preview={detail.preview}
-          onClose={() => setRolloverOpen(false)}
-        />
-      )}
-    </MotionPage>
-  );
-}
+  function reconcile(relation: BatchDispatchRelation) {
+    startTransition(async () => {
+      const result = await reconcileDispatchAction(project.id, detail.id, relation.dispatchId);
+      setMessage(result.status === "success" ? `Conciliación actualizada: ${formatStatusLabel(result.reconciliationStatus)}.` : result.message);
+      if (result.status === "success") router.refresh();
+    });
+  }
 
-function DataCell({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div>
-      <dt className="text-[10px] font-semibold uppercase tracking-wide text-foreground-muted">
-        {label}
-      </dt>
-      <dd className="mt-1 text-xs font-semibold text-foreground">{value}</dd>
-    </div>
-  );
+  return <MotionPage className="mx-auto max-w-[1600px] space-y-5 pb-10">
+    <MotionSection>
+      <Link href="/batches" className="inline-flex items-center gap-2 text-sm font-semibold text-foreground-muted hover:text-foreground"><ArrowLeft className="size-4" /> Volver a lotes</Link>
+      <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Lote semanal</p><div className="mt-2 flex items-center gap-2"><h1 className="text-2xl font-semibold sm:text-3xl">{detail.code}</h1><BatchStatusBadge status={detail.status} /></div><p className="mt-2 text-sm text-foreground-muted">{formatBatchDate(detail.periodStart)} – {formatBatchDate(detail.periodEnd)} · Período contable {formatBatchDate(detail.accountingPeriod)}</p></div>
+        <div className="flex flex-wrap gap-2">
+          {permissions.canModify && editable && <button type="button" onClick={() => setAddOpen(true)} className="secondary-button gap-2"><Plus className="size-4" /> Agregar despacho</button>}
+          {permissions.canCreateInvoice && editable && <button type="button" onClick={() => setBulkOpen(true)} className="secondary-button gap-2"><Files className="size-4" /> Carga masiva de facturas</button>}
+          {permissions.canModify && editable && <button type="button" onClick={() => setRolloverOpen(true)} className="primary-button gap-2"><RotateCcw className="size-4" /> Cerrar semana y preparar siguiente</button>}
+        </div>
+      </div>
+      {message && <p className="mt-4 rounded-xl bg-muted px-4 py-3 text-sm">{message}</p>}
+    </MotionSection>
+
+    <MotionSection className="overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="border-b border-border px-5 py-4"><h2 className="font-semibold">Despachos del lote</h2><p className="mt-1 text-xs text-foreground-muted">Las guías son detalle interno; la pertenencia al lote y la conciliación pertenecen al despacho.</p></div>
+      {detail.activeRelations.length ? <div className="overflow-x-auto"><table className="w-full min-w-[1180px] text-left text-sm"><thead className="bg-muted/60 text-[10px] uppercase tracking-wide text-foreground-muted"><tr><th className="p-4">Despacho</th><th className="p-4">Pedido</th><th className="p-4">Proveedor</th><th className="p-4">Volumen Real</th><th className="p-4">Factura Producto</th><th className="p-4">Factura Servicio</th><th className="p-4">Estado</th><th className="p-4 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-border">
+        {detail.activeRelations.map((relation) => <tr key={relation.relationId} className="align-top"><td className="p-4"><Link href={`/dispatches/${relation.dispatchId}`} className="font-semibold text-brand-strong hover:underline">{relation.programmingCode}</Link><p className="mt-1 text-xs text-foreground-muted">{relation.operationalStatus === "COMPLETED" ? "Completado" : "En ejecución"} · {relation.guideCount} guía(s)</p></td><td className="p-4 font-semibold">{relation.orderNumber ?? "Pendiente"}</td><td className="p-4">{relation.supplierName}</td><td className="p-4 font-semibold">{relation.realVolume === null ? "Pendiente" : `${formatBatchQuantity(relation.realVolume)} ${relation.realUnitCode ?? ""}`}</td><td className="p-4"><InvoiceCell relation={relation} type="PRODUCT" /></td><td className="p-4"><InvoiceCell relation={relation} type="SERVICE" /></td><td className="p-4"><span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">{relation.operationalStatus === "IN_EXECUTION" ? "Despacho en ejecución" : formatStatusLabel(relation.reconciliationStatus)}</span>{relation.latestAttempt && <p className="mt-2 text-xs text-foreground-muted">Intento {relation.latestAttempt.attemptNumber}: diferencia {relation.latestAttempt.difference === null ? "no comparable" : formatBatchQuantity(relation.latestAttempt.difference)}</p>}</td><td className="p-4"><div className="flex flex-wrap justify-end gap-2"><Link href={`/dispatches/${relation.dispatchId}`} className="secondary-button text-xs">Ver despacho</Link>
+          {editable && relation.operationalStatus === "COMPLETED" && permissions.canCreateInvoice && !relation.productInvoice && <button type="button" onClick={() => setInvoice({ relation, type: "PRODUCT" })} className="secondary-button text-xs">Cargar producto</button>}
+          {editable && relation.operationalStatus === "COMPLETED" && permissions.canCreateInvoice && !relation.serviceInvoice && <button type="button" onClick={() => setInvoice({ relation, type: "SERVICE" })} className="secondary-button text-xs">Cargar servicio</button>}
+          {relation.operationalStatus === "COMPLETED" && relation.reconciliationStatus === "PENDING_RECONCILIATION" && permissions.canMatchInvoice && <button type="button" disabled={pending} onClick={() => reconcile(relation)} className="primary-button text-xs">Conciliar</button>}
+          {relation.reconciliationStatus === "WITH_DIFFERENCES" && permissions.canReviewInvoice && <button type="button" onClick={() => setReinvoicing(relation)} className="secondary-button text-xs">Solicitar refacturación</button>}
+          {editable && relation.reconciliationStatus === "PENDING_REINVOICING" && permissions.canCreateInvoice && <button type="button" onClick={() => setInvoice({ relation, type: "PRODUCT", replacement: true })} className="primary-button text-xs">Cargar refacturada</button>}
+          {editable && permissions.canModify && <button type="button" onClick={() => setRemove(relation)} className="grid size-9 place-items-center rounded-lg border border-destructive/25 text-destructive" aria-label="Remover despacho"><Trash2 className="size-4" /></button>}
+        </div></td></tr>)}
+      </tbody></table></div> : <div className="p-6"><EmptyState title="Sin despachos en el lote" description="Agrega un despacho en ejecución o completado del proyecto actual." /></div>}
+    </MotionSection>
+
+    <MotionSection className="overflow-hidden rounded-xl border border-border bg-surface"><div className="flex items-center gap-2 border-b border-border px-5 py-4"><History className="size-4 text-brand-strong" /><h2 className="font-semibold">Historial de relaciones removidas</h2></div>{detail.removedRelations.length ? <div className="divide-y divide-border">{detail.removedRelations.map((relation) => <div key={relation.relationId} className="flex flex-col gap-2 px-5 py-4 text-sm sm:flex-row sm:justify-between"><div><strong>{relation.programmingCode}</strong> · {relation.supplierName}<p className="text-xs text-foreground-muted">{relation.removalReason ?? "Sin motivo"}{relation.rolledToBatchId ? " · trasladado al siguiente lote" : ""}</p></div><span className="text-xs text-foreground-muted">{relation.removedAt ? formatBatchDateTime(relation.removedAt, project.timezone) : "—"}</span></div>)}</div> : <p className="px-5 py-8 text-center text-sm text-foreground-muted">No hay relaciones removidas.</p>}</MotionSection>
+
+    {addOpen && <AddDispatchDialog projectId={project.id} batchId={detail.id} dispatches={detail.eligibleDispatches} onClose={() => setAddOpen(false)} />}
+    {bulkOpen && <BulkInvoiceDialog projectId={project.id} batchId={detail.id} onClose={() => setBulkOpen(false)} />}
+    {rolloverOpen && <RolloverDialog projectId={project.id} batchId={detail.id} preview={detail.preview} onClose={() => setRolloverOpen(false)} />}
+    {remove && <RemoveDispatchDialog projectId={project.id} batchId={detail.id} relation={remove} onClose={() => setRemove(null)} />}
+    {invoice && <DispatchInvoiceDialog projectId={project.id} batchId={detail.id} relation={invoice.relation} type={invoice.type} replacement={invoice.replacement} onClose={() => setInvoice(null)} />}
+    {reinvoicing && <Modal title="Solicitar refacturación" description="La factura original se conservará y la siguiente será una nueva factura vinculada." icon={FileSearch} onClose={() => setReinvoicing(null)} pending={false}><form action={async (formData) => { const result = await requestDispatchReinvoicingAction({ status: "idle" }, formData); setMessage(result.message ?? null); setReinvoicing(null); router.refresh(); }}><input type="hidden" name="projectId" value={project.id} /><input type="hidden" name="batchId" value={detail.id} /><input type="hidden" name="dispatchId" value={reinvoicing.dispatchId} /><div className="p-5 sm:p-6"><label className="form-label" htmlFor="reinvoicing-reason">Motivo *</label><textarea id="reinvoicing-reason" name="reason" required maxLength={1000} rows={4} className="form-input" /></div><div className="flex justify-end gap-3 border-t border-border px-5 py-4"><button type="button" className="secondary-button" onClick={() => setReinvoicing(null)}>Cancelar</button><button className="primary-button">Solicitar</button></div></form></Modal>}
+  </MotionPage>;
 }

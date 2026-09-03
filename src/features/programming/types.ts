@@ -21,6 +21,7 @@ export type ProgrammingDispatch = {
   id: string;
   status: string;
   result: string | null;
+  reconciliationStatus: string | null;
   createdAt: string;
   guideNumber: string | null;
   guideDate: string | null;

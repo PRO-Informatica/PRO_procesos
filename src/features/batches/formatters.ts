@@ -6,18 +6,8 @@ export function formatBatchStatus(status: BatchStatus) {
 }
 
 export function batchStatusTone(status: BatchStatus) {
-  if (status === "NEEDS_CORRECTION" || status === "CANCELLED") {
-    return "bg-destructive-soft text-destructive";
-  }
-  if (
-    status === "CLOSED" ||
-    status === "AUTHORIZED" ||
-    status === "VALIDATED"
-  ) {
+  if (status === "CLOSED") {
     return "bg-success-soft text-success";
-  }
-  if (status === "READY_FOR_REVIEW" || status === "UNDER_REVIEW") {
-    return "bg-amber-100 text-amber-800 dark:bg-amber-950/55 dark:text-amber-300";
   }
   return "bg-sky-100 text-sky-800 dark:bg-sky-950/55 dark:text-sky-300";
 }

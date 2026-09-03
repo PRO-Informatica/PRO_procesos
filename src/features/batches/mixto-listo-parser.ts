@@ -13,6 +13,11 @@ export type MixtoListoParsedInvoice = {
   total: number | null;
   observations_raw: string | null;
   pca_original: string | null;
+  billing_legal_name: string | null;
+  billing_tax_id: string | null;
+  supplier_legal_name: string | null;
+  supplier_tax_id: string | null;
+  detected_invoice_numbers: string[];
   lines: MixtoListoParsedLine[];
 };
 
@@ -68,6 +73,10 @@ export function orderNumberFromMixtoListoPca(value: string | null) {
   return match[1].replace(/^0+(?=\d)/, "");
 }
 
+function cleanIdentity(value: string | undefined) {
+  return value?.replace(/\s+/g, " ").trim() || null;
+}
+
 export function parseMixtoListoInvoiceText(
   rawText: string,
 ): MixtoListoParsedInvoice {
@@ -82,6 +91,20 @@ export function parseMixtoListoInvoiceText(
     normalizedText.match(/(?:^|\n)N[ÚU]MERO:\s*([A-Z0-9-]+)/im)?.[1] ??
     normalizedText.match(/(?:^|\n)FACTURA:\s*([A-Z0-9_-]+)/im)?.[1] ??
     null;
+  const detectedInvoiceNumbers = [
+    ...normalizedText.matchAll(/(?:^|\n)N[ÚU]MERO:\s*([A-Z0-9-]+)/gim),
+  ].map((match) => match[1].toUpperCase());
+  const receiverMatch = normalizedText.match(
+    /NOMBRE\s+O\s+RAZ[ÓO]N\s+SOCIAL:\s*([^\n]+)/i,
+  );
+  const receiverSection = receiverMatch
+    ? normalizedText.slice(receiverMatch.index ?? 0)
+    : "";
+  const billingTaxId = receiverSection.match(/(?:^|\n)NIT:\s*([^\n]+)/im)?.[1];
+  const supplierHeader = normalizedText.slice(0, Math.max(0, receiverMatch?.index ?? 1000));
+  const supplierMatch = supplierHeader.match(
+    /^\s*([^\n]+)\n\s*NIT:\s*([^\n]+)/m,
+  );
   const dateMatch = normalizedText.match(
     /(?:^|\n)FECHA\s+(\d{1,2})\s+(\d{1,2})\s+(\d{4})/im,
   );
@@ -174,6 +197,11 @@ export function parseMixtoListoInvoiceText(
     total,
     observations_raw: observations,
     pca_original: pca,
+    billing_legal_name: cleanIdentity(receiverMatch?.[1]),
+    billing_tax_id: cleanIdentity(billingTaxId),
+    supplier_legal_name: cleanIdentity(supplierMatch?.[1]),
+    supplier_tax_id: cleanIdentity(supplierMatch?.[2]),
+    detected_invoice_numbers: [...new Set(detectedInvoiceNumbers)],
     lines,
   };
 }

@@ -38,6 +38,8 @@ export type ProgrammingDispatchItem = {
   dispatchId: string | null;
   dispatchStatus: DispatchStatus | null;
   result: DispatchResult | null;
+  realVolume: number | null;
+  realUnitCode: string | null;
   version: number | null;
   guideCount: number;
   guideTotal: number;
@@ -75,8 +77,6 @@ export type DispatchDocument = {
 
 export type DispatchBatchRelation = {
   relationId: string;
-  guideId: string;
-  guideNumber: string;
   batchId: string;
   code: string;
   status: string;
@@ -114,6 +114,12 @@ export type DispatchDetail = {
   incidents: DispatchIncident[];
   documents: DispatchDocument[];
   batches: DispatchBatchRelation[];
+  reconciliation: {
+    status: string;
+    productInvoiceNumber: string | null;
+    serviceInvoiceNumber: string | null;
+    latestDifference: number | null;
+  } | null;
   incidentTypes: IncidentTypeOption[];
   units: DispatchUnit[];
 };

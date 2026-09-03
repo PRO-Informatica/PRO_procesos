@@ -378,7 +378,12 @@ export async function loadProgrammingRange(
   try {
     return {
       status: "success",
-      items: await getProgrammingItems(projectId, range, safeFilters),
+      items: await getProgrammingItems(
+        projectId,
+        range,
+        safeFilters,
+        context.activeProject!.timezone,
+      ),
     };
   } catch (error) {
     return {
@@ -514,9 +519,10 @@ export async function extractProgrammingWorkbookAction(
     return { status: "error", message: "No tienes permiso para cargar programaciones." };
   }
   try {
-    const projectCode = context.activeProject?.code?.trim() ?? "";
+    const billingLegalName =
+      context.activeProject?.billingLegalName?.trim() ?? "";
     const [rows, catalogs] = await Promise.all([
-      extractMixtoProgrammingWorkbook(file, projectCode),
+      extractMixtoProgrammingWorkbook(file, billingLegalName),
       getProgrammingCatalogs(projectId),
     ]);
     const defaultSupplier =

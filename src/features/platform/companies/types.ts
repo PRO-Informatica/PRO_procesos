@@ -35,6 +35,8 @@ export type CompanyProject = {
   timezone: string;
   startDate: string | null;
   estimatedEndDate: string | null;
+  billingLegalName: string | null;
+  billingTaxId: string | null;
   supplierIds: string[];
 };
 
@@ -84,6 +86,8 @@ export type ProjectActionState = {
     timezone?: string;
     startDate?: string;
     estimatedEndDate?: string;
+    billingLegalName?: string;
+    billingTaxId?: string;
   };
 };
 

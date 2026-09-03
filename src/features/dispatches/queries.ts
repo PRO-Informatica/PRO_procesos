@@ -197,6 +197,11 @@ export async function getDispatchPageData(
       dispatchId: dispatch?.id ?? null,
       dispatchStatus: dispatch?.status ?? null,
       result: dispatch?.result ?? null,
+      realVolume:
+        dispatch?.real_volume === null || dispatch?.real_volume === undefined
+          ? null
+          : numberValue(dispatch.real_volume),
+      realUnitCode: dispatch?.real_unit_code ?? null,
       version: dispatch?.version ?? null,
       guideCount: guides.length,
       guideTotal: guides.reduce((total, guide) => total + guide.quantity, 0),
@@ -274,7 +279,7 @@ export async function getDispatchDetail(
   const rawIncidents = incidentsResult.data ?? [];
   const incidentIds = rawIncidents.map((row) => row.id);
 
-  const [linesResult, dispatchDocsResult, guideDocsResult, incidentDocsResult, batchLinksResult] =
+  const [linesResult, dispatchDocsResult, guideDocsResult, incidentDocsResult, batchLinksResult, reconciliationResult, invoicesResult] =
     await Promise.all([
       guideIds.length
         ? supabase
@@ -304,13 +309,23 @@ export async function getDispatchDetail(
             .eq("project_id", projectId)
             .in("incident_id", incidentIds)
         : Promise.resolve({ data: [], error: null }),
-      guideIds.length
-        ? supabase
-            .from("batch_guides")
-            .select("id, guide_id, batch_id, removed_at")
-            .eq("project_id", projectId)
-            .in("guide_id", guideIds)
-        : Promise.resolve({ data: [], error: null }),
+      supabase
+        .from("batch_dispatches")
+        .select("id, dispatch_id, batch_id, removed_at")
+        .eq("project_id", projectId)
+        .eq("dispatch_id", dispatchId),
+      supabase
+        .from("dispatch_reconciliations")
+        .select("status")
+        .eq("project_id", projectId)
+        .eq("dispatch_id", dispatchId)
+        .maybeSingle(),
+      supabase
+        .from("invoices")
+        .select("invoice_type, invoice_number, status, created_at")
+        .eq("project_id", projectId)
+        .eq("dispatch_id", dispatchId)
+        .order("created_at", { ascending: false }),
     ]);
   const relationError = [
     linesResult.error,
@@ -318,6 +333,8 @@ export async function getDispatchDetail(
     guideDocsResult.error,
     incidentDocsResult.error,
     batchLinksResult.error,
+    reconciliationResult.error,
+    invoicesResult.error,
   ].find(Boolean);
   assertNoError(relationError ?? null, "No fue posible cargar las relaciones del despacho.");
 
@@ -440,14 +457,11 @@ export async function getDispatchDetail(
     };
   });
   const batchesById = new Map((batchesResult.data ?? []).map((row) => [row.id, row]));
-  const guideNames = new Map(guides.map((guide) => [guide.id, guide.guideNumber]));
   const batches: DispatchBatchRelation[] = (batchLinksResult.data ?? []).flatMap((link) => {
     const batch = batchesById.get(link.batch_id);
     if (!batch) return [];
     return [{
       relationId: link.id,
-      guideId: link.guide_id,
-      guideNumber: guideNames.get(link.guide_id) ?? "Guía",
       batchId: batch.id,
       code: batch.code,
       status: batch.status,
@@ -456,6 +470,12 @@ export async function getDispatchDetail(
       removedAt: link.removed_at,
     }];
   });
+  const activeInvoices = (invoicesResult.data ?? []).filter((invoice) => !["SUPERSEDED", "CANCELLED", "NON_PROCEEDING"].includes(invoice.status));
+  const attemptsResult = reconciliationResult.data
+    ? await supabase.from("dispatch_reconciliation_attempts").select("difference").eq("project_id", projectId).eq("dispatch_id", dispatchId).order("executed_at", { ascending: false }).limit(1)
+    : { data: [], error: null };
+  assertNoError(attemptsResult.error, "No fue posible cargar el último intento de conciliación.");
+  const latestDifference = attemptsResult.data?.[0]?.difference;
 
   return {
     id: dispatch.id,
@@ -489,6 +509,12 @@ export async function getDispatchDetail(
     incidents,
     documents,
     batches,
+    reconciliation: reconciliationResult.data ? {
+      status: reconciliationResult.data.status,
+      productInvoiceNumber: activeInvoices.find((invoice) => invoice.invoice_type === "PRODUCT")?.invoice_number ?? null,
+      serviceInvoiceNumber: activeInvoices.find((invoice) => invoice.invoice_type === "SERVICE")?.invoice_number ?? null,
+      latestDifference: latestDifference === null || latestDifference === undefined ? null : numberValue(latestDifference),
+    } : null,
     incidentTypes: (typesResult.data ?? []).map((row) => ({ id: row.id, name: row.name })),
     units: (unitsResult.data ?? []).map((row) => ({ code: row.code, name: row.name })),
   };

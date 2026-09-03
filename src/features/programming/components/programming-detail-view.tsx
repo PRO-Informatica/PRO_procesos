@@ -330,6 +330,7 @@ export function ProgrammingDetailView({
     status: detail.status,
     scheduledAt: detail.scheduledAt,
     operationStarted,
+    timezone: project.timezone,
   }, availabilityNow);
   const scheduleIsFuture = new Date(detail.scheduledAt).valueOf() >= availabilityNow;
   const todayKey = zonedInputValue(new Date(availabilityNow).toISOString(), project.timezone).slice(0, 10);
@@ -339,11 +340,12 @@ export function ProgrammingDetailView({
     status: detail.status,
     scheduledAt: detail.scheduledAt,
     operationStarted,
+    timezone: project.timezone,
     hasPermission: permissions.canCreateDispatch,
   }, availabilityNow);
   const canCancel =
     permissions.canCancel &&
-    effectiveStatus !== "EXPIRED" &&
+    !["EXPIRED", "CANCELLED"].includes(effectiveStatus) &&
     ["PENDING_CONFIRMATION", "CONFIRMED"].includes(detail.status) &&
     !(detail.status === "CONFIRMED" && detail.dispatches.length > 0);
   const relevantRevisions = detail.revisions.filter(
@@ -540,6 +542,8 @@ export function ProgrammingDetailView({
           dispatchId: null,
           dispatchStatus: null,
           result: null,
+          realVolume: null,
+          realUnitCode: null,
           version: null,
           guideCount: 0,
           guideTotal: 0,
