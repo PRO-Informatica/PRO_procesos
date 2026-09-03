@@ -2,15 +2,15 @@
 
 import {
   ArrowLeft,
-  BriefcaseBusiness,
   CheckCircle2,
   FileCheck2,
   FilePlus2,
   LoaderCircle,
-  Package,
   Pencil,
   Plus,
+  ReceiptText,
   Trash2,
+  Truck,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -26,6 +26,7 @@ import { formatStatusLabel } from "@/lib/status-labels";
 import {
   confirmInvoiceExtraction,
   confirmMixtoListoInvoice,
+  discardMixtoListoInvoiceIntake,
   failMixtoListoInvoiceUpload,
   failInvoiceUpload,
   finalizeOrderServiceInvoiceUpload,
@@ -77,7 +78,12 @@ function statusTone(status: string) {
   if (["MATCHED", "CLOSED", "COMPLETED"].includes(status))
     return "bg-success-soft text-success";
   if (
-    ["WITH_DIFFERENCES", "REQUIRES_REVIEW", "ORDER_MISMATCH", "REINVOICING"].includes(status)
+    [
+      "WITH_DIFFERENCES",
+      "REQUIRES_REVIEW",
+      "ORDER_MISMATCH",
+      "REINVOICING",
+    ].includes(status)
   )
     return "bg-destructive-soft text-destructive";
   return "bg-muted text-foreground-muted";
@@ -404,7 +410,8 @@ function UploadDialog({
                 className="form-input"
               />
               <span className="mt-1 block text-xs text-foreground-muted">
-                PDF {invoiceType === "PRODUCT" ? "Mixto Listo" : "de servicio"}, máximo 10 MiB. No se aceptan imágenes.
+                PDF {invoiceType === "PRODUCT" ? "Mixto Listo" : "de servicio"},
+                máximo 10 MiB. No se aceptan imágenes.
               </span>
             </label>
             {replacement && (
@@ -431,7 +438,8 @@ function UploadDialog({
               Cancelar
             </button>
             <button disabled={busy} className="primary-button">
-              {busy && <LoaderCircle className="size-4 animate-spin" />} {invoiceType === "SERVICE" ? "Guardar factura" : "Extraer datos"}
+              {busy && <LoaderCircle className="size-4 animate-spin" />}{" "}
+              {invoiceType === "SERVICE" ? "Guardar factura" : "Extraer datos"}
             </button>
           </div>
         </form>
@@ -903,49 +911,61 @@ function ReviewDialog({
   );
 }
 
-function InvoiceTypeDialog({
-  orderNumber,
-  onSelect,
-  onClose,
+function SummaryCard({
+  label,
+  values,
+  tone = "default",
 }: {
-  orderNumber: string;
-  onSelect: (type: InvoiceType) => void;
-  onClose: () => void;
+  label: string;
+  values: string[];
+  tone?: "default" | "warning" | "success";
 }) {
   return (
-    <Modal
-      title={`Validar Pedido ${orderNumber}`}
-      description="Elige el tipo de factura que deseas cargar."
-      icon={FilePlus2}
-      pending={false}
-      onClose={onClose}
-    >
-      <div className="grid gap-3 p-5 sm:grid-cols-2">
-        <button
-          type="button"
-          className="rounded-xl border border-border p-5 text-left transition hover:border-brand hover:bg-brand-soft/40"
-          onClick={() => onSelect("PRODUCT")}
-        >
-          <Package className="size-6 text-brand-strong" />
-          <strong className="mt-3 block">PRODUCT</strong>
-          <span className="mt-1 block text-sm text-foreground-muted">
-            Extrae PCA y líneas, permite corregir y concilia contra las guías.
-          </span>
-        </button>
-        <button
-          type="button"
-          className="rounded-xl border border-border p-5 text-left transition hover:border-brand hover:bg-brand-soft/40"
-          onClick={() => onSelect("SERVICE")}
-        >
-          <BriefcaseBusiness className="size-6 text-brand-strong" />
-          <strong className="mt-3 block">SERVICE</strong>
-          <span className="mt-1 block text-sm text-foreground-muted">
-            Guarda el PDF como documento privado, sin extracción ni conciliación.
-          </span>
-        </button>
+    <div className="min-w-0 rounded-xl border border-border bg-muted/25 p-3 sm:p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground-muted">
+        {label}
+      </p>
+      <div
+        className={`mt-2 space-y-1 text-lg font-semibold ${tone === "warning" ? "text-amber-700 dark:text-amber-300" : tone === "success" ? "text-success" : "text-foreground"}`}
+      >
+        {values.length ? (
+          values.map((value, index) => (
+            <p key={`${value}-${index}`} className="break-words">
+              {value}
+            </p>
+          ))
+        ) : (
+          <p>0</p>
+        )}
       </div>
-    </Modal>
+    </div>
   );
+}
+
+function isGuideAlignedPartial(
+  line: ReconciliationOrderDetail["lines"][number],
+) {
+  if (line.invoicedTotal <= 0 || line.invoicedTotal >= line.dispatchedTotal) {
+    return false;
+  }
+  const quantityByGuide = new Map<string, number>();
+  for (const contribution of line.guideContributions) {
+    quantityByGuide.set(
+      contribution.guideId,
+      (quantityByGuide.get(contribution.guideId) ?? 0) + contribution.quantity,
+    );
+  }
+  const target = Math.round(line.invoicedTotal * 1000);
+  let possible = new Set([0]);
+  for (const quantity of quantityByGuide.values()) {
+    const scaled = Math.round(quantity * 1000);
+    const next = new Set(possible);
+    for (const subtotal of possible) {
+      if (subtotal + scaled <= target) next.add(subtotal + scaled);
+    }
+    possible = next;
+  }
+  return possible.has(target);
 }
 
 export function OrderDetailView({
@@ -956,7 +976,6 @@ export function OrderDetailView({
   permissions: BatchPermissions;
 }) {
   const router = useRouter();
-  const [typeChoiceOpen, setTypeChoiceOpen] = useState(false);
   const [upload, setUpload] = useState<{
     type: InvoiceType;
     replacement: BatchInvoice | null;
@@ -964,14 +983,25 @@ export function OrderDetailView({
   const [pendingPreview, setPendingPreview] =
     useState<MixtoListoExtractionPreview | null>(null);
   const [review, setReview] = useState<BatchInvoice | null>(null);
+  const [discardIntake, setDiscardIntake] = useState<{
+    intakeId: string;
+    invoiceNumber: string;
+  } | null>(null);
+  const [discardedIntakeIds, setDiscardedIntakeIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   useGlobalPending(
     busy,
-    "Actualizando conciliación…",
-    "Aplicando los contratos del Pedido.",
+    discardIntake
+      ? "Eliminando factura pendiente…"
+      : "Actualizando conciliación…",
+    discardIntake
+      ? "Quitando el intento del flujo y conservando su auditoría."
+      : "Aplicando los contratos del Pedido.",
   );
-  async function validateOrder() {
+  async function startProductInvoice() {
     setBusy(true);
     const result = await startOrderValidation({
       projectId: detail.projectId,
@@ -982,7 +1012,8 @@ export function OrderDetailView({
     if (result.status === "error") setMessage(result.message);
     else {
       setMessage(undefined);
-      setTypeChoiceOpen(true);
+      setPendingPreview(null);
+      setUpload({ type: "PRODUCT", replacement: null });
       router.refresh();
     }
   }
@@ -998,6 +1029,105 @@ export function OrderDetailView({
     if (result.status === "error") setMessage(result.message);
     else router.refresh();
   }
+  async function discardPendingInvoice() {
+    if (!discardIntake) return;
+    setBusy(true);
+    setMessage(undefined);
+    const result = await discardMixtoListoInvoiceIntake({
+      projectId: detail.projectId,
+      batchId: detail.batchId,
+      orderId: detail.id,
+      intakeId: discardIntake.intakeId,
+    });
+    setBusy(false);
+    if (result.status === "error") {
+      setMessage(result.message);
+      return;
+    }
+    const discardedId = discardIntake.intakeId;
+    setDiscardedIntakeIds((current) => {
+      const next = new Set(current);
+      next.add(discardedId);
+      return next;
+    });
+    setDiscardIntake(null);
+    router.refresh();
+  }
+  const replacementSource = detail.invoices.find(
+    (invoice) => invoice.type === "PRODUCT" && invoice.status === "REINVOICING",
+  );
+  const reinvoicingCandidate = detail.invoices.find(
+    (invoice) =>
+      invoice.type === "PRODUCT" &&
+      !invoice.replacedByInvoiceId &&
+      !["SUPERSEDED", "CANCELLED", "REINVOICING"].includes(invoice.status),
+  );
+  const quantitySummary = detail.lines.length
+    ? detail.lines.map((line) => ({
+        unitCode: line.unitCode,
+        dispatched: line.dispatchedTotal,
+        invoiced: line.invoicedTotal,
+        difference: line.difference,
+      }))
+    : detail.quantitiesByUnit.map((row) => ({
+        unitCode: row.unitCode,
+        dispatched: row.quantity,
+        invoiced: 0,
+        difference: -row.quantity,
+      }));
+  const currentProductInvoices = detail.invoices.filter(
+    (invoice) =>
+      invoice.type === "PRODUCT" &&
+      !invoice.replacedByInvoiceId &&
+      !["SUPERSEDED", "CANCELLED"].includes(invoice.status),
+  );
+  const hasOverage = quantitySummary.some((row) => row.difference > 0);
+  const hasShortfall = quantitySummary.some((row) => row.difference < 0);
+  const hasUnalignedShortfall = detail.lines.some(
+    (line) => line.difference < 0 && !isGuideAlignedPartial(line),
+  );
+  const pendingValues = quantitySummary.map((row) => ({
+    unitCode: row.unitCode,
+    quantity: Math.max(-row.difference, 0),
+  }));
+  const visiblePendingIntakes = detail.pendingMixtoListoIntakes.filter(
+    (intake) => !discardedIntakeIds.has(intake.intakeId),
+  );
+  const screenState = visiblePendingIntakes.length
+    ? "PENDING_REVIEW"
+    : detail.effectiveStatus === "COMPLETED"
+      ? "COMPLETED"
+      : replacementSource
+        ? "REINVOICING"
+        : !currentProductInvoices.length
+          ? "NO_INVOICE"
+          : hasOverage ||
+              hasUnalignedShortfall ||
+              detail.reconciliationStatus === "REQUIRES_REVIEW"
+            ? "MISMATCH"
+            : hasShortfall
+              ? "PARTIAL"
+              : "MISMATCH";
+  const humanStatus = {
+    PENDING_REVIEW: "Factura pendiente de revisión",
+    COMPLETED: "Completado",
+    REINVOICING: "En refacturación",
+    NO_INVOICE: "Pendiente de factura",
+    MISMATCH: "Requiere corrección",
+    PARTIAL: "Facturación parcial",
+  }[screenState];
+  const firstPendingIntake = visiblePendingIntakes[0] ?? null;
+  const pendingText = pendingValues
+    .filter((row) => row.quantity > 0)
+    .map((row) => `${formatBatchQuantity(row.quantity)} ${row.unitCode ?? ""}`)
+    .join(" y ");
+  function openInvoiceUpload(
+    type: InvoiceType,
+    replacement: BatchInvoice | null = null,
+  ) {
+    setPendingPreview(null);
+    setUpload({ type, replacement });
+  }
   return (
     <MotionPage className="mx-auto max-w-[1500px] space-y-5 pb-10">
       <Link
@@ -1007,329 +1137,657 @@ export function OrderDetailView({
         <ArrowLeft className="size-4" /> Volver al lote
       </Link>
       <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">
-              Conciliación · Pedido {detail.orderNumber}
-            </p>
-            <h1 className="mt-2 text-2xl font-semibold sm:text-3xl">
-              {detail.supplierName}
-            </h1>
-            <p className="mt-2 text-sm text-foreground-muted">
-              Lote {detail.batchCode} · {formatBatchDate(detail.periodStart)} –{" "}
-              {formatBatchDate(detail.periodEnd)} · período{" "}
-              {formatBatchDate(detail.accountingPeriod)}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <span
-                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusTone(detail.documentStatus)}`}
-              >
-                {formatStatusLabel(detail.documentStatus)}
-              </span>
-              <span
-                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusTone(detail.reconciliationStatus)}`}
-              >
-                {formatStatusLabel(detail.reconciliationStatus)}
-              </span>
-              <span
-                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusTone(detail.effectiveStatus)}`}
-              >
-                {formatStatusLabel(detail.effectiveStatus)}
-              </span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">
+            Pedido {detail.orderNumber}
+          </p>
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold sm:text-3xl">
+                {detail.supplierName}
+              </h1>
+              <p className="mt-1 text-sm text-foreground-muted">
+                {detail.batchCode} · {detail.guideCount}{" "}
+                {detail.guideCount === 1 ? "guía" : "guías"} ·{" "}
+                {detail.invoiceCount}{" "}
+                {detail.invoiceCount === 1 ? "factura" : "facturas"}
+              </p>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {permissions.canCreateInvoice &&
-              detail.effectiveStatus !== "COMPLETED" &&
-              permissions.canMatchInvoice && (
-                <button
-                  className="primary-button gap-2"
-                  onClick={() => void validateOrder()}
-                >
-                  <FileCheck2 className="size-4" /> Validar pedido
-                </button>
-              )}
-            {detail.effectiveStatus === "COMPLETED" && (
-              <span className="inline-flex items-center gap-2 rounded-lg bg-success-soft px-4 py-2 text-sm font-semibold text-success">
-                <CheckCircle2 className="size-4" /> Pedido completado
-              </span>
-            )}
+            <span
+              className={`w-fit rounded-full px-3 py-1.5 text-sm font-semibold ${screenState === "COMPLETED" ? statusTone("COMPLETED") : screenState === "REINVOICING" || screenState === "MISMATCH" ? statusTone("REINVOICING") : "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200"}`}
+            >
+              {humanStatus}
+            </span>
           </div>
         </div>
-        {message && (
-          <p
-            role="alert"
-            className="mt-4 rounded-lg bg-destructive-soft p-3 text-sm text-destructive"
-          >
-            {message}
-          </p>
-        )}
-      </section>
-      {detail.pendingMixtoListoIntakes.length > 0 && (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/20">
-          <h2 className="font-semibold">Extracciones Mixto Listo pendientes</h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {detail.pendingMixtoListoIntakes.map((intake) => (
-              <article
-                key={intake.intakeId}
-                className="rounded-lg border border-amber-300 bg-surface p-3 dark:border-amber-900"
-              >
-                <strong>
-                  {intake.invoiceType} · {intake.invoiceNumber}
-                </strong>
-                <p className="mt-1 text-xs text-foreground-muted">
-                  {formatStatusLabel(intake.status)} · Pedido detectado{" "}
-                  {intake.detectedOrderNumber ?? "—"}
-                </p>
-                <button
-                  type="button"
-                  className="secondary-button mt-3 text-xs"
-                  onClick={() => {
-                    setPendingPreview(intake);
-                    setUpload({ type: "PRODUCT", replacement: null });
-                  }}
+        <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
+          <SummaryCard
+            label="Despachado"
+            values={quantitySummary.map(
+              (row) =>
+                `${formatBatchQuantity(row.dispatched)} ${row.unitCode ?? ""}`,
+            )}
+          />
+          <SummaryCard
+            label="Facturado"
+            values={quantitySummary.map(
+              (row) =>
+                `${formatBatchQuantity(row.invoiced)} ${row.unitCode ?? ""}`,
+            )}
+          />
+          <SummaryCard
+            label="Pendiente"
+            values={pendingValues.map(
+              (row) =>
+                `${formatBatchQuantity(row.quantity)} ${row.unitCode ?? ""}`,
+            )}
+            tone={hasShortfall ? "warning" : "success"}
+          />
+        </div>
+
+        <div
+          className={`mt-5 rounded-xl border p-4 sm:p-5 ${screenState === "COMPLETED" ? "border-success/30 bg-success-soft" : "border-brand/20 bg-brand-soft/35"}`}
+        >
+          <div className="flex items-start gap-3">
+            {screenState === "COMPLETED" ? (
+              <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" />
+            ) : (
+              <FileCheck2 className="mt-0.5 size-5 shrink-0 text-brand-strong" />
+            )}
+            <div className="min-w-0 flex-1">
+              <h2 className="font-semibold">
+                {screenState === "COMPLETED"
+                  ? "Pedido completado"
+                  : "Siguiente paso"}
+              </h2>
+              <p className="mt-1 text-sm text-foreground-muted">
+                {screenState === "PENDING_REVIEW" &&
+                  "Revisa la factura cargada antes de agregar otra."}
+                {screenState === "NO_INVOICE" &&
+                  "Carga una factura PRODUCT para comparar lo facturado contra las guías del Pedido."}
+                {screenState === "PARTIAL" &&
+                  `Aún faltan ${pendingText || "cantidades"} por facturar.`}
+                {screenState === "MISMATCH" &&
+                  "La cantidad facturada no coincide con la despachada."}
+                {screenState === "REINVOICING" &&
+                  "Carga la factura corregida para volver a validar el Pedido."}
+                {screenState === "COMPLETED" &&
+                  "Las cantidades despachadas y facturadas coinciden."}
+              </p>
+              {message && (
+                <p
+                  role="alert"
+                  className="mt-3 text-sm font-medium text-destructive"
                 >
-                  Abrir preview
-                </button>
+                  {message}
+                </p>
+              )}
+              {screenState !== "COMPLETED" && (
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  {screenState === "PENDING_REVIEW" &&
+                    firstPendingIntake &&
+                    permissions.canMatchInvoice && (
+                      <button
+                        className="primary-button justify-center"
+                        onClick={() => {
+                          setPendingPreview(firstPendingIntake);
+                          setUpload({ type: "PRODUCT", replacement: null });
+                        }}
+                      >
+                        Revisar factura pendiente
+                      </button>
+                    )}
+                  {screenState === "NO_INVOICE" &&
+                    permissions.canCreateInvoice &&
+                    permissions.canMatchInvoice && (
+                      <button
+                        className="primary-button justify-center"
+                        onClick={() => void startProductInvoice()}
+                      >
+                        <FilePlus2 className="size-4" /> Cargar factura PRODUCT
+                      </button>
+                    )}
+                  {screenState === "PARTIAL" &&
+                    permissions.canCreateInvoice && (
+                      <button
+                        className="primary-button justify-center"
+                        onClick={() => openInvoiceUpload("PRODUCT")}
+                      >
+                        <FilePlus2 className="size-4" /> Agregar factura PRODUCT
+                      </button>
+                    )}
+                  {screenState === "MISMATCH" &&
+                    permissions.canMatchInvoice &&
+                    reinvoicingCandidate && (
+                      <button
+                        className="primary-button justify-center"
+                        onClick={() =>
+                          void requestReinvoicing(reinvoicingCandidate)
+                        }
+                      >
+                        Solicitar refacturación
+                      </button>
+                    )}
+                  {screenState === "REINVOICING" &&
+                    permissions.canCreateInvoice &&
+                    replacementSource && (
+                      <button
+                        className="primary-button justify-center"
+                        onClick={() =>
+                          openInvoiceUpload("PRODUCT", replacementSource)
+                        }
+                      >
+                        <FilePlus2 className="size-4" /> Cargar factura
+                        corregida
+                      </button>
+                    )}
+                  {screenState === "PARTIAL" &&
+                    permissions.canMatchInvoice &&
+                    reinvoicingCandidate && (
+                      <button
+                        className="secondary-button justify-center"
+                        onClick={() =>
+                          void requestReinvoicing(reinvoicingCandidate)
+                        }
+                      >
+                        La factura necesita corrección
+                      </button>
+                    )}
+                  {["NO_INVOICE", "PARTIAL", "MISMATCH"].includes(
+                    screenState,
+                  ) &&
+                    permissions.canCreateInvoice && (
+                      <button
+                        className="secondary-button justify-center"
+                        onClick={() => openInvoiceUpload("SERVICE")}
+                      >
+                        Agregar factura SERVICE
+                      </button>
+                    )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {visiblePendingIntakes.length > 0 && (
+        <section className="overflow-hidden rounded-xl border border-border bg-surface">
+          <div className="border-b border-border px-4 py-3 sm:px-5">
+            <h2 className="font-semibold">Facturas pendientes de revisar</h2>
+          </div>
+          <div className="hidden max-h-72 overflow-auto md:block">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="sticky top-0 bg-muted text-xs uppercase text-foreground-muted">
+                <tr>
+                  <th className="px-4 py-3">Factura</th>
+                  <th className="px-4 py-3">Tipo</th>
+                  <th className="px-4 py-3">Pedido detectado</th>
+                  <th className="px-4 py-3">Cantidad</th>
+                  <th className="px-4 py-3">Estado</th>
+                  <th className="px-4 py-3 text-right">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {visiblePendingIntakes.map((intake) => (
+                  <tr key={intake.intakeId}>
+                    <td className="px-4 py-3 font-semibold">
+                      {intake.invoiceNumber}
+                    </td>
+                    <td className="px-4 py-3">{intake.invoiceType}</td>
+                    <td className="px-4 py-3">
+                      {intake.detectedOrderNumber ?? "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      {intake.lines
+                        .map(
+                          (line) =>
+                            `${formatBatchQuantity(line.quantity)} ${line.unit_code}`,
+                        )
+                        .join(" · ") || "—"}
+                    </td>
+                    <td className="px-4 py-3">Pendiente</td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          className="secondary-button text-xs"
+                          onClick={() => {
+                            setPendingPreview(intake);
+                            setUpload({ type: "PRODUCT", replacement: null });
+                          }}
+                        >
+                          Revisar
+                        </button>
+                        {permissions.canCreateInvoice && (
+                          <button
+                            type="button"
+                            className="grid size-9 place-items-center rounded-lg border border-destructive/25 text-destructive hover:bg-destructive-soft disabled:opacity-50"
+                            onClick={() => {
+                              setMessage(undefined);
+                              setDiscardIntake({
+                                intakeId: intake.intakeId,
+                                invoiceNumber: intake.invoiceNumber,
+                              });
+                            }}
+                            aria-label={`Eliminar factura pendiente ${intake.invoiceNumber}`}
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="divide-y divide-border md:hidden">
+            {visiblePendingIntakes.map((intake) => (
+              <article key={intake.intakeId} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">
+                      Factura {intake.invoiceNumber}
+                    </p>
+                    <p className="mt-1 text-xs text-foreground-muted">
+                      {intake.invoiceType} · Pedido{" "}
+                      {intake.detectedOrderNumber ?? "—"}
+                    </p>
+                  </div>
+                  <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                    Pendiente
+                  </span>
+                </div>
+                <p className="mt-2 text-sm">
+                  {intake.lines
+                    .map(
+                      (line) =>
+                        `${formatBatchQuantity(line.quantity)} ${line.unit_code}`,
+                    )
+                    .join(" · ") || "Cantidad no detectada"}
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    className="secondary-button justify-center text-xs"
+                    onClick={() => {
+                      setPendingPreview(intake);
+                      setUpload({ type: "PRODUCT", replacement: null });
+                    }}
+                  >
+                    Revisar factura
+                  </button>
+                  {permissions.canCreateInvoice && (
+                    <button
+                      type="button"
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-destructive/25 px-3 text-xs font-semibold text-destructive hover:bg-destructive-soft disabled:opacity-50"
+                      onClick={() => {
+                        setMessage(undefined);
+                        setDiscardIntake({
+                          intakeId: intake.intakeId,
+                          invoiceNumber: intake.invoiceNumber,
+                        });
+                      }}
+                    >
+                      <Trash2 className="size-4" /> Eliminar
+                    </button>
+                  )}
+                </div>
               </article>
             ))}
           </div>
         </section>
       )}
-      <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <h2 className="font-semibold">
-            Guías del pedido ({detail.guides.length})
+
+      <section className="overflow-hidden rounded-xl border border-border bg-surface">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5">
+          <h2 className="flex items-center gap-2 font-semibold">
+            <Truck className="size-4 text-brand-strong" /> Guías
           </h2>
-          <div className="mt-3 divide-y divide-border">
-            {detail.guides.map((guide) => (
-              <div key={guide.guideId} className="py-3">
-                <div className="flex justify-between gap-3">
-                  <div>
+          <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">
+            {detail.guides.length}
+          </span>
+        </div>
+        <div className="hidden max-h-[30rem] overflow-auto md:block">
+          <table className="w-full min-w-[850px] text-left text-sm">
+            <thead className="sticky top-0 bg-muted text-xs uppercase text-foreground-muted">
+              <tr>
+                <th className="px-4 py-3">Guía</th>
+                <th className="px-4 py-3">Fecha</th>
+                <th className="px-4 py-3">Despachado</th>
+                <th className="px-4 py-3">Recibido</th>
+                <th className="px-4 py-3">Documento</th>
+                <th className="px-4 py-3 text-right">Acción</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {detail.guides.map((guide) => (
+                <tr key={guide.guideId}>
+                  <td className="px-4 py-3 font-semibold">
+                    {guide.guideNumber}
+                  </td>
+                  <td className="px-4 py-3">
+                    {formatBatchDate(guide.guideDate)}
+                  </td>
+                  <td className="px-4 py-3 font-semibold">
+                    {formatBatchQuantity(guide.quantity)} {guide.unitCode}
+                  </td>
+                  <td className="px-4 py-3">
+                    {formatBatchQuantity(guide.receivedQuantity)}{" "}
+                    {guide.unitCode}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {guide.documents.length
+                        ? guide.documents.map((document) => (
+                            <span
+                              key={document.id}
+                              className="inline-flex items-center gap-1.5"
+                            >
+                              {document.uploadStatus === "UPLOADED"
+                                ? "Disponible"
+                                : formatStatusLabel(
+                                    document.uploadStatus,
+                                    "Pendiente",
+                                  )}
+                              {document.uploadStatus === "UPLOADED" &&
+                                document.fileName &&
+                                document.mimeType && (
+                                  <DocumentActions
+                                    projectId={detail.projectId}
+                                    documentId={document.id}
+                                    fileName={document.fileName}
+                                    mimeType={document.mimeType}
+                                    getSignedUrl={getDocumentDownloadUrl}
+                                    compact
+                                  />
+                                )}
+                            </span>
+                          ))
+                        : "Sin documento"}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right">
                     <Link
                       href={`/dispatches/${guide.dispatchId}`}
-                      className="font-semibold text-brand-strong hover:underline"
+                      className="secondary-button text-xs"
                     >
-                      {guide.guideNumber}
+                      Ver despacho
                     </Link>
-                    <p className="mt-1 text-xs text-foreground-muted">
-                      {guide.programmingCode} ·{" "}
-                      {formatBatchDate(guide.guideDate)} · {formatStatusLabel(guide.result, "Sin resultado")}
-                    </p>
-                    <p className="mt-1 text-xs text-foreground-muted">
-                      Recibido {formatBatchQuantity(guide.receivedQuantity)}{" "}
-                      {guide.unitCode}
-                    </p>
-                  </div>
-                  <p className="text-sm font-semibold">
-                    {formatBatchQuantity(guide.quantity)} {guide.unitCode}
-                  </p>
-                </div>
-                <div className="mt-3 rounded-lg bg-muted/35 p-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground-muted">
-                    Documentos de Guide ({guide.documents.length})
-                  </p>
-                  <div className="mt-2 space-y-2">
-                    {guide.documents.map((document) => (
-                      <div
-                        key={document.id}
-                        className="flex items-center justify-between gap-3 text-xs"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold">
-                            {document.fileName ?? document.category}
-                          </p>
-                          <p className="text-foreground-muted">
-                            {formatStatusLabel(document.purpose)} ·{" "}
-                            {formatStatusLabel(document.uploadStatus, "Sin versión")} ·{" "}
-                            {document.createdByName} ·{" "}
-                            {formatBatchDate(document.createdAt.slice(0, 10))}
-                          </p>
-                        </div>
-                        {document.uploadStatus === "UPLOADED" && document.fileName && document.mimeType && (
-                          <DocumentActions projectId={detail.projectId} documentId={document.id} fileName={document.fileName} mimeType={document.mimeType} getSignedUrl={getDocumentDownloadUrl} compact />
-                        )}
-                      </div>
-                    ))}
-                    {!guide.documents.length && (
-                      <p className="text-foreground-muted">
-                        Sin documentos adjuntos.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <h2 className="font-semibold">Facturas del pedido ({detail.invoices.length})</h2>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-            <span className="rounded-full bg-brand-soft px-2.5 py-1 text-brand-strong">
-              PRODUCT {detail.productInvoiceCount}
-            </span>
-            <span className="rounded-full bg-muted px-2.5 py-1">
-              SERVICE {detail.serviceInvoiceCount}
-            </span>
-          </div>
-          <div className="mt-3 space-y-3">
-            {detail.invoices.map((invoice) => (
-              <article
-                key={invoice.id}
-                className="rounded-lg border border-border p-3"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <strong>
-                      {formatStatusLabel(invoice.type)} · {invoice.number}
-                    </strong>
-                    <p className="mt-1 text-xs text-foreground-muted">
-                      {formatStatusLabel(invoice.status)} · {invoice.currency}{" "}
-                      {formatBatchQuantity(invoice.total)}
-                      {invoice.pcaOriginal ? ` · ${invoice.pcaOriginal}` : ""}
-                    </p>
-                    <p className="mt-1 text-xs text-foreground-muted">
-                      {invoice.type === "SERVICE" ? (
-                        <>Extracción y conciliación: No aplica</>
-                      ) : (
-                        <>Pedido detectado {invoice.orderNumber ?? "—"} · Extracción{" "}
-                          {formatStatusLabel(invoice.extractionStatus, "Sin verificar")}</>
-                      )}
-                    </p>
-                    <p className="mt-1 text-xs text-foreground-muted">
-                      {invoice.fileName ?? "Sin PDF"} · {invoice.createdByName}{" "}
-                      · {formatBatchDate(invoice.createdAt.slice(0, 10))}
-                    </p>
-                  </div>
-                  {invoice.documentId && invoice.fileName && (
-                    <DocumentActions projectId={detail.projectId} documentId={invoice.documentId} fileName={invoice.fileName} mimeType="application/pdf" getSignedUrl={getInvoiceDownloadUrl} compact />
+        <div className="divide-y divide-border md:hidden">
+          {detail.guides.map((guide) => (
+            <article key={guide.guideId} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold">{guide.guideNumber}</p>
+                  <p className="mt-1 text-xs text-foreground-muted">
+                    {formatBatchDate(guide.guideDate)}
+                  </p>
+                </div>
+                <span className="text-sm font-semibold">
+                  {formatBatchQuantity(guide.quantity)} {guide.unitCode}
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-foreground-muted">
+                Recibido {formatBatchQuantity(guide.receivedQuantity)}{" "}
+                {guide.unitCode}
+              </p>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <div className="flex gap-1">
+                  {guide.documents.map((document) =>
+                    document.uploadStatus === "UPLOADED" &&
+                    document.fileName &&
+                    document.mimeType ? (
+                      <DocumentActions
+                        key={document.id}
+                        projectId={detail.projectId}
+                        documentId={document.id}
+                        fileName={document.fileName}
+                        mimeType={document.mimeType}
+                        getSignedUrl={getDocumentDownloadUrl}
+                        compact
+                      />
+                    ) : null,
                   )}
                 </div>
-                {invoice.type === "PRODUCT" && <details className="mt-3 rounded-lg bg-muted/35 p-3">
-                  <summary className="cursor-pointer text-xs font-semibold">
-                    Líneas de factura ({invoice.lines.length})
-                  </summary>
-                  <div className="mt-2 space-y-2">
-                    {invoice.lines.map((line, index) => (
-                      <div
-                        key={`${invoice.id}-${index}`}
-                        className="grid gap-1 text-xs sm:grid-cols-[7rem_minmax(0,1fr)_7rem]"
-                      >
-                        <span className="font-mono font-semibold">
-                          {line.code ?? "Sin código"}
-                        </span>
-                        <span>{line.description}</span>
-                        <span className="font-semibold sm:text-right">
-                          {formatBatchQuantity(line.quantity)}{" "}
-                          {line.unitCode ?? ""}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </details>}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {permissions.canMatchInvoice &&
-                    invoice.extractionStatus === "PENDING" && (
-                      <button
-                        className="secondary-button text-xs"
-                        onClick={() => setReview(invoice)}
-                      >
-                        <FileCheck2 className="size-3.5" /> Revisar extracción
-                        histórica
-                      </button>
-                    )}
-                  {permissions.canMatchInvoice &&
-                    invoice.type === "PRODUCT" &&
-                    detail.effectiveStatus === "REINVOICING" &&
-                    !["SUPERSEDED", "CANCELLED", "REINVOICING"].includes(invoice.status) && (
-                      <button
-                        className="secondary-button text-xs"
-                        onClick={() => void requestReinvoicing(invoice)}
-                      >
-                        Solicitar refacturación
-                      </button>
-                    )}
-                  {permissions.canCreateInvoice &&
-                    invoice.type === "PRODUCT" &&
-                    detail.effectiveStatus === "REINVOICING" &&
-                    invoice.status === "REINVOICING" && (
-                      <button
-                        className="primary-button text-xs"
-                        onClick={() => {
-                          setPendingPreview(null);
-                          setUpload({ type: "PRODUCT", replacement: invoice });
-                        }}
-                      >
-                        Cargar replacement PRODUCT
-                      </button>
-                    )}
-                </div>
-                {invoice.replacesInvoiceId && (
-                  <p className="mt-2 text-[11px] text-foreground-muted">
-                    Reemplaza: {invoice.replacesInvoiceId}
-                  </p>
-                )}
-                {invoice.replacedByInvoiceId && (
-                  <p className="mt-2 text-[11px] text-foreground-muted">
-                    Reemplazada por: {invoice.replacedByInvoiceId}
-                  </p>
-                )}
-              </article>
-            ))}
-            {!detail.invoices.length && (
-              <p className="text-sm text-foreground-muted">
-                Carga progresiva habilitada: puedes agregar facturas de producto y servicio
-                por separado.
-              </p>
-            )}
-          </div>
+                <Link
+                  href={`/dispatches/${guide.dispatchId}`}
+                  className="secondary-button text-xs"
+                >
+                  Ver despacho
+                </Link>
+              </div>
+            </article>
+          ))}
         </div>
       </section>
+
       <section className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="border-b border-border p-5">
-          <h2 className="font-semibold">Comparación de cantidades</h2>
-          <p className="mt-1 text-xs text-foreground-muted">
-            Se compara la cantidad PRODUCT facturada contra la despachada por
-            medida. Código y descripción son únicamente informativos.
-          </p>
+        <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5">
+          <h2 className="flex items-center gap-2 font-semibold">
+            <ReceiptText className="size-4 text-brand-strong" /> Facturas
+          </h2>
+          <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">
+            {detail.invoices.length}
+          </span>
         </div>
-        <div className="divide-y divide-border">
-          {detail.lines.map((line) => (
-            <details key={line.id} className="group p-5">
-              <summary className="cursor-pointer list-none">
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_repeat(3,8rem)_10rem]">
-                  <div>
-                    <p className="font-semibold">
-                      {line.productCode} · {line.productDescription}
-                    </p>
-                    <p className="mt-1 text-xs text-foreground-muted">
-                      {line.unitCode ?? "Sin UM"} · {line.guideCount} guía(s) ·{" "}
-                      {line.invoiceCount} factura(s)
-                    </p>
-                  </div>
-                  <Metric
-                    label="Despachado"
-                    value={line.dispatchedTotal}
-                    unit={line.unitCode}
-                  />
-                  <Metric
-                    label="Facturado"
-                    value={line.invoicedTotal}
-                    unit={line.unitCode}
-                  />
-                  <Metric
-                    label="Diferencia"
-                    value={line.difference}
-                    unit={line.unitCode}
-                  />
-                  <span
-                    className={`self-center rounded-full px-2 py-1 text-center text-[10px] font-semibold ${statusTone(line.status)}`}
-                  >
-                    {formatStatusLabel(line.status)}
-                  </span>
+        <div className="hidden max-h-[30rem] overflow-auto md:block">
+          <table className="w-full min-w-[780px] text-left text-sm">
+            <thead className="sticky top-0 bg-muted text-xs uppercase text-foreground-muted">
+              <tr>
+                <th className="px-4 py-3">Factura</th>
+                <th className="px-4 py-3">Tipo</th>
+                <th className="px-4 py-3">Cantidad</th>
+                <th className="px-4 py-3">Estado</th>
+                <th className="px-4 py-3">Documento</th>
+                <th className="px-4 py-3 text-right">Acción</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {detail.invoices.map((invoice) => (
+                <tr key={invoice.id}>
+                  <td className="px-4 py-3 font-semibold">{invoice.number}</td>
+                  <td className="px-4 py-3">{invoice.type}</td>
+                  <td className="px-4 py-3">
+                    {invoice.type === "SERVICE"
+                      ? "No aplica"
+                      : invoice.lines
+                          .map(
+                            (line) =>
+                              `${formatBatchQuantity(line.quantity)} ${line.unitCode ?? ""}`,
+                          )
+                          .join(" · ") || "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    {invoice.replacedByInvoiceId
+                      ? "Reemplazada"
+                      : invoice.extractionStatus === "PENDING"
+                        ? "Pendiente de revisión"
+                        : detail.effectiveStatus === "COMPLETED" &&
+                            invoice.type === "PRODUCT"
+                          ? "Conciliada"
+                          : formatStatusLabel(invoice.status)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {invoice.fileName ? "PDF" : "Sin documento"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-2">
+                      {invoice.documentId && invoice.fileName && (
+                        <DocumentActions
+                          projectId={detail.projectId}
+                          documentId={invoice.documentId}
+                          fileName={invoice.fileName}
+                          mimeType="application/pdf"
+                          getSignedUrl={getInvoiceDownloadUrl}
+                          compact
+                        />
+                      )}
+                      {permissions.canMatchInvoice &&
+                        invoice.extractionStatus === "PENDING" && (
+                          <button
+                            className="secondary-button text-xs"
+                            onClick={() => setReview(invoice)}
+                          >
+                            Revisar
+                          </button>
+                        )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="divide-y divide-border md:hidden">
+          {detail.invoices.map((invoice) => (
+            <article key={invoice.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold">Factura {invoice.number}</p>
+                  <p className="mt-1 text-xs text-foreground-muted">
+                    {invoice.type} ·{" "}
+                    {invoice.replacedByInvoiceId
+                      ? "Reemplazada"
+                      : invoice.extractionStatus === "PENDING"
+                        ? "Pendiente de revisión"
+                        : detail.effectiveStatus === "COMPLETED" &&
+                            invoice.type === "PRODUCT"
+                          ? "Conciliada"
+                          : formatStatusLabel(invoice.status)}
+                  </p>
                 </div>
-              </summary>
-              <div className="mt-4 grid gap-4 border-t border-border pt-4 lg:grid-cols-2">
+                <p className="text-sm font-semibold">
+                  {invoice.type === "SERVICE"
+                    ? "No aplica"
+                    : invoice.lines
+                        .map(
+                          (line) =>
+                            `${formatBatchQuantity(line.quantity)} ${line.unitCode ?? ""}`,
+                        )
+                        .join(" · ") || "—"}
+                </p>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                {invoice.documentId && invoice.fileName && (
+                  <DocumentActions
+                    projectId={detail.projectId}
+                    documentId={invoice.documentId}
+                    fileName={invoice.fileName}
+                    mimeType="application/pdf"
+                    getSignedUrl={getInvoiceDownloadUrl}
+                    compact
+                  />
+                )}
+                {permissions.canMatchInvoice &&
+                  invoice.extractionStatus === "PENDING" && (
+                    <button
+                      className="secondary-button text-xs"
+                      onClick={() => setReview(invoice)}
+                    >
+                      Revisar
+                    </button>
+                  )}
+              </div>
+            </article>
+          ))}
+          {!detail.invoices.length && (
+            <p className="p-5 text-sm text-foreground-muted">
+              Todavía no hay facturas cargadas.
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-border bg-surface">
+        <div className="border-b border-border px-4 py-3 sm:px-5">
+          <h2 className="font-semibold">Conciliación</h2>
+        </div>
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full min-w-[650px] text-left text-sm">
+            <thead className="bg-muted text-xs uppercase text-foreground-muted">
+              <tr>
+                <th className="px-4 py-3">UM</th>
+                <th className="px-4 py-3">Despachado</th>
+                <th className="px-4 py-3">Facturado</th>
+                <th className="px-4 py-3">Diferencia</th>
+                <th className="px-4 py-3">Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {quantitySummary.map((row, index) => (
+                <tr key={`${row.unitCode}-${index}`}>
+                  <td className="px-4 py-3 font-semibold">
+                    {row.unitCode ?? "Sin UM"}
+                  </td>
+                  <td className="px-4 py-3">
+                    {formatBatchQuantity(row.dispatched)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {formatBatchQuantity(row.invoiced)}
+                  </td>
+                  <td className="px-4 py-3 font-semibold">
+                    {formatBatchQuantity(row.difference)}
+                  </td>
+                  <td className="px-4 py-3">{humanStatus}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="divide-y divide-border md:hidden">
+          {quantitySummary.map((row, index) => (
+            <article key={`${row.unitCode}-${index}`} className="p-4">
+              <div className="flex items-center justify-between">
+                <strong>{row.unitCode ?? "Sin UM"}</strong>
+                <span className="text-xs font-semibold">{humanStatus}</span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-3">
+                <Metric
+                  label="Despachado"
+                  value={row.dispatched}
+                  unit={row.unitCode}
+                />
+                <Metric
+                  label="Facturado"
+                  value={row.invoiced}
+                  unit={row.unitCode}
+                />
+                <Metric
+                  label="Diferencia"
+                  value={row.difference}
+                  unit={row.unitCode}
+                />
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <details className="rounded-xl border border-border bg-surface p-4 sm:p-5">
+        <summary className="cursor-pointer font-semibold">
+          Ver detalle técnico
+        </summary>
+        <p className="mt-2 text-xs text-foreground-muted">
+          Códigos, descripciones y aportes documentales. Estos datos son
+          informativos y no cambian la comparación por cantidad y UM.
+        </p>
+        <div className="mt-4 space-y-4">
+          {detail.lines.map((line) => (
+            <article key={line.id} className="rounded-lg bg-muted/35 p-3">
+              <p className="break-words text-sm font-semibold">
+                {line.productCode} · {line.productDescription}
+              </p>
+              <p className="mt-1 text-xs text-foreground-muted">
+                {line.unitCode ?? "Sin UM"} · {line.guideCount} guía(s) ·{" "}
+                {line.invoiceCount} factura(s)
+              </p>
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <Contribution
                   title="Aporte de guías"
                   rows={line.guideContributions.map((item) => ({
@@ -1348,26 +1806,33 @@ export function OrderDetailView({
                   }))}
                 />
               </div>
-            </details>
+            </article>
           ))}
-          {!detail.lines.length && (
-            <p className="p-8 text-center text-sm text-foreground-muted">
-              Todavía no hay líneas conciliadas.
-            </p>
-          )}
+          {detail.invoices.map((invoice) => (
+            <article
+              key={invoice.id}
+              className="rounded-lg border border-border p-3 text-xs text-foreground-muted"
+            >
+              <strong className="text-foreground">
+                Factura {invoice.number}
+              </strong>
+              {invoice.pcaOriginal && (
+                <p className="mt-1">PCA: {invoice.pcaOriginal}</p>
+              )}
+              <p className="mt-1">
+                Revisión documental:{" "}
+                {formatStatusLabel(invoice.extractionStatus, "No aplica")}
+              </p>
+              {invoice.lines.map((line, index) => (
+                <p key={`${invoice.id}-${index}`} className="mt-1 break-words">
+                  {line.code ?? "Sin código"} · {line.description} ·{" "}
+                  {formatBatchQuantity(line.quantity)} {line.unitCode ?? ""}
+                </p>
+              ))}
+            </article>
+          ))}
         </div>
-      </section>
-      {typeChoiceOpen && (
-        <InvoiceTypeDialog
-          orderNumber={detail.orderNumber}
-          onSelect={(type) => {
-            setTypeChoiceOpen(false);
-            setPendingPreview(null);
-            setUpload({ type, replacement: null });
-          }}
-          onClose={() => setTypeChoiceOpen(false)}
-        />
-      )}
+      </details>
       {upload && (
         <UploadDialog
           detail={detail}
@@ -1387,6 +1852,54 @@ export function OrderDetailView({
           invoice={review}
           onClose={() => setReview(null)}
         />
+      )}
+      {discardIntake && (
+        <Modal
+          title="Eliminar factura pendiente"
+          description={`Factura ${discardIntake.invoiceNumber}`}
+          icon={Trash2}
+          onClose={() => setDiscardIntake(null)}
+          pending={busy}
+        >
+          <div className="p-5 sm:p-6">
+            <p className="text-sm text-foreground-muted">
+              La factura dejará de aparecer como pendiente y no podrá
+              confirmarse. El PDF y la extracción se conservarán únicamente para
+              auditoría.
+            </p>
+            {message && (
+              <p
+                role="alert"
+                className="mt-4 rounded-lg bg-destructive-soft p-3 text-sm text-destructive"
+              >
+                {message}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col-reverse gap-3 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+            <button
+              type="button"
+              className="secondary-button justify-center"
+              onClick={() => setDiscardIntake(null)}
+              disabled={busy}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-destructive px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => void discardPendingInvoice()}
+              disabled={busy}
+            >
+              {busy ? (
+                <LoaderCircle className="size-4 animate-spin" />
+              ) : (
+                <Trash2 className="size-4" />
+              )}
+              {busy ? "Eliminando…" : "Eliminar factura"}
+            </button>
+          </div>
+        </Modal>
       )}
     </MotionPage>
   );

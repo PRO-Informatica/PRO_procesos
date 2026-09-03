@@ -1,9 +1,14 @@
 "use client";
 
-import { CalendarClock, ExternalLink, PackageOpen, Truck, X } from "lucide-react";
+import { CalendarClock, CheckCircle2, ExternalLink, PackageOpen, Truck, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { LoadingButton } from "@/components/feedback/loading-button";
+import { useGlobalPending } from "@/components/feedback/global-loading-provider";
 import { formatStatusLabel } from "@/lib/status-labels";
+
+import { mutateProgrammingAction } from "../actions";
 
 import {
   formatProgrammingDateTime,
@@ -11,7 +16,7 @@ import {
   formatProgrammingStatus,
   programmingStatusTone,
 } from "../formatters";
-import type { ProgrammingItem } from "../types";
+import { initialProgrammingMutationState, type ProgrammingItem } from "../types";
 
 function Detail({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -27,12 +32,37 @@ function Detail({ label, value }: { label: string; value: React.ReactNode }) {
 export function ProgrammingPreviewDrawer({
   item,
   timezone,
+  canConfirm,
+  onUpdated,
   onClose,
 }: {
   item: ProgrammingItem | null;
   timezone: string;
+  canConfirm: boolean;
+  onUpdated: (message: string) => void;
   onClose: () => void;
 }) {
+  const [availabilityNow] = useState(() => Date.now());
+  const canDirectConfirm = Boolean(
+    item && item.status === "PENDING_CONFIRMATION" &&
+    new Date(item.scheduledAt).valueOf() >= availabilityNow,
+  );
+  const [state, confirmAction, pending] = useActionState(
+    mutateProgrammingAction,
+    initialProgrammingMutationState,
+  );
+  const handledSuccess = useRef(false);
+  useGlobalPending(pending, "Confirmando programación…", "Actualizando el estado y la trazabilidad.");
+  useEffect(() => {
+    if (pending) {
+      handledSuccess.current = false;
+      return;
+    }
+    if (state.status === "success" && item && !handledSuccess.current) {
+      handledSuccess.current = true;
+      onUpdated("Programación confirmada correctamente.");
+    }
+  }, [item, onUpdated, pending, state.status]);
   return (
     <AnimatePresence>
       {item && (
@@ -92,14 +122,6 @@ export function ProgrammingPreviewDrawer({
 
               <dl className="mt-6 grid grid-cols-2 gap-x-5 gap-y-6 rounded-xl border border-border bg-muted/30 p-4">
                 <Detail label="Proveedor" value={item.supplierName} />
-                <Detail
-                  label="Confirmado"
-                  value={
-                    item.confirmedQuantity === null
-                      ? "Pendiente"
-                      : `${formatProgrammingQuantity(item.confirmedQuantity)} ${item.unitCode}`
-                  }
-                />
                 {item.requiresPumping && <Detail label="Bombeo" value="Sí" />}
                 {item.placementGroup && <Detail label="Grupo" value={item.placementGroup} />}
                 {item.estimatedWorkItemLabel && (
@@ -107,7 +129,7 @@ export function ProgrammingPreviewDrawer({
                 )}
                 <Detail label="Creado por" value={item.createdByName} />
                 <Detail
-                  label="Confirmación"
+                  label="Persona que confirmó"
                   value={
                     item.confirmedAt
                       ? `${item.confirmedByName || "Usuario no disponible"} · ${formatProgrammingDateTime(item.confirmedAt, timezone)}`
@@ -213,13 +235,22 @@ export function ProgrammingPreviewDrawer({
             </div>
 
             <div className="border-t border-border p-4 sm:p-5">
-              <Link
-                href={`/programming/${item.id}`}
-                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white transition-colors hover:bg-brand-strong"
-              >
-                Ver detalle
-                <ExternalLink aria-hidden="true" className="size-4" />
-              </Link>
+              {state.status === "error" && <p className="mb-3 rounded-lg bg-destructive-soft px-3 py-2 text-xs text-destructive" role="alert">{state.message}</p>}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Link href={`/programming/${item.id}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted">
+                  Ver detalle <ExternalLink aria-hidden="true" className="size-4" />
+                </Link>
+                {canDirectConfirm && canConfirm ? (
+                  <form action={confirmAction}>
+                    <input type="hidden" name="intent" value="confirm" />
+                    <input type="hidden" name="projectId" value={item.projectId} />
+                    <input type="hidden" name="programmingId" value={item.id} />
+                    <input type="hidden" name="expectedVersion" value={item.version} />
+                    <input type="hidden" name="confirmedQuantity" value={item.requestedQuantity} />
+                    <LoadingButton loadingLabel="Confirmando…" className="primary-button w-full"><CheckCircle2 aria-hidden="true" className="size-4" /> Confirmar</LoadingButton>
+                  </form>
+                ) : null}
+              </div>
             </div>
           </motion.aside>
         </>

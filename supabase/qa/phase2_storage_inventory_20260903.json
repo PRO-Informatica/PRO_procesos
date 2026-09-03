@@ -1,0 +1,29 @@
+{
+  "captured_at": "2026-09-03",
+  "mode": "DRY_RUN",
+  "operational_documents": 21,
+  "storage_objects": 21,
+  "objects": [
+    { "bucket": "private-documents", "path": "project/a49bb7a1-7b98-4b04-9c6f-710ed7be6620/documents/890ba33e-d593-4423-8126-d28bb9e21229/4429af52-a547-4af9-a64e-6c841e4ba280" },
+    { "bucket": "private-documents", "path": "project/a49bb7a1-7b98-4b04-9c6f-710ed7be6620/documents/eeee5c43-83c1-4806-8bc3-8e9dcd2f0bc6/7ac7c50e-fa8e-4beb-971a-f95cc9d544ea" },
+    { "bucket": "private-documents", "path": "project/2b372d77-4bfa-4cd7-9fcc-18d49c952eda/documents/a350b84d-5415-4f0d-b1cf-72cb8039846e/22d3f032-ddef-4908-9b9e-c57f36567c82" },
+    { "bucket": "private-documents", "path": "project/2b372d77-4bfa-4cd7-9fcc-18d49c952eda/documents/c5412574-c55b-4003-a39f-34ecf198f8b7/0069a210-14a6-431d-bbb0-b6e64c56e612" },
+    { "bucket": "private-documents", "path": "project/2b372d77-4bfa-4cd7-9fcc-18d49c952eda/documents/cbfa2547-c733-4829-8a99-6daa33bca628/6e328758-0f5a-481b-8214-d7fe242a7258" },
+    { "bucket": "private-documents", "path": "project/a49bb7a1-7b98-4b04-9c6f-710ed7be6620/documents/1f62d3d4-bc9d-4ecb-83c0-3a0593cadf3b/6e836391-c533-400f-8c4f-c0f1f80860a7" },
+    { "bucket": "private-documents", "path": "project/2b372d77-4bfa-4cd7-9fcc-18d49c952eda/documents/5e8be7b4-b698-44be-9507-6e25f55cb989/9c183a58-7703-4d28-b424-e95757030da1" },
+    { "bucket": "private-documents", "path": "project/a49bb7a1-7b98-4b04-9c6f-710ed7be6620/documents/99dae7b6-1b7b-4291-80ba-e209bbc1f647/ba64dd61-98cf-4c07-91b6-1b69d0be0611" },
+    { "bucket": "private-documents", "path": "project/a49bb7a1-7b98-4b04-9c6f-710ed7be6620/documents/fa5fc01f-bf46-413c-ad42-56af1b853434/55172ea6-48db-4cff-970e-5988593daec9" },
+    { "bucket": "private-documents", "path": "project/2b372d77-4bfa-4cd7-9fcc-18d49c952eda/documents/63863607-6e51-42fe-b3c8-9684ad2036cd/d9272f08-08e4-4dbe-a4fe-6ede99bebfce" },
+    { "bucket": "private-documents", "path": "project/2b372d77-4bfa-4cd7-9fcc-18d49c952eda/documents/a9f5fbf0-0d18-463d-948b-ed4ccaba6caf/13cd38a6-48f5-4198-b44c-5da4078ca5d3" },
+    { "bucket": "private-documents", "path": "project/2b372d77-4bfa-4cd7-9fcc-18d49c952eda/documents/7ac76572-b09d-41c6-81b7-cca38677ff3e/17834f92-36a8-4ab0-b8f8-57c561ec9f25" },
+    { "bucket": "private-documents", "path": "project/2b372d77-4bfa-4cd7-9fcc-18d49c952eda/documents/34e74bfe-c5e8-4006-870c-351aca8dae84/e1d87a7c-30db-4d48-8d77-a85930994080" },
+    { "bucket": "private-documents", "path": "project/0b597337-3937-42a7-a5d2-83977244c22d/documents/d0bb00f6-c4db-407a-871b-8d168ec04711/efcd5396-b3de-42cb-8625-eb3708a0668d" },
+    { "bucket": "private-documents", "path": "project/0b597337-3937-42a7-a5d2-83977244c22d/documents/ba9ca52c-2c0c-4615-8a07-b8493f489610/b13017aa-ce06-49a0-a0a0-0b9dcc55744b" },
+    { "bucket": "private-documents", "path": "project/0b597337-3937-42a7-a5d2-83977244c22d/documents/04066c64-a876-485c-bc0f-f3a47071c4eb/324c074b-b721-4e01-ab49-b65c8a6182f1" },
+    { "bucket": "private-documents", "path": "project/0b597337-3937-42a7-a5d2-83977244c22d/documents/ecf6e8c7-9427-4c74-ad5d-a75944a35f0a/124b4e5c-3e10-440a-880c-43dbf727fe6f" },
+    { "bucket": "private-documents", "path": "project/0b597337-3937-42a7-a5d2-83977244c22d/documents/8e2d9566-846f-4538-856a-302c6c35f8a1/5042d820-4161-4de1-83ab-884fcf3ee6cb" },
+    { "bucket": "private-documents", "path": "project/0b597337-3937-42a7-a5d2-83977244c22d/documents/94fb5ace-6152-4211-a83d-e7252bee4b67/2010ddd0-d589-402b-b82c-f1155134b663" },
+    { "bucket": "private-documents", "path": "project/a49bb7a1-7b98-4b04-9c6f-710ed7be6620/documents/f8d1ddb7-2121-48d7-ab98-df4b0714022a/e4fc69c4-13ff-4239-a708-8422478f47df" },
+    { "bucket": "private-documents", "path": "project/a49bb7a1-7b98-4b04-9c6f-710ed7be6620/documents/d0254f50-bbd4-47ef-b068-a3f6c94c1700/11f17c94-71d8-4539-a693-654072afb02c" }
+  ]
+}

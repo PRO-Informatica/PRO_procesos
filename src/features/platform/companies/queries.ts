@@ -27,6 +27,7 @@ type ProjectRow = {
   company_id: string;
   name: string;
   code: string;
+  address: string | null;
   status: string;
   timezone: string | null;
   start_date: string | null;
@@ -254,7 +255,7 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
     supabase
       .from("projects")
       .select(
-        "id, company_id, name, code, status, timezone, start_date, estimated_end_date",
+        "id, company_id, name, code, address, status, timezone, start_date, estimated_end_date",
       )
       .eq("company_id", companyId)
       .order("name"),
@@ -354,6 +355,7 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
       id: project.id,
       name: project.name,
       code: project.code,
+      address: project.address,
       status: project.status,
       timezone: project.timezone ?? "America/Guatemala",
       startDate: project.start_date,

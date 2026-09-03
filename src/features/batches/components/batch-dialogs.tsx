@@ -125,7 +125,7 @@ export function AddGuideDialog({ projectId, batchId, guides, onClose }: { projec
   useGlobalPending(pending, "Agregando guía…", "Confirmando elegibilidad y actualizando el despacho.");
   useEffect(() => { if (state.status === "success") router.refresh(); }, [router, state.status]);
   return (
-    <Modal title="Agregar guía" description="Solo aparecen despachos REGISTERED con fecha dentro de esta semana." icon={Plus} onClose={onClose} pending={pending}>
+    <Modal title="Agregar guía" description="Aparecen guías despachadas con fecha dentro de esta semana." icon={Plus} onClose={onClose} pending={pending}>
       <form action={action}>
         <input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="batchId" value={batchId} />
         <div className="p-5 sm:p-6">
@@ -148,7 +148,7 @@ export function RemoveGuideDialog({ projectId, batchId, relation, onClose }: { p
   useGlobalPending(pending, "Removiendo guía…", "Conservando el historial de la relación.");
   useEffect(() => { if (state.status === "success") router.refresh(); }, [router, state.status]);
   return (
-    <Modal title="Remover guía" description={`${relation.guideNumber} volverá a REGISTERED si no conserva otra relación activa.`} icon={AlertTriangle} onClose={onClose} pending={pending}>
+    <Modal title="Remover guía" description={`${relation.guideNumber} se retirará del lote sin cambiar el estado operativo del despacho.`} icon={AlertTriangle} onClose={onClose} pending={pending}>
       <form action={action}>
         <input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="batchId" value={batchId} /><input type="hidden" name="guideId" value={relation.guideId} />
         <div className="p-5 sm:p-6"><label className="form-label" htmlFor="remove-reason">Motivo obligatorio *</label><textarea id="remove-reason" name="reason" required maxLength={1000} rows={4} className="form-input resize-y" />{state.message && <p role={state.status === "error" ? "alert" : "status"} className={`mt-4 rounded-lg px-4 py-3 text-sm ${state.status === "error" ? "bg-destructive-soft text-destructive" : "bg-success-soft text-success"}`}>{state.message}</p>}</div>

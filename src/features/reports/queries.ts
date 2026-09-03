@@ -24,11 +24,11 @@ export async function getGuideReport(projects: ProjectInput[], filters: GuideRep
   if (programmingResult.error) throw new Error(`No fue posible cargar las Programaciones. ${programmingResult.error.message}`);
   const programs = (programmingResult.data ?? []) as Row[]; if (!programs.length) return blank;
   const programmingIds = programs.map((p) => String(p.id));
-  const dispatchesResult = await supabase.from("dispatches").select("id, project_id, supplier_id, programming_id, status, result, created_by, created_at").in("programming_id", programmingIds).order("created_at");
+  const dispatchesResult = await supabase.from("dispatches").select("id, project_id, supplier_id, programming_id, status, result, order_number, real_volume, real_unit_code, arrival_at, created_by, created_at").in("programming_id", programmingIds).order("created_at");
   if (dispatchesResult.error) throw new Error(`No fue posible cargar los Despachos relacionados. ${dispatchesResult.error.message}`);
   const dispatches = (dispatchesResult.data ?? []) as Row[]; const dispatchIds = dispatches.map((d) => String(d.id));
   const [guidesResult, incidentsResult] = await Promise.all([
-    dispatchIds.length ? supabase.from("dispatch_guides").select("id, project_id, dispatch_id, guide_number, order_number, guide_date, quantity, received_quantity, unit_code, load_at").in("dispatch_id", dispatchIds) : empty<Row>(),
+    dispatchIds.length ? supabase.from("dispatch_guides").select("id, project_id, dispatch_id, guide_number, order_number, guide_date, quantity, unit_code").in("dispatch_id", dispatchIds) : empty<Row>(),
     dispatchIds.length ? supabase.from("dispatch_incidents").select("id, dispatch_id").in("dispatch_id", dispatchIds) : empty<{ id: string; dispatch_id: string }>(),
   ]);
   if (guidesResult.error ?? incidentsResult.error) throw new Error("No fue posible resolver Guías e incidencias del reporte.");
@@ -58,14 +58,74 @@ export async function getGuideReport(projects: ProjectInput[], filters: GuideRep
   const invoiceIds = [...new Set((orderRelations.data ?? []).map((r) => r.invoice_id))]; const invoiceResult = invoiceIds.length ? await supabase.from("invoices").select("id, invoice_type, status, replaces_invoice_id").in("id", invoiceIds) : { data: [], error: null };
   if (invoiceResult.error) throw new Error("No fue posible resolver el estado de las Facturas.");
 
-  const suppliersMap = new Map((suppliers.data ?? []).map((s) => [s.id, s.name])); const profilesMap = new Map((profiles.data ?? []).map((p) => [p.id, p.full_name?.trim() || "Usuario no disponible"])); const dispatchByProgram = new Map<string, Row[]>(); for (const d of dispatches) dispatchByProgram.set(String(d.programming_id), [...(dispatchByProgram.get(String(d.programming_id)) ?? []), d]); const guideByDispatch = new Map(guides.map((g) => [String(g.dispatch_id), g]));
+  const suppliersMap = new Map((suppliers.data ?? []).map((s) => [s.id, s.name])); const profilesMap = new Map((profiles.data ?? []).map((p) => [p.id, p.full_name?.trim() || "Usuario no disponible"])); const dispatchByProgram = new Map<string, Row[]>(); for (const d of dispatches) dispatchByProgram.set(String(d.programming_id), [...(dispatchByProgram.get(String(d.programming_id)) ?? []), d]); const guideByDispatch = new Map<string, Row[]>(); for (const guide of guides) guideByDispatch.set(String(guide.dispatch_id), [...(guideByDispatch.get(String(guide.dispatch_id)) ?? []), guide]);
   const incidentsByDispatch = new Map<string, string[]>(); for (const i of incidentsResult.data ?? []) incidentsByDispatch.set(i.dispatch_id, [...(incidentsByDispatch.get(i.dispatch_id) ?? []), i.id]); const guideDocCount = new Map<string, number>(); for (const d of guideDocs.data ?? []) guideDocCount.set(d.guide_id, (guideDocCount.get(d.guide_id) ?? 0) + 1); const incidentDocCount = new Map<string, number>(); for (const d of incidentDocs.data ?? []) incidentDocCount.set(d.incident_id, (incidentDocCount.get(d.incident_id) ?? 0) + 1);
   const orderMap = new Map(orders.map((o) => [`${o.project_id}:${o.batch_id}:${o.normalized_order_number}`, o])); const relationMap = new Map<string, string[]>(); for (const r of orderRelations.data ?? []) relationMap.set(r.reconciliation_order_id, [...(relationMap.get(r.reconciliation_order_id) ?? []), r.invoice_id]); const invoiceMap = new Map((invoiceResult.data ?? []).map((i) => [i.id, i])); const invoicedMap = new Map<string, number>(); for (const l of orderLines.data ?? []) invoicedMap.set(`${l.reconciliation_order_id}:${l.unit_code ?? ""}`, (invoicedMap.get(`${l.reconciliation_order_id}:${l.unit_code ?? ""}`) ?? 0) + numeric(l.invoiced_total));
 
   let programming: ProgrammingReportItem[] = programs.map((program) => {
     const project = projectMap.get(String(program.project_id)); const programDispatches = dispatchByProgram.get(String(program.id)) ?? [];
-    let children: GuideReportRow[] = programDispatches.map((dispatch) => { const guide = guideByDispatch.get(String(dispatch.id)); const guideId = String(guide?.id ?? `dispatch:${dispatch.id}`); const batchId = guide ? batchByGuide.get(String(guide.id)) ?? null : null; const orderNumber = normalizeOrder(guide?.order_number); const order = batchId && orderNumber ? orderMap.get(`${program.project_id}:${batchId}:${orderNumber}`) : undefined; const relatedInvoices = order ? relationMap.get(order.id) ?? [] : []; const productInvoices = relatedInvoices.map((id) => invoiceMap.get(id)).filter((invoice) => invoice?.invoice_type === "PRODUCT"); const currentProduct = productInvoices.filter((invoice) => !["SUPERSEDED", "CANCELLED"].includes(invoice!.status)); const unit = String(guide?.unit_code ?? program.unit_code ?? ""); const invoiced = order ? invoicedMap.get(`${order.id}:${unit}`) ?? 0 : 0; const documented = numeric(guide?.quantity); const incidentList = incidentsByDispatch.get(String(dispatch.id)) ?? []; const orderStatus = effectiveOrderStatus(order?.reconciliation_status ?? null, currentProduct.length > 0); const reinvoicingRequired = orderStatus === "REINVOICING" || productInvoices.some((invoice) => invoice?.status === "REINVOICING" || invoice?.replaces_invoice_id);
-      return { guideId, dispatchId: String(dispatch.id), projectId: String(program.project_id), projectName: project?.name ?? "Proyecto", timezone: project?.timezone ?? "America/Guatemala", guideNumber: String(guide?.guide_number ?? "Sin guía"), guideDate: String(guide?.guide_date ?? String(program.scheduled_at).slice(0, 10)), guideTime: guide?.load_at ? String(guide.load_at) : null, supplierId: String(program.supplier_id), supplierName: suppliersMap.get(String(program.supplier_id)) ?? "Proveedor no disponible", programmingCode: programmingCode(String(program.id)), orderNumber, batchId, batchCode: batchId ? batchMap.get(batchId) ?? null : null, documentedQuantity: documented, unitCode: unit, receivedQuantity: numeric(guide?.received_quantity), physicalResult: String(dispatch.result ?? "PENDING"), dispatchStatus: String(dispatch.status), registeredById: String(dispatch.created_by), registeredByName: profilesMap.get(String(dispatch.created_by)) ?? "Usuario no disponible", createdAt: String(dispatch.created_at), incidentCount: incidentList.length, documentCount: (guideDocCount.get(guideId) ?? 0) + incidentList.reduce((sum, id) => sum + (incidentDocCount.get(id) ?? 0), 0), orderStatus, reinvoicingRequired, reconciliationStatus: order?.reconciliation_status ?? "WITHOUT_ORDER", productInvoicedQuantity: invoiced, difference: invoiced - documented, invoiceCount: relatedInvoices.length };
+    let children: GuideReportRow[] = programDispatches.flatMap((dispatch) => {
+      const dispatchGuides = guideByDispatch.get(String(dispatch.id)) ?? [];
+      return (dispatchGuides.length ? dispatchGuides : [undefined]).map((guide) => {
+        const guideId = String(guide?.id ?? `dispatch:${dispatch.id}`);
+        const batchId = guide ? batchByGuide.get(String(guide.id)) ?? null : null;
+        const orderNumber = normalizeOrder(dispatch.order_number);
+        const order = batchId && orderNumber
+          ? orderMap.get(`${program.project_id}:${batchId}:${orderNumber}`)
+          : undefined;
+        const relatedInvoices = order ? relationMap.get(order.id) ?? [] : [];
+        const productInvoices = relatedInvoices
+          .map((id) => invoiceMap.get(id))
+          .filter((invoice) => invoice?.invoice_type === "PRODUCT");
+        const currentProduct = productInvoices.filter(
+          (invoice) => !["SUPERSEDED", "CANCELLED"].includes(invoice!.status),
+        );
+        const unit = String(guide?.unit_code ?? program.unit_code ?? "");
+        const invoiced = order ? invoicedMap.get(`${order.id}:${unit}`) ?? 0 : 0;
+        const documented = numeric(guide?.quantity);
+        const incidentList = incidentsByDispatch.get(String(dispatch.id)) ?? [];
+        const orderStatus = effectiveOrderStatus(
+          order?.reconciliation_status ?? null,
+          currentProduct.length > 0,
+        );
+        const reinvoicingRequired = orderStatus === "REINVOICING"
+          || productInvoices.some(
+            (invoice) => invoice?.status === "REINVOICING" || invoice?.replaces_invoice_id,
+          );
+        return {
+          guideId,
+          dispatchId: String(dispatch.id),
+          projectId: String(program.project_id),
+          projectName: project?.name ?? "Proyecto",
+          timezone: project?.timezone ?? "America/Guatemala",
+          guideNumber: String(guide?.guide_number ?? "Sin guía"),
+          guideDate: String(guide?.guide_date ?? String(program.scheduled_at).slice(0, 10)),
+          guideTime: dispatch.arrival_at ? String(dispatch.arrival_at) : null,
+          supplierId: String(program.supplier_id),
+          supplierName: suppliersMap.get(String(program.supplier_id)) ?? "Proveedor no disponible",
+          programmingCode: programmingCode(String(program.id)),
+          orderNumber,
+          batchId,
+          batchCode: batchId ? batchMap.get(batchId) ?? null : null,
+          documentedQuantity: documented,
+          unitCode: unit,
+          receivedQuantity: documented,
+          physicalResult: String(dispatch.result ?? "PENDING"),
+          dispatchStatus: String(dispatch.status),
+          registeredById: String(dispatch.created_by),
+          registeredByName: profilesMap.get(String(dispatch.created_by)) ?? "Usuario no disponible",
+          createdAt: String(dispatch.created_at),
+          incidentCount: incidentList.length,
+          documentCount: (guideDocCount.get(guideId) ?? 0)
+            + incidentList.reduce((sum, id) => sum + (incidentDocCount.get(id) ?? 0), 0),
+          orderStatus,
+          reinvoicingRequired,
+          reconciliationStatus: order?.reconciliation_status ?? "WITHOUT_ORDER",
+          productInvoicedQuantity: invoiced,
+          difference: invoiced - documented,
+          invoiceCount: relatedInvoices.length,
+        };
+      });
     });
     if (filters.orderNumber) children = children.filter((d) => d.orderNumber?.toLowerCase().includes(filters.orderNumber!.toLowerCase())); if (filters.batchId) children = children.filter((d) => d.batchId === filters.batchId); if (filters.dispatchStatus) children = children.filter((d) => d.dispatchStatus === filters.dispatchStatus); if (filters.orderStatus) children = children.filter((d) => filters.orderStatus === "REINVOICING" ? d.reinvoicingRequired : d.orderStatus === filters.orderStatus); if (filters.reconciliationStatus) children = children.filter((d) => d.reconciliationStatus === filters.reconciliationStatus); if (filters.withIncidents === "yes") children = children.filter((d) => d.incidentCount > 0); if (filters.withIncidents === "no") children = children.filter((d) => d.incidentCount === 0);
     return { id: String(program.id), code: programmingCode(String(program.id)), projectId: String(program.project_id), projectName: project?.name ?? "Proyecto", timezone: project?.timezone ?? "America/Guatemala", supplierId: String(program.supplier_id), supplierName: suppliersMap.get(String(program.supplier_id)) ?? "Proveedor no disponible", scheduledAt: String(program.scheduled_at), requestedQuantity: numeric(program.requested_quantity), confirmedQuantity: program.confirmed_quantity === null ? null : numeric(program.confirmed_quantity), unitCode: String(program.unit_code), status: String(program.status), createdById: String(program.created_by), createdByName: profilesMap.get(String(program.created_by)) ?? "Usuario no disponible", dispatches: children };

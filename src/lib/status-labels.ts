@@ -25,6 +25,7 @@ const STATUS_LABELS: Readonly<Record<string, string>> = {
   RECONCILED: "Conciliado",
   REQUIRES_CORRECTION: "Requiere corrección",
   COMPLETE: "Completo",
+  DISPATCHED: "Despachado",
   PARTIAL: "Parcial",
   NOT_DISPATCHED: "No despachado",
   RETURNED: "Devuelto",

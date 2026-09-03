@@ -37,6 +37,7 @@ export type ProgrammingLine = {
 
 export type ProgrammingItem = {
   id: string;
+  version: number;
   projectId: string;
   supplierId: string;
   supplierName: string;
@@ -145,14 +146,46 @@ export type CreateProgrammingState = {
   };
 };
 
+export type BulkProgrammingPreviewRow = {
+  sourceRow: number;
+  scheduledAt: string;
+  concreteType: string;
+  quantity: string;
+  unitCode: string;
+  placementElement: string;
+  truckInterval: string;
+  supplierId: string;
+  notes: string;
+  errors: string[];
+};
+
+export type ExtractProgrammingWorkbookState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  fileName?: string;
+  rows?: BulkProgrammingPreviewRow[];
+};
+
+export type CreateProgrammingBatchState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  programmingIds?: string[];
+};
+
+export const initialExtractProgrammingWorkbookState: ExtractProgrammingWorkbookState = {
+  status: "idle",
+};
+
+export const initialCreateProgrammingBatchState: CreateProgrammingBatchState = {
+  status: "idle",
+};
+
 export const initialCreateProgrammingState: CreateProgrammingState = {
   status: "idle",
 };
 
 export type ProgrammingMutationIntent =
   | "edit"
-  | "submit"
-  | "return-to-draft"
   | "confirm"
   | "cancel"
   | "close";

@@ -51,8 +51,8 @@ function batchError(message: string) {
     return "La semana debe iniciar lunes y finalizar domingo.";
   if (value.includes("BATCH_GUIDE_DATE_OUTSIDE_WEEK"))
     return "La fecha de la guía no pertenece a la semana del lote.";
-  if (value.includes("BATCH_GUIDE_DISPATCH_NOT_REGISTERED"))
-    return "La guía ya no pertenece a un despacho registrado elegible.";
+  if (value.includes("BATCH_GUIDE_OPERATION_NOT_DISPATCHED"))
+    return "Una operación no despachada no puede agregarse al lote.";
   if (value.includes("GUIDE_ALREADY_IN_ACTIVE_BATCH"))
     return "La guía ya tiene una relación activa con otro lote.";
   if (value.includes("BATCH_NOT_EDITABLE"))
@@ -79,6 +79,11 @@ function refreshOrder(batchId: string, orderId?: string) {
 
 function invoiceError(message: string) {
   const value = message.toUpperCase();
+  if (
+    value.includes("UQ_INVOICE_SUPPLIER_SERIES_NUMBER") ||
+    value.includes("DUPLICATE KEY VALUE")
+  )
+    return "Ese número de factura ya está registrado para el proveedor. Elimina este intento pendiente y carga la factura correcta.";
   if (value.includes("MIXTO_LISTO_ORDER_MISMATCH"))
     return "La factura cargada corresponde a otro Pedido. Carga la factura correcta o corrige el PCA si la extracción fue incorrecta.";
   if (
@@ -526,6 +531,65 @@ export async function confirmMixtoListoInvoice(input: {
     return { status: "error" as const, message: invoiceError(error.message) };
   refreshOrder(input.batchId, input.orderId);
   return { status: "success" as const, invoiceId: String(data) };
+}
+
+export async function discardMixtoListoInvoiceIntake(input: {
+  projectId: string;
+  batchId: string;
+  orderId: string;
+  intakeId: string;
+}) {
+  if (
+    ![input.projectId, input.batchId, input.orderId, input.intakeId].every(
+      (value) => UUID.test(value),
+    )
+  ) {
+    return {
+      status: "error" as const,
+      message: "La factura pendiente seleccionada no es válida.",
+    };
+  }
+  if (!(await authorize(input.projectId, "invoice.create"))) {
+    return {
+      status: "error" as const,
+      message: "No tienes permiso para eliminar facturas pendientes.",
+    };
+  }
+
+  const { error } = await (
+    await createClient()
+  ).rpc("discard_mixto_listo_invoice_intake", {
+    p_intake_id: input.intakeId,
+    p_reason: "Factura pendiente eliminada por el usuario desde el Pedido.",
+  });
+  if (error) {
+    const value = error.message.toUpperCase();
+    if (value.includes("CONFIRMED_INTAKE_NOT_DISCARDABLE")) {
+      return {
+        status: "error" as const,
+        message: "La factura ya fue confirmada y no puede eliminarse.",
+      };
+    }
+    if (value.includes("MIXTO_LISTO_INTAKE_NOT_FOUND")) {
+      return {
+        status: "error" as const,
+        message: "La factura pendiente ya no existe.",
+      };
+    }
+    if (value.includes("PERMISSION_DENIED")) {
+      return {
+        status: "error" as const,
+        message: "No tienes permiso para eliminar esta factura pendiente.",
+      };
+    }
+    return {
+      status: "error" as const,
+      message: "No fue posible eliminar la factura pendiente.",
+    };
+  }
+
+  refreshOrder(input.batchId, input.orderId);
+  return { status: "success" as const };
 }
 
 export type PrepareInvoiceUploadInput = {

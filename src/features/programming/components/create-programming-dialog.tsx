@@ -20,6 +20,15 @@ function splitScheduledAt(value: string) {
   return { date, time: time.slice(0, 5) };
 }
 
+function todayInTimezone(timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric", month: "2-digit", day: "2-digit", timeZone: timezone,
+  }).formatToParts(new Date());
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
 export function CreateProgrammingDialog({
   open,
   projectId,
@@ -49,7 +58,7 @@ export function CreateProgrammingDialog({
   useGlobalPending(
     pending,
     "Creando programación…",
-    "Se guardará como borrador sin confirmarla automáticamente.",
+    "Se guardará pendiente de confirmación.",
   );
 
   useEffect(() => {
@@ -87,7 +96,7 @@ export function CreateProgrammingDialog({
                     Nueva programación
                   </h2>
                   <p className="mt-1 text-xs text-foreground-muted">
-                    Fecha y hora en {timezone}. Estado inicial: Borrador.
+                    Fecha y hora en {timezone}. Estado inicial: Pendiente de confirmación.
                   </p>
                 </div>
               </div>
@@ -151,6 +160,7 @@ export function CreateProgrammingDialog({
                       id="programming-scheduled-date"
                       type="date"
                       required
+                      min={todayInTimezone(timezone)}
                       value={scheduledDate}
                       onChange={(event) => setScheduledDate(event.target.value)}
                       className="form-input"
@@ -211,7 +221,7 @@ export function CreateProgrammingDialog({
                 >
                   Cancelar
                 </button>
-                <LoadingButton loadingLabel="Creando borrador…">
+                <LoadingButton loadingLabel="Creando programación…">
                   Crear programación
                 </LoadingButton>
               </div>

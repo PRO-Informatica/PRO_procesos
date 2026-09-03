@@ -8,23 +8,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 import type {
-  CorrectionMutationState,
   DispatchMutationState,
   IncidentMutationState,
   UploadActionResult,
 } from "./types";
-import { formatGeneratedGuideNumber } from "./formatters";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const RESULTS = [
-  "COMPLETE",
-  "PARTIAL",
-  "RETURNED",
-  "REJECTED",
-  "NOT_DISPATCHED",
-  "CANCELLED",
-];
+const RESULTS = ["DISPATCHED", "NOT_DISPATCHED"];
 const RESPONSIBILITIES = ["SUPPLIER", "PROJECT", "SHARED", "UNDETERMINED"];
 const CHARGES = ["YES", "NO", "UNDETERMINED"];
 
@@ -40,32 +31,20 @@ async function authorize(projectId: string, permission: string) {
     context.status !== "ready" ||
     context.activeProject?.id !== projectId ||
     !context.permissions.includes(permission)
-  )
+  ) {
     return null;
-  return { profile, context };
-}
-
-async function authorizeAny(projectId: string, permissions: string[]) {
-  const profile = await requireActiveProfile();
-  const context = await getProjectContext(profile.id);
-  if (
-    context.status !== "ready" ||
-    context.activeProject?.id !== projectId ||
-    !permissions.some((permission) => context.permissions.includes(permission))
-  )
-    return null;
+  }
   return { profile, context };
 }
 
 function localToIso(value: string, timezone: string) {
-  if (!value) return null;
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
   if (!match) return null;
-  const [, y, m, d, h, minute] = match;
-  const desired = Date.UTC(+y, +m - 1, +d, +h, +minute);
+  const [, year, month, day, hour, minute] = match;
+  const desired = Date.UTC(+year, +month - 1, +day, +hour, +minute);
   let guess = desired;
   try {
-    for (let i = 0; i < 3; i += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       const parts = new Intl.DateTimeFormat("en-CA", {
         year: "numeric",
         month: "2-digit",
@@ -96,284 +75,160 @@ function localToIso(value: string, timezone: string) {
 
 function dispatchError(message: string) {
   const value = message.toUpperCase();
-  if (value.includes("PERMISSION_DENIED"))
-    return "No tienes permiso para registrar despachos.";
-  if (value.includes("DISPATCH_PROGRAMMING_EXPIRED"))
-    return "La fecha programada ya venció y esta programación no acepta nuevos despachos.";
+  if (value.includes("DISPATCH_VERSION_CONFLICT"))
+    return "El despacho cambió. Recarga la página antes de continuar.";
+  if (value.includes("PROGRAMMING_DISPATCH_ALREADY_EXISTS"))
+    return "Esta programación ya tiene un despacho.";
   if (value.includes("DISPATCH_PROGRAMMING_INVALID_STATE"))
     return "La programación debe estar confirmada o en ejecución.";
-  if (value.includes("DISPATCH_SUPPLIER_INACTIVE"))
-    return "El proveedor de la programación está inactivo.";
-  if (value.includes("DISPATCH_SUPPLIER_NOT_LINKED"))
-    return "El proveedor ya no está vinculado al proyecto.";
-  if (value.includes("DISPATCH_TEMPLATE_AMBIGUOUS"))
-    return "Hay más de una plantilla publicada aplicable. Un administrador debe dejar una única plantilla de guía vigente.";
-  if (value.includes("DISPATCH_TEMPLATE_INVALID"))
-    return "No existe una plantilla publicada de guía aplicable a este proveedor.";
-  if (value.includes("DISPATCH_MIXED_UNITS_NOT_SUPPORTED"))
-    return "Todos los productos deben usar la misma unidad de medida.";
-  if (value.includes("DISPATCH_PROGRAMMING_UNIT_MISMATCH"))
-    return "La unidad del despacho debe coincidir con la unidad de la programación.";
-  if (value.includes("DISPATCH_RESULT_QUANTITY_MISMATCH"))
-    return "Las cantidades físicas no corresponden al resultado seleccionado.";
-  if (value.includes("INVALID_OR_INACTIVE_UNIT_OF_MEASURE"))
-    return "Una unidad de medida ya no está disponible.";
-  if (value.includes("DISPATCH_INVALID_TIME_SEQUENCE"))
-    return "Las horas deben cumplir carga ≤ llegada ≤ salida.";
-  if (value.includes("GUIDE_NUMBER_REQUIRED"))
-    return "Ingresa el número de guía.";
-  if (value.includes("ORDER_NUMBER_REQUIRED"))
-    return "Ingresa el número de pedido.";
-  return "No fue posible registrar el despacho. Revisa los datos e intenta nuevamente.";
-}
-
-function correctionError(
-  message: string,
-): Pick<CorrectionMutationState, "message" | "conflict"> {
-  const value = message.toUpperCase();
-  if (value.includes("DISPATCH_VERSION_CONFLICT"))
-    return {
-      conflict: true,
-      message:
-        "Este despacho cambió desde que abriste la pantalla. Recarga los datos antes de intentar otra corrección.",
-    };
-  if (value.includes("DISPATCH_GUIDE_INVOICE_LOCKED"))
-    return {
-      message: "La guía está vinculada a una factura y ya no puede corregirse.",
-    };
+  if (value.includes("DISPATCH_COMPLETED_NOT_EDITABLE"))
+    return "El despacho está completado y ya no admite cambios.";
+  if (value.includes("DISPATCH_GUIDE_NUMBER_ALREADY_EXISTS"))
+    return "Ya existe una guía con ese número en este despacho.";
   if (value.includes("DISPATCH_GUIDE_BATCH_LOCKED"))
-    return {
-      message:
-        "La guía tiene una asociación de lote activa o histórica y ya no puede corregirse.",
-    };
-  if (value.includes("DISPATCH_NOT_EDITABLE"))
-    return {
-      message:
-        "Solo los despachos registrados o dentro de un lote activo sin factura pueden corregirse.",
-    };
-  if (value.includes("DISPATCH_CORRECTION_REASON_REQUIRED"))
-    return { message: "Indica el motivo de la corrección." };
-  if (value.includes("PERMISSION_DENIED"))
-    return { message: "No tienes permiso para corregir esta guía." };
-  return {
-    message: dispatchError(message).replace(
-      "registrar el despacho",
-      "corregir la guía",
-    ),
-  };
+    return "La guía ya está relacionada con un lote y no puede editarse.";
+  if (value.includes("DISPATCH_GUIDE_HAS_EVIDENCE"))
+    return "Quita primero la evidencia vinculada a esta guía.";
+  if (value.includes("DISPATCH_PROGRAMMING_UNIT_MISMATCH"))
+    return "La unidad debe coincidir con la programación.";
+  if (value.includes("NOT_DISPATCHED_INCIDENT_REQUIRED"))
+    return "Un despacho no realizado debe tener al menos una incidencia.";
+  if (value.includes("DISPATCH_RESULT_REQUIRED"))
+    return "Selecciona el resultado de la operación.";
+  if (value.includes("DISPATCH_DEPARTURE_REQUIRED"))
+    return "Registra la hora de salida.";
+  if (value.includes("DISPATCH_ORDER_NUMBER_REQUIRED"))
+    return "Ingresa el número de pedido.";
+  if (value.includes("DISPATCH_REAL_VOLUME_REQUIRED"))
+    return "Ingresa un Volumen Real mayor que cero.";
+  if (value.includes("DISPATCH_GUIDE_REQUIRED"))
+    return "Agrega al menos una guía antes de finalizar.";
+  if (value.includes("DISPATCH_GUIDE_INCOMPLETE"))
+    return "Todas las guías deben tener número y al menos un producto válido.";
+  if (value.includes("PERMISSION_DENIED")) return "No tienes permiso para realizar esta acción.";
+  return "No fue posible completar la operación. Revisa los datos e intenta nuevamente.";
 }
 
-export async function registerDispatchAction(
+function validId(value: string) {
+  return UUID.test(value);
+}
+
+function version(formData: FormData) {
+  const value = Number(text(formData, "expectedVersion"));
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function revalidateDispatch(dispatchId?: string, programmingId?: string) {
+  revalidatePath("/dispatches");
+  if (dispatchId) revalidatePath(`/dispatches/${dispatchId}`);
+  if (programmingId) revalidatePath(`/programming/${programmingId}`);
+}
+
+export async function startDispatchAction(
   _state: DispatchMutationState,
   formData: FormData,
 ): Promise<DispatchMutationState> {
   const projectId = text(formData, "projectId");
   const programmingId = text(formData, "programmingId");
-  if (!UUID.test(projectId) || !UUID.test(programmingId))
+  if (!validId(projectId) || !validId(programmingId))
     return { status: "error", message: "Selecciona una programación válida." };
   const auth = await authorize(projectId, "dispatch.create");
-  if (!auth)
-    return {
-      status: "error",
-      message: "No tienes permiso para registrar despachos.",
-    };
-
-  const result = text(formData, "result");
-  const orderNumber = text(formData, "orderNumber");
-  if (!orderNumber)
-    return { status: "error", message: "Ingresa el número de pedido." };
-  const quantities = formData.getAll("lineQuantity").map(Number);
-  const units = formData.getAll("lineUnitCode").map(String);
-  const codes = formData
-    .getAll("lineProductCode")
-    .map((value) => String(value).trim());
-  const descriptions = formData
-    .getAll("lineProductDescription")
-    .map((value) => String(value).trim());
-  const lines = quantities.map((quantity, index) => ({
-    quantity,
-    unit_code: units[index]?.trim(),
-    product_code: codes[index],
-    product_description: descriptions[index],
-  }));
-  if (
-    !RESULTS.includes(result) ||
-    !lines.length ||
-    lines.some(
-      (line) =>
-        !Number.isFinite(line.quantity) ||
-        line.quantity <= 0 ||
-        !line.unit_code ||
-        !line.product_code ||
-        !line.product_description,
-    )
-  )
-    return {
-      status: "error",
-      message: "Completa correctamente las líneas y el resultado físico.",
-    };
-
-  const dispatchedRaw = text(formData, "dispatchedQuantity");
-  const receivedRaw = text(formData, "receivedQuantity");
-  const dispatched = dispatchedRaw === "" ? null : Number(dispatchedRaw);
-  const received = receivedRaw === "" ? null : Number(receivedRaw);
-  if (
-    (dispatched !== null && !Number.isFinite(dispatched)) ||
-    (received !== null && !Number.isFinite(received))
-  ) {
-    return { status: "error", message: "Revisa las cantidades físicas." };
-  }
-
+  if (!auth) return { status: "error", message: "No tienes permiso para iniciar despachos." };
   const timezone = auth.context.activeProject?.timezone || "America/Guatemala";
-  const proposedGuideNumber = text(formData, "guideNumber");
-  const guideNumber = /^\d{2}-\d{2}-\d{4}-\d{2}-\d{2}$/.test(
-    proposedGuideNumber,
-  )
-    ? proposedGuideNumber
-    : formatGeneratedGuideNumber(new Date(), timezone);
-  const loadAt = localToIso(text(formData, "loadAt"), timezone);
   const arrivalAt = localToIso(text(formData, "arrivalAt"), timezone);
-  const departureAt = localToIso(text(formData, "departureAt"), timezone);
+  if (!arrivalAt) return { status: "error", message: "Ingresa una hora de llegada válida." };
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("register_dispatch_with_lines", {
+  const { data, error } = await supabase.rpc("start_dispatch", {
     p_programming_id: programmingId,
-    p_guide_number: guideNumber,
-    p_order_number: orderNumber,
-    p_guide_date: text(formData, "guideDate"),
-    p_received_by_name: text(formData, "receivedByName"),
-    p_lines: lines,
-    p_load_at: loadAt,
     p_arrival_at: arrivalAt,
-    p_departure_at: departureAt,
-    p_result: result,
-    p_dispatched_quantity: dispatched,
-    p_received_quantity: received,
-    p_template_version_id: null,
-    p_provider_extra_data: {},
+    p_received_by_name: text(formData, "receivedByName"),
   });
   if (error) return { status: "error", message: dispatchError(error.message) };
   const dispatchId = String(data);
-  const admin = createAdminClient();
-  const { data: guide } = await admin
-    .from("dispatch_guides")
-    .select("id")
-    .eq("project_id", projectId)
-    .eq("dispatch_id", dispatchId)
-    .maybeSingle();
-  revalidatePath("/dispatches");
-  revalidatePath(`/programming/${programmingId}`);
-  revalidatePath(`/dispatches/${dispatchId}`);
+  revalidateDispatch(dispatchId, programmingId);
   return {
     status: "success",
     dispatchId,
-    guideId: guide?.id,
-    message: "Despacho y guía registrados correctamente.",
+    message: "Despacho iniciado. Puedes registrar las guías progresivamente.",
   };
 }
 
-export async function correctDispatchOrderNumberAction(
-  _state: CorrectionMutationState,
+export async function saveDispatchAction(
+  _state: DispatchMutationState,
   formData: FormData,
-): Promise<CorrectionMutationState> {
+): Promise<DispatchMutationState> {
   const projectId = text(formData, "projectId");
   const dispatchId = text(formData, "dispatchId");
   const programmingId = text(formData, "programmingId");
-  const expectedVersion = Number(text(formData, "expectedVersion"));
-  const orderNumber = text(formData, "orderNumber");
-  const reason = text(formData, "reason");
-  if (
-    !UUID.test(projectId) ||
-    !UUID.test(dispatchId) ||
-    !UUID.test(programmingId) ||
-    !Number.isInteger(expectedVersion) ||
-    expectedVersion <= 0
-  )
-    return {
-      status: "error",
-      message: "Los datos del despacho están desactualizados. Recarga la página.",
-    };
-  if (!orderNumber)
-    return { status: "error", message: "Ingresa el número de pedido." };
-  if (!reason)
-    return { status: "error", message: "Indica el motivo de la corrección." };
-  if (!(await authorizeAny(projectId, ["dispatch.modify", "batch.modify"])))
-    return {
-      status: "error",
-      message: "No tienes permiso para corregir el número de pedido.",
-    };
-
+  const expectedVersion = version(formData);
+  if (!validId(projectId) || !validId(dispatchId) || expectedVersion === null)
+    return { status: "error", message: "Recarga el despacho antes de guardar." };
+  const auth = await authorize(projectId, "dispatch.modify");
+  if (!auth) return { status: "error", message: "No tienes permiso para editar el despacho." };
+  const timezone = auth.context.activeProject?.timezone || "America/Guatemala";
+  const arrivalAt = localToIso(text(formData, "arrivalAt"), timezone);
+  const departureValue = text(formData, "departureAt");
+  const departureAt = departureValue ? localToIso(departureValue, timezone) : null;
+  const result = text(formData, "result");
+  if (!arrivalAt || (departureValue && !departureAt))
+    return { status: "error", message: "Revisa las horas de llegada y salida." };
+  if (result && !RESULTS.includes(result))
+    return { status: "error", message: "Selecciona un resultado válido." };
+  const rawVolume = text(formData, "realVolume");
+  const realVolume = rawVolume === "" ? null : Number(rawVolume);
+  if (realVolume !== null && (!Number.isFinite(realVolume) || realVolume < 0))
+    return { status: "error", message: "Ingresa un Volumen Real válido." };
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc(
-    "correct_dispatch_guide_order_number",
-    {
-      p_dispatch_id: dispatchId,
-      p_expected_version: expectedVersion,
-      p_order_number: orderNumber,
-      p_reason: reason,
-    },
-  );
-  if (error) return { status: "error", ...correctionError(error.message) };
-
-  revalidatePath("/dispatches");
-  revalidatePath(`/dispatches/${dispatchId}`);
-  revalidatePath(`/programming/${programmingId}`);
-  revalidatePath("/batches");
+  const { data, error } = await supabase.rpc("update_dispatch", {
+    p_dispatch_id: dispatchId,
+    p_expected_version: expectedVersion,
+    p_arrival_at: arrivalAt,
+    p_departure_at: departureAt,
+    p_received_by_name: text(formData, "receivedByName"),
+    p_result: result || null,
+    p_order_number: text(formData, "orderNumber") || null,
+    p_real_volume: result === "NOT_DISPATCHED" ? 0 : realVolume,
+    p_real_unit_code: text(formData, "realUnitCode") || null,
+  });
+  if (error) return { status: "error", message: dispatchError(error.message) };
+  revalidateDispatch(dispatchId, programmingId);
   return {
     status: "success",
     newVersion: Number(data),
-    message: "Número de pedido corregido y conciliación actualizada.",
+    message: "Cambios guardados. El despacho continúa en ejecución.",
   };
 }
 
-export async function correctDispatchGuideAction(
-  _state: CorrectionMutationState,
-  formData: FormData,
-): Promise<CorrectionMutationState> {
-  const projectId = text(formData, "projectId");
-  const dispatchId = text(formData, "dispatchId");
-  const programmingId = text(formData, "programmingId");
-  const templateVersionId = text(formData, "templateVersionId");
-  const expectedVersion = Number(text(formData, "expectedVersion"));
-  const reason = text(formData, "reason");
-  if (
-    !UUID.test(projectId) ||
-    !UUID.test(dispatchId) ||
-    !UUID.test(programmingId) ||
-    !UUID.test(templateVersionId) ||
-    !Number.isInteger(expectedVersion) ||
-    expectedVersion <= 0
-  )
-    return {
-      status: "error",
-      message: "Los datos de la guía están desactualizados. Recarga la página.",
-    };
-  if (!reason)
-    return { status: "error", message: "Indica el motivo de la corrección." };
-  const auth = await authorize(projectId, "dispatch.modify");
-  if (!auth) {
-    return {
-      status: "error",
-      message: "No tienes permiso para corregir esta guía.",
-    };
-  }
-
-  const result = text(formData, "result");
+function guideLines(formData: FormData) {
   const quantities = formData.getAll("lineQuantity").map(Number);
   const units = formData.getAll("lineUnitCode").map(String);
-  const codes = formData
-    .getAll("lineProductCode")
-    .map((value) => String(value).trim());
+  const codes = formData.getAll("lineProductCode").map((value) => String(value).trim());
   const descriptions = formData
     .getAll("lineProductDescription")
     .map((value) => String(value).trim());
-  const lines = quantities.map((quantity, index) => ({
+  return quantities.map((quantity, index) => ({
     quantity,
     unit_code: units[index]?.trim(),
     product_code: codes[index],
     product_description: descriptions[index],
   }));
+}
+
+export async function saveDispatchGuideAction(
+  _state: DispatchMutationState,
+  formData: FormData,
+): Promise<DispatchMutationState> {
+  const projectId = text(formData, "projectId");
+  const dispatchId = text(formData, "dispatchId");
+  const guideId = text(formData, "guideId");
+  const guideNumber = text(formData, "guideNumber");
+  const expectedVersion = version(formData);
+  const lines = guideLines(formData);
+  if (!validId(projectId) || !validId(dispatchId) || expectedVersion === null)
+    return { status: "error", message: "Recarga el despacho antes de guardar la guía." };
+  if (!guideNumber)
+    return { status: "error", message: "Ingresa el número de guía." };
   if (
-    !RESULTS.includes(result) ||
     !lines.length ||
     lines.some(
       (line) =>
@@ -383,64 +238,80 @@ export async function correctDispatchGuideAction(
         !line.product_code ||
         !line.product_description,
     )
-  )
-    return {
-      status: "error",
-      message: "Completa correctamente las líneas y el resultado físico.",
-    };
-
-  const dispatched = Number(text(formData, "dispatchedQuantity"));
-  const received = Number(text(formData, "receivedQuantity"));
-  if (!Number.isFinite(dispatched) || !Number.isFinite(received)) {
-    return { status: "error", message: "Revisa las cantidades físicas." };
-  }
-
-  let providerExtraData: Record<string, unknown> = {};
-  try {
-    const parsed = JSON.parse(text(formData, "providerExtraData") || "{}");
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object")
-      throw new Error();
-    providerExtraData = parsed as Record<string, unknown>;
-  } catch {
-    return {
-      status: "error",
-      message: "Los datos complementarios de la guía no son válidos.",
-    };
-  }
-
-  const timezone = auth.context.activeProject?.timezone || "America/Guatemala";
+  ) return { status: "error", message: "Cada producto necesita cantidad, UM, código y descripción." };
+  if (!(await authorize(projectId, "dispatch.modify")))
+    return { status: "error", message: "No tienes permiso para guardar guías." };
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc(
-    "correct_dispatch_guide_with_lines",
-    {
-      p_dispatch_id: dispatchId,
-      p_expected_version: expectedVersion,
-      p_guide_number: text(formData, "guideNumber"),
-      p_order_number: text(formData, "orderNumber") || null,
-      p_guide_date: text(formData, "guideDate"),
-      p_received_by_name: text(formData, "receivedByName"),
-      p_lines: lines,
-      p_load_at: localToIso(text(formData, "loadAt"), timezone),
-      p_arrival_at: localToIso(text(formData, "arrivalAt"), timezone),
-      p_departure_at: localToIso(text(formData, "departureAt"), timezone),
-      p_result: result,
-      p_dispatched_quantity: dispatched,
-      p_received_quantity: received,
-      p_template_version_id: templateVersionId,
-      p_provider_extra_data: providerExtraData,
-      p_reason: reason,
-    },
-  );
-  if (error) return { status: "error", ...correctionError(error.message) };
-
-  revalidatePath("/dispatches");
-  revalidatePath(`/dispatches/${dispatchId}`);
-  revalidatePath(`/programming/${programmingId}`);
+  const params = {
+    p_expected_version: expectedVersion,
+    p_guide_number: guideNumber,
+    p_guide_date: text(formData, "guideDate"),
+    p_lines: lines,
+  };
+  const response = guideId
+    ? await supabase.rpc("update_dispatch_guide_with_lines", {
+        ...params,
+        p_guide_id: guideId,
+      })
+    : await supabase.rpc("create_dispatch_guide_with_lines", {
+        ...params,
+        p_dispatch_id: dispatchId,
+      });
+  if (response.error)
+    return { status: "error", message: dispatchError(response.error.message) };
+  const data = response.data as { guide_id?: string; dispatch_version?: number } | number;
+  const newVersion = typeof data === "number" ? data : Number(data.dispatch_version);
+  const savedGuideId = typeof data === "number" ? guideId : data.guide_id;
+  revalidateDispatch(dispatchId, text(formData, "programmingId"));
   return {
     status: "success",
-    newVersion: Number(data),
-    message: "La guía y su resultado se corrigieron con trazabilidad completa.",
+    guideId: savedGuideId,
+    newVersion,
+    message: guideId ? "Guía actualizada." : "Guía agregada al despacho.",
   };
+}
+
+export async function deleteDispatchGuideAction(
+  _state: DispatchMutationState,
+  formData: FormData,
+): Promise<DispatchMutationState> {
+  const projectId = text(formData, "projectId");
+  const dispatchId = text(formData, "dispatchId");
+  const guideId = text(formData, "guideId");
+  const expectedVersion = version(formData);
+  if (![projectId, dispatchId, guideId].every(validId) || expectedVersion === null)
+    return { status: "error", message: "Recarga el despacho antes de eliminar la guía." };
+  if (!(await authorize(projectId, "dispatch.modify")))
+    return { status: "error", message: "No tienes permiso para eliminar guías." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("delete_dispatch_guide", {
+    p_guide_id: guideId,
+    p_expected_version: expectedVersion,
+  });
+  if (error) return { status: "error", message: dispatchError(error.message) };
+  revalidateDispatch(dispatchId, text(formData, "programmingId"));
+  return { status: "success", newVersion: Number(data), message: "Guía eliminada." };
+}
+
+export async function completeDispatchAction(
+  _state: DispatchMutationState,
+  formData: FormData,
+): Promise<DispatchMutationState> {
+  const projectId = text(formData, "projectId");
+  const dispatchId = text(formData, "dispatchId");
+  const expectedVersion = version(formData);
+  if (!validId(projectId) || !validId(dispatchId) || expectedVersion === null)
+    return { status: "error", message: "Recarga el despacho antes de finalizar." };
+  if (!(await authorize(projectId, "dispatch.modify")))
+    return { status: "error", message: "No tienes permiso para finalizar el despacho." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("complete_dispatch", {
+    p_dispatch_id: dispatchId,
+    p_expected_version: expectedVersion,
+  });
+  if (error) return { status: "error", message: dispatchError(error.message) };
+  revalidateDispatch(dispatchId, text(formData, "programmingId"));
+  return { status: "success", newVersion: Number(data), message: "Despacho completado." };
 }
 
 export async function registerIncidentAction(
@@ -453,22 +324,14 @@ export async function registerIncidentAction(
   const responsibility = text(formData, "responsibility");
   const charge = text(formData, "chargeApplicability");
   if (
-    !UUID.test(projectId) ||
-    !UUID.test(dispatchId) ||
-    !UUID.test(typeId) ||
+    !validId(projectId) ||
+    !validId(dispatchId) ||
+    !validId(typeId) ||
     !RESPONSIBILITIES.includes(responsibility) ||
     !CHARGES.includes(charge)
-  ) {
-    return {
-      status: "error",
-      message: "Completa los datos requeridos de la incidencia.",
-    };
-  }
+  ) return { status: "error", message: "Completa los datos requeridos de la incidencia." };
   if (!(await authorize(projectId, "dispatch.register_incident")))
-    return {
-      status: "error",
-      message: "No tienes permiso para registrar incidencias.",
-    };
+    return { status: "error", message: "No tienes permiso para registrar incidencias." };
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("register_dispatch_incident", {
     p_dispatch_id: dispatchId,
@@ -477,30 +340,15 @@ export async function registerIncidentAction(
     p_charge_applicability: charge,
     p_notes: text(formData, "notes") || null,
   });
-  if (error) {
-    const value = error.message.toUpperCase();
-    const message = value.includes("PERMISSION")
-      ? "No tienes permiso para registrar incidencias."
-      : value.includes("INACTIVE")
-        ? "El tipo de incidencia está inactivo."
-        : value.includes("COMPANY_MISMATCH")
-          ? "El tipo de incidencia pertenece a otra empresa."
-          : "No fue posible registrar la incidencia.";
-    return { status: "error", message };
-  }
-  revalidatePath(`/dispatches/${dispatchId}`);
-  revalidatePath("/dispatches");
-  return {
-    status: "success",
-    incidentId: String(data),
-    message: "Incidencia registrada.",
-  };
+  if (error) return { status: "error", message: dispatchError(error.message) };
+  revalidateDispatch(dispatchId);
+  return { status: "success", incidentId: String(data), message: "Incidencia registrada." };
 }
 
 type PrepareUploadInput = {
   projectId: string;
   contextId: string;
-  context: "guide" | "incident";
+  context: "dispatch" | "guide" | "incident";
   fileName: string;
   mimeType: string;
   fileSize: number;
@@ -510,44 +358,41 @@ type PrepareUploadInput = {
 export async function prepareDispatchUpload(
   input: PrepareUploadInput,
 ): Promise<UploadActionResult> {
-  const permission =
-    input.context === "guide"
-      ? "dispatch.modify"
-      : "dispatch.register_incident";
+  const permission = input.context === "incident" ? "dispatch.register_incident" : "dispatch.modify";
   if (
-    !UUID.test(input.projectId) ||
-    !UUID.test(input.contextId) ||
+    !validId(input.projectId) ||
+    !validId(input.contextId) ||
     !(await authorize(input.projectId, permission))
-  ) {
-    return {
-      status: "error",
-      message: "No tienes permiso para adjuntar este documento.",
-    };
-  }
+  ) return { status: "error", message: "No tienes permiso para adjuntar este documento." };
   const supabase = await createClient();
-  const rpc =
-    input.context === "guide"
+  const rpc = input.context === "dispatch"
+    ? "prepare_dispatch_document_upload"
+    : input.context === "guide"
       ? "prepare_guide_document_upload"
       : "prepare_incident_document_upload";
-  const idKey = input.context === "guide" ? "p_guide_id" : "p_incident_id";
+  const idKey = input.context === "dispatch"
+    ? "p_dispatch_id"
+    : input.context === "guide"
+      ? "p_guide_id"
+      : "p_incident_id";
+  const purpose = input.context === "dispatch"
+    ? "DISPATCH_EVIDENCE"
+    : input.context === "guide"
+      ? "DISPATCH_GUIDE"
+      : "INCIDENT_EVIDENCE";
   const { data, error } = await supabase.rpc(rpc, {
     [idKey]: input.contextId,
     p_file_name: input.fileName,
     p_mime_type: input.mimeType,
     p_file_size: input.fileSize,
-    p_purpose:
-      input.context === "guide" ? "DISPATCH_GUIDE" : "INCIDENT_EVIDENCE",
+    p_purpose: purpose,
     p_document_id: input.documentId || null,
   });
   if (error || !data?.[0])
-    return {
-      status: "error",
-      message: dispatchError(error?.message ?? "DOCUMENT_PREPARE_FAILED"),
-    };
+    return { status: "error", message: dispatchError(error?.message ?? "DOCUMENT_PREPARE_FAILED") };
   const prepared = data[0];
-  const admin = createAdminClient();
-  const signed = await admin.storage
-    .from(prepared.storage_bucket)
+  const signed = await createAdminClient()
+    .storage.from(prepared.storage_bucket)
     .createSignedUploadUrl(prepared.storage_path, { upsert: false });
   if (signed.error || !signed.data?.token) {
     await supabase.rpc("fail_document_upload", {
@@ -555,10 +400,7 @@ export async function prepareDispatchUpload(
       p_version_id: prepared.version_id,
       p_reason: "No fue posible crear la URL firmada.",
     });
-    return {
-      status: "error",
-      message: "No fue posible preparar la carga segura.",
-    };
+    return { status: "error", message: "No fue posible preparar la carga segura." };
   }
   return {
     status: "success",
@@ -579,10 +421,10 @@ export async function finalizeDispatchUpload(
   documentId: string,
   versionId: string,
 ) {
-  if (!UUID.test(projectId) || !UUID.test(documentId) || !UUID.test(versionId))
+  if (![projectId, documentId, versionId].every(validId))
     return { status: "error" as const, message: "Carga inválida." };
-  const auth = await requireActiveProfile();
-  const context = await getProjectContext(auth.id);
+  const profile = await requireActiveProfile();
+  const context = await getProjectContext(profile.id);
   if (context.status !== "ready" || context.activeProject?.id !== projectId)
     return { status: "error" as const, message: "Proyecto inválido." };
   const supabase = await createClient();
@@ -590,12 +432,7 @@ export async function finalizeDispatchUpload(
     p_document_id: documentId,
     p_version_id: versionId,
   });
-  if (error)
-    return {
-      status: "error" as const,
-      message:
-        "El archivo se cargó, pero no pudo validarse. Intenta nuevamente.",
-    };
+  if (error) return { status: "error" as const, message: dispatchError(error.message) };
   revalidatePath("/dispatches");
   return { status: "success" as const };
 }
@@ -606,37 +443,47 @@ export async function failDispatchUpload(
   versionId: string,
   reason: string,
 ) {
-  if (!UUID.test(projectId) || !UUID.test(documentId) || !UUID.test(versionId))
-    return;
+  if (![projectId, documentId, versionId].every(validId)) return;
   const profile = await requireActiveProfile();
   const context = await getProjectContext(profile.id);
-  if (context.status !== "ready" || context.activeProject?.id !== projectId)
-    return;
-  const supabase = await createClient();
-  await supabase.rpc("fail_document_upload", {
+  if (context.status !== "ready" || context.activeProject?.id !== projectId) return;
+  await (await createClient()).rpc("fail_document_upload", {
     p_document_id: documentId,
     p_version_id: versionId,
     p_reason: reason.slice(0, 500),
   });
 }
 
-export async function getDocumentDownloadUrl(
-  projectId: string,
-  documentId: string,
-) {
+export async function removeDispatchEvidenceAction(projectId: string, documentId: string) {
+  if (!validId(projectId) || !validId(documentId) || !(await authorize(projectId, "dispatch.modify")))
+    return { status: "error" as const, message: "No tienes permiso para eliminar la evidencia." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("remove_dispatch_evidence", {
+    p_document_id: documentId,
+  });
+  if (error) return { status: "error" as const, message: dispatchError(error.message) };
+  const objects = Array.isArray(data?.storage_objects) ? data.storage_objects : [];
+  const byBucket = new Map<string, string[]>();
+  for (const object of objects) {
+    if (!object?.bucket || !object?.path) continue;
+    const paths = byBucket.get(object.bucket) ?? [];
+    paths.push(object.path);
+    byBucket.set(object.bucket, paths);
+  }
+  const admin = createAdminClient();
+  for (const [bucket, paths] of byBucket) await admin.storage.from(bucket).remove(paths);
+  revalidatePath("/dispatches");
+  return { status: "success" as const };
+}
+
+export async function getDocumentDownloadUrl(projectId: string, documentId: string) {
   const profile = await requireActiveProfile();
   const context = await getProjectContext(profile.id);
   if (
     context.status !== "ready" ||
     context.activeProject?.id !== projectId ||
-    (!context.permissions.includes("dispatch.view") &&
-      !context.permissions.includes("document.view"))
-  ) {
-    return {
-      status: "error" as const,
-      message: "No tienes acceso a este documento.",
-    };
-  }
+    (!context.permissions.includes("dispatch.view") && !context.permissions.includes("document.view"))
+  ) return { status: "error" as const, message: "No tienes acceso a este documento." };
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("document_versions")
@@ -645,18 +492,11 @@ export async function getDocumentDownloadUrl(
     .eq("upload_status", "UPLOADED")
     .eq("is_current", true)
     .maybeSingle();
-  if (error || !data)
-    return {
-      status: "error" as const,
-      message: "No hay una versión disponible.",
-    };
+  if (error || !data) return { status: "error" as const, message: "No hay una versión disponible." };
   const signed = await createAdminClient()
     .storage.from(data.storage_bucket)
     .createSignedUrl(data.storage_path, 300);
   if (signed.error || !signed.data)
-    return {
-      status: "error" as const,
-      message: "No fue posible crear el enlace seguro.",
-    };
+    return { status: "error" as const, message: "No fue posible crear el enlace seguro." };
   return { status: "success" as const, url: signed.data.signedUrl };
 }

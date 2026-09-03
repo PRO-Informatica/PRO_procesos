@@ -9,8 +9,6 @@ import {
   History,
   PackageOpen,
   Pencil,
-  RotateCcw,
-  Send,
   Truck,
   X,
   XCircle,
@@ -43,10 +41,12 @@ import {
   type ProgrammingMutationIntent,
 } from "../types";
 import { ProgrammingLinesFields } from "./programming-lines-fields";
-import { RegisterDispatchDialog } from "@/features/dispatches/components/register-dispatch-dialog";
+import { StartDispatchDialog } from "@/features/dispatches/components/register-dispatch-dialog";
+
+type DialogIntent = Exclude<ProgrammingMutationIntent, "confirm">;
 
 const actionCopy: Record<
-  ProgrammingMutationIntent,
+  DialogIntent,
   { title: string; label: string; loading: string; description: string }
 > = {
   edit: {
@@ -54,24 +54,6 @@ const actionCopy: Record<
     label: "Guardar cambios",
     loading: "Guardando cambios…",
     description: "Actualizando la programación y creando una revisión inmutable.",
-  },
-  submit: {
-    title: "Enviar a confirmación",
-    label: "Enviar a confirmación",
-    loading: "Enviando programación…",
-    description: "Cambiando el estado a pendiente de confirmación.",
-  },
-  "return-to-draft": {
-    title: "Solicitar corrección",
-    label: "Devolver a borrador",
-    loading: "Solicitando corrección…",
-    description: "Devolviendo la programación a borrador con trazabilidad.",
-  },
-  confirm: {
-    title: "Confirmar programación",
-    label: "Confirmar cantidad",
-    loading: "Confirmando programación…",
-    description: "Registrando la cantidad confirmada y su revisión.",
   },
   cancel: {
     title: "Cancelar programación",
@@ -131,7 +113,7 @@ function MutationDialog({
   timezone,
   onClose,
 }: {
-  intent: ProgrammingMutationIntent;
+  intent: DialogIntent;
   data: ProgrammingDetailPageData;
   timezone: string;
   onClose: () => void;
@@ -143,14 +125,6 @@ function MutationDialog({
     mutateProgrammingAction,
     initialProgrammingMutationState,
   );
-  const [confirmedQuantity, setConfirmedQuantity] = useState(
-    String(detail.confirmedQuantity ?? detail.requestedQuantity),
-  );
-  const confirmedValue = Number(confirmedQuantity);
-  const isPartial =
-    Number.isFinite(confirmedValue) &&
-    confirmedValue > 0 &&
-    confirmedValue < detail.requestedQuantity;
   const closeNeedsReason = detail.remainingQuantity > 0 || detail.excessQuantity > 0;
 
   useGlobalPending(pending, copy.loading, copy.description);
@@ -262,55 +236,6 @@ function MutationDialog({
               </>
             )}
 
-            {intent === "submit" && (
-              <p className="rounded-xl border border-border bg-muted/30 p-4 text-sm leading-6 text-foreground">
-                La programación pasará a <strong>Pendiente de confirmación</strong>. Ya no podrá editarse hasta que se confirme o se devuelva a borrador.
-              </p>
-            )}
-
-            {intent === "return-to-draft" && (
-              <div>
-                <label htmlFor="return-reason" className="form-label">Motivo de corrección *</label>
-                <textarea id="return-reason" name="reason" required rows={4} maxLength={1000} className="form-input resize-y" disabled={pending} />
-              </div>
-            )}
-
-            {intent === "confirm" && (
-              <>
-                <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm text-foreground">
-                  Total solicitado: <strong>{formatProgrammingQuantity(detail.requestedQuantity)} {detail.unitCode}</strong>
-                </div>
-                <div>
-                  <label htmlFor="confirmed-quantity" className="form-label">Cantidad confirmada *</label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      id="confirmed-quantity"
-                      name="confirmedQuantity"
-                      type="number"
-                      min="0.001"
-                      max={detail.requestedQuantity}
-                      step="0.001"
-                      required
-                      value={confirmedQuantity}
-                      onChange={(event) => setConfirmedQuantity(event.target.value)}
-                      className="form-input"
-                      disabled={pending}
-                    />
-                    <span className="font-semibold text-foreground">{detail.unitCode}</span>
-                  </div>
-                  {isPartial && (
-                    <p className="mt-2 flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-300">
-                      <AlertTriangle aria-hidden="true" className="size-4" /> Confirmación parcial: quedará trazada la cantidad agregada.
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label htmlFor="confirmation-notes" className="form-label">Observación</label>
-                  <textarea id="confirmation-notes" name="notes" rows={3} maxLength={1000} className="form-input resize-y" disabled={pending} />
-                </div>
-              </>
-            )}
-
             {intent === "cancel" && (
               <div>
                 <label htmlFor="cancel-reason" className="form-label">Motivo de cancelación *</label>
@@ -360,6 +285,31 @@ function MutationDialog({
   );
 }
 
+function DirectConfirmButton({ detail }: { detail: ProgrammingDetailPageData["detail"] }) {
+  const router = useRouter();
+  const [state, action, pending] = useActionState(
+    mutateProgrammingAction,
+    initialProgrammingMutationState,
+  );
+  useGlobalPending(pending, "Confirmando programación…", "Actualizando estado y trazabilidad.");
+  useEffect(() => {
+    if (state.status === "success" || state.conflict) router.refresh();
+  }, [router, state.conflict, state.status]);
+  return (
+    <form action={action} className="contents">
+      <input type="hidden" name="intent" value="confirm" />
+      <input type="hidden" name="projectId" value={detail.projectId} />
+      <input type="hidden" name="programmingId" value={detail.id} />
+      <input type="hidden" name="expectedVersion" value={detail.version} />
+      <input type="hidden" name="confirmedQuantity" value={detail.requestedQuantity} />
+      <LoadingButton loadingLabel="Confirmando…" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong">
+        <CheckCircle2 aria-hidden="true" className="size-4" /> Confirmar
+      </LoadingButton>
+      {state.status === "error" && <span className="w-full text-right text-xs font-medium text-destructive">{state.message}</span>}
+    </form>
+  );
+}
+
 export function ProgrammingDetailView({
   data,
   project,
@@ -371,7 +321,7 @@ export function ProgrammingDetailView({
   permissions: ProgrammingDetailPermissions;
   receiverName: string;
 }) {
-  const [intent, setIntent] = useState<ProgrammingMutationIntent | null>(null);
+  const [intent, setIntent] = useState<DialogIntent | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [availabilityNow] = useState(() => Date.now());
   const detail = data.detail;
@@ -382,39 +332,35 @@ export function ProgrammingDetailView({
     operationStarted,
   }, availabilityNow);
   const scheduleIsFuture = new Date(detail.scheduledAt).valueOf() >= availabilityNow;
+  const todayKey = zonedInputValue(new Date(availabilityNow).toISOString(), project.timezone).slice(0, 10);
+  const scheduledDateKey = zonedInputValue(detail.scheduledAt, project.timezone).slice(0, 10);
+  const editWindowOpen = scheduledDateKey > todayKey;
   const canRegisterDispatch = canCreateDispatchForProgramming({
     status: detail.status,
     scheduledAt: detail.scheduledAt,
     operationStarted,
     hasPermission: permissions.canCreateDispatch,
   }, availabilityNow);
-  const quantitySuffix = ` ${detail.unitCode}`;
   const canCancel =
     permissions.canCancel &&
     effectiveStatus !== "EXPIRED" &&
-    ["DRAFT", "PENDING_CONFIRMATION", "CONFIRMED"].includes(detail.status) &&
+    ["PENDING_CONFIRMATION", "CONFIRMED"].includes(detail.status) &&
     !(detail.status === "CONFIRMED" && detail.dispatches.length > 0);
-  const revisionCountLabel = `${detail.revisions.length} ${detail.revisions.length === 1 ? "evento" : "eventos"}`;
+  const relevantRevisions = detail.revisions.filter(
+    (revision) => revision.action !== "PROGRAMMING_BASELINE",
+  );
+  const revisionCountLabel = `${relevantRevisions.length} ${relevantRevisions.length === 1 ? "evento" : "eventos"}`;
   const actions = useMemo(() => {
-    const result: Array<{ intent: ProgrammingMutationIntent; label: string; icon: typeof Pencil }> = [];
-    if (detail.status === "DRAFT" && permissions.canModify) {
+    const result: Array<{ intent: DialogIntent; label: string; icon: typeof Pencil }> = [];
+    if (detail.status === "PENDING_CONFIRMATION" && permissions.canModify && editWindowOpen) {
       result.push({ intent: "edit", label: "Editar", icon: Pencil });
-      if (scheduleIsFuture) {
-        result.push({ intent: "submit", label: "Enviar a confirmación", icon: Send });
-      }
-    }
-    if (detail.status === "PENDING_CONFIRMATION" && permissions.canConfirm) {
-      result.push({ intent: "return-to-draft", label: "Solicitar corrección", icon: RotateCcw });
-      if (scheduleIsFuture) {
-        result.push({ intent: "confirm", label: "Confirmar", icon: CheckCircle2 });
-      }
     }
     if (detail.status === "IN_EXECUTION" && permissions.canClose) {
       result.push({ intent: "close", label: "Cerrar programación", icon: ClipboardCheck });
     }
     if (canCancel) result.push({ intent: "cancel", label: "Cancelar", icon: XCircle });
     return result;
-  }, [canCancel, detail.status, permissions.canClose, permissions.canConfirm, permissions.canModify, scheduleIsFuture]);
+  }, [canCancel, detail.status, editWindowOpen, permissions.canClose, permissions.canModify]);
 
   return (
     <>
@@ -451,6 +397,9 @@ export function ProgrammingDetailView({
                 </button>
               );
             })}
+            {detail.status === "PENDING_CONFIRMATION" && permissions.canConfirm && scheduleIsFuture && (
+              <DirectConfirmButton detail={detail} />
+            )}
             {canRegisterDispatch && (
               <button type="button" onClick={() => setRegisterOpen(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong">
                 <Truck aria-hidden="true" className="size-4" /> Registrar despacho
@@ -468,14 +417,6 @@ export function ProgrammingDetailView({
           </div>
         )}
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <Metric label="Solicitado" value={`${formatProgrammingQuantity(detail.requestedQuantity)}${quantitySuffix}`} />
-          <Metric label="Confirmado" value={detail.confirmedQuantity === null ? "Pendiente" : `${formatProgrammingQuantity(detail.confirmedQuantity)}${quantitySuffix}`} />
-          <Metric label="Recibido" value={`${formatProgrammingQuantity(detail.dispatchedQuantity)}${quantitySuffix}`} />
-          <Metric label="Restante" value={`${formatProgrammingQuantity(detail.remainingQuantity)}${quantitySuffix}`} accent={detail.remainingQuantity > 0 ? "text-amber-700 dark:text-amber-300" : undefined} />
-          <Metric label="Excedente" value={`${formatProgrammingQuantity(detail.excessQuantity)}${quantitySuffix}`} accent={detail.excessQuantity > 0 ? "text-destructive" : undefined} />
-        </section>
-
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.65fr)]">
           <div className="space-y-6">
             <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
@@ -484,12 +425,12 @@ export function ProgrammingDetailView({
                 <h2 className="font-semibold text-foreground">Información general</h2>
               </div>
               <dl className="mt-5 grid gap-5 sm:grid-cols-2">
-                <div><dt className="form-label">Proveedor</dt><dd className="text-sm font-semibold text-foreground">{detail.supplierName}</dd></div>
-                <div><dt className="form-label">Fecha programada</dt><dd className="text-sm font-semibold text-foreground">{formatProgrammingDateTime(detail.scheduledAt, project.timezone)}</dd></div>
-                <div><dt className="form-label">Creada por</dt><dd className="text-sm font-semibold text-foreground">{detail.createdByName}</dd></div>
-                <div><dt className="form-label">Creada</dt><dd className="text-sm font-semibold text-foreground">{formatProgrammingDateTime(detail.createdAt, project.timezone)}</dd></div>
-                <div><dt className="form-label">Confirmada por</dt><dd className="text-sm font-semibold text-foreground">{detail.confirmedByName ?? "Pendiente"}</dd></div>
-                <div><dt className="form-label">Última actualización</dt><dd className="text-sm font-semibold text-foreground">{formatProgrammingDateTime(detail.updatedAt, project.timezone)}</dd></div>
+                <div><dt className="form-label">Proveedor</dt><dd className="text-sm text-foreground">{detail.supplierName}</dd></div>
+                <div><dt className="form-label">Fecha programada</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.scheduledAt, project.timezone)}</dd></div>
+                <div><dt className="form-label">Creada por</dt><dd className="text-sm text-foreground">{detail.createdByName}</dd></div>
+                <div><dt className="form-label">Creada</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.createdAt, project.timezone)}</dd></div>
+                <div><dt className="form-label">Persona que confirmó</dt><dd className="text-sm text-foreground">{detail.confirmedByName ?? "Sin confirmar"}</dd></div>
+                <div><dt className="form-label">Última actualización</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.updatedAt, project.timezone)}</dd></div>
               </dl>
             </section>
 
@@ -552,7 +493,7 @@ export function ProgrammingDetailView({
               <span className="text-xs font-medium text-foreground-muted">{revisionCountLabel}</span>
             </div>
             <ol className="max-h-[70vh] divide-y divide-border overflow-y-auto">
-              {detail.revisions.map((revision) => (
+              {relevantRevisions.map((revision) => (
                 <li key={revision.id} className="relative px-5 py-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -563,20 +504,6 @@ export function ProgrammingDetailView({
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-foreground-muted">
                     <span>{formatProgrammingStatus(revision.status)}</span><span>·</span><span>Solicitado {formatProgrammingQuantity(revision.requestedQuantity)} {revision.unitCode}</span>
-                    {revision.confirmedQuantity !== null && <><span>·</span><span>Confirmado {formatProgrammingQuantity(revision.confirmedQuantity)} {revision.unitCode}</span></>}
-                  </div>
-                  <div className="mt-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-foreground-muted">
-                      Snapshot · {revision.supplierName} · {formatProgrammingDateTime(revision.scheduledAt, project.timezone)}
-                    </p>
-                    <ol className="mt-2 space-y-1">
-                      {revision.lines.map((line) => (
-                        <li key={line.id} className="flex justify-between gap-3 text-xs text-foreground">
-                          <span>Producto {line.position}</span>
-                          <span className="font-semibold">{formatProgrammingQuantity(line.quantity)} {line.unitCode}</span>
-                        </li>
-                      ))}
-                    </ol>
                   </div>
                   {revision.changeReason && <p className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-xs leading-5 text-foreground">{revision.changeReason}</p>}
                 </li>
@@ -597,29 +524,27 @@ export function ProgrammingDetailView({
           />
         )}
       </AnimatePresence>
-      {canRegisterDispatch && registerOpen && <RegisterDispatchDialog
-        open={registerOpen}
+      {canRegisterDispatch && registerOpen && <StartDispatchDialog
         projectId={project.id}
         timezone={project.timezone || "America/Guatemala"}
         receiverName={receiverName}
-        fixedProgrammingId={detail.id}
-        programming={[{
-          id: detail.id,
-          status: detail.status as "CONFIRMED" | "IN_EXECUTION",
+        programming={{
+          programmingId: detail.id,
+          programmingCode: `PRG-${detail.id.slice(0, 8).toUpperCase()}`,
+          programmingStatus: detail.status as "CONFIRMED" | "IN_EXECUTION",
           scheduledAt: detail.scheduledAt,
           supplierId: detail.supplierId,
           supplierName: detail.supplierName,
-          requestedQuantity: detail.requestedQuantity,
-          confirmedQuantity: detail.confirmedQuantity,
+          programmedVolume: detail.confirmedQuantity ?? detail.requestedQuantity,
           unitCode: detail.unitCode,
-          lineCount: detail.lines.length,
-          dispatchCount: detail.dispatches.length,
-          receivedTotal: detail.dispatchedQuantity,
-          remaining: detail.remainingQuantity,
-          excess: detail.excessQuantity,
-        }]}
-        units={data.units}
-        canAttachDocument={permissions.canModifyDispatch}
+          dispatchId: null,
+          dispatchStatus: null,
+          result: null,
+          version: null,
+          guideCount: 0,
+          guideTotal: 0,
+          guides: [],
+        }}
         onClose={() => setRegisterOpen(false)}
       />}
     </>

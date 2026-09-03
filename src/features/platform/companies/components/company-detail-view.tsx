@@ -15,6 +15,8 @@ import { formatDate } from "../formatters";
 import type { CompanyDetail } from "../types";
 import { CompanyStatusBadge } from "./company-status-badge";
 import { CompanyStatusDialog } from "./company-status-dialog";
+import { CreateProjectDialog } from "./create-project-dialog";
+import { EditProjectDialog } from "./edit-project-dialog";
 import { ProjectSupplierManager } from "./project-supplier-manager";
 
 function RecordStatus({ status }: { status: string }) {
@@ -23,10 +25,16 @@ function RecordStatus({ status }: { status: string }) {
   return (
     <span
       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-        active ? "bg-success-soft text-success" : "bg-muted text-foreground-muted"
+        active
+          ? "bg-success-soft text-success"
+          : "bg-muted text-foreground-muted"
       }`}
     >
-      {status === "ACTIVE" ? "Activo" : status === "INACTIVE" ? "Inactivo" : status}
+      {status === "ACTIVE"
+        ? "Activo"
+        : status === "INACTIVE"
+          ? "Inactivo"
+          : status}
     </span>
   );
 }
@@ -58,7 +66,9 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
                 </h1>
                 <CompanyStatusBadge status={company.status} />
               </div>
-              <p className="mt-2 font-mono text-xs text-foreground-muted">{company.code}</p>
+              <p className="mt-2 font-mono text-xs text-foreground-muted">
+                {company.code}
+              </p>
             </div>
           </div>
           <CompanyStatusDialog
@@ -75,7 +85,11 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
             label="Proyectos"
             value={String(company.projects.length)}
           />
-          <OverviewItem icon={Users} label="Usuarios activos" value={String(activeUsers)} />
+          <OverviewItem
+            icon={Users}
+            label="Usuarios activos"
+            value={String(activeUsers)}
+          />
           <OverviewItem
             icon={ShieldCheck}
             label="Company Admin"
@@ -101,9 +115,18 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
         <dl className="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
           <DetailField label="Nombre" value={company.name} />
           <DetailField label="Código" value={company.code} mono />
-          <DetailField label="Estado" value={company.status === "ACTIVE" ? "Activa" : "Inactiva"} />
-          <DetailField label="Fecha de creación" value={formatDate(company.createdAt, true)} />
-          <DetailField label="Última actualización" value={formatDate(company.updatedAt, true)} />
+          <DetailField
+            label="Estado"
+            value={company.status === "ACTIVE" ? "Activa" : "Inactiva"}
+          />
+          <DetailField
+            label="Fecha de creación"
+            value={formatDate(company.createdAt, true)}
+          />
+          <DetailField
+            label="Última actualización"
+            value={formatDate(company.updatedAt, true)}
+          />
           <DetailField
             label="Administradores actuales"
             value={company.companyAdmins.join(", ") || "Sin administrador"}
@@ -138,11 +161,18 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
       </MotionSection>
 
       <MotionSection className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface">
-        <div className="border-b border-border p-6 sm:px-8">
-          <h2 className="text-lg font-semibold text-foreground">Proyectos</h2>
-          <p className="mt-1 text-sm text-foreground-muted">
-            Proyectos registrados para esta empresa. Vista de solo lectura.
-          </p>
+        <div className="flex flex-col gap-4 border-b border-border p-6 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Proyectos</h2>
+            <p className="mt-1 text-sm text-foreground-muted">
+              Crea y consulta los proyectos registrados para esta empresa.
+            </p>
+          </div>
+          <CreateProjectDialog
+            companyId={company.id}
+            companyName={company.name}
+            disabled={company.status !== "ACTIVE"}
+          />
         </div>
         {company.projects.length === 0 ? (
           <div className="p-6 sm:p-8">
@@ -162,7 +192,8 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
                   <th className="px-4 py-3.5">Proveedores</th>
                   <th className="px-4 py-3.5">Zona horaria</th>
                   <th className="px-4 py-3.5">Inicio</th>
-                  <th className="px-6 py-3.5 sm:px-8">Fin estimado</th>
+                  <th className="px-4 py-3.5">Fin estimado</th>
+                  <th className="px-6 py-3.5 text-right sm:px-8">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -186,8 +217,14 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
                     <td className="whitespace-nowrap px-4 py-4 text-sm text-foreground-muted">
                       {formatDate(project.startDate)}
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-foreground-muted sm:px-8">
+                    <td className="whitespace-nowrap px-4 py-4 text-sm text-foreground-muted">
                       {formatDate(project.estimatedEndDate)}
+                    </td>
+                    <td className="px-6 py-4 text-right sm:px-8">
+                      <EditProjectDialog
+                        companyId={company.id}
+                        project={project}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -226,7 +263,9 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
                 {company.users.map((user) => (
                   <tr key={user.membershipId}>
                     <td className="px-6 py-4 sm:px-8">
-                      <p className="text-sm font-semibold text-foreground">{user.name}</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {user.name}
+                      </p>
                       <p className="mt-1 font-mono text-[11px] text-foreground-muted">
                         {user.userId}
                       </p>
@@ -243,7 +282,9 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
                       </span>
                     </td>
                     <td className="px-4 py-4 text-sm text-foreground-muted">
-                      {user.roles.length ? user.roles.join(" · ") : "Sin rol activo"}
+                      {user.roles.length
+                        ? user.roles.join(" · ")
+                        : "Sin rol activo"}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-foreground-muted sm:px-8">
                       {formatDate(user.createdAt)}
@@ -271,8 +312,13 @@ function OverviewItem({
   return (
     <div className="min-w-0 bg-surface p-5 sm:p-6">
       <Icon aria-hidden="true" className="size-5 text-brand-strong" />
-      <dt className="mt-3 text-xs font-medium text-foreground-muted">{label}</dt>
-      <dd className="mt-1 truncate text-sm font-semibold text-foreground" title={value}>
+      <dt className="mt-3 text-xs font-medium text-foreground-muted">
+        {label}
+      </dt>
+      <dd
+        className="mt-1 truncate text-sm font-semibold text-foreground"
+        title={value}
+      >
         {value}
       </dd>
     </div>
@@ -291,7 +337,9 @@ function DetailField({
   return (
     <div>
       <dt className="text-xs font-medium text-foreground-muted">{label}</dt>
-      <dd className={`mt-1.5 text-sm font-semibold text-foreground ${mono ? "font-mono" : ""}`}>
+      <dd
+        className={`mt-1.5 text-sm font-semibold text-foreground ${mono ? "font-mono" : ""}`}
+      >
         {value}
       </dd>
     </div>

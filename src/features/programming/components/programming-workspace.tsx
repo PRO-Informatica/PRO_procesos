@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, History, KanbanSquare, Plus, SlidersHorizontal, X } from "lucide-react";
+import { CalendarDays, FileUp, History, KanbanSquare, Plus, SlidersHorizontal, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
@@ -22,6 +22,7 @@ import {
   type ProgrammingRange,
 } from "../types";
 import { CreateProgrammingDialog } from "./create-programming-dialog";
+import { BulkProgrammingDialog } from "./bulk-programming-dialog";
 import { ProgrammingCalendar } from "./programming-calendar";
 import { ProgrammingKanban } from "./programming-kanban";
 import { ProgrammingPreviewDrawer } from "./programming-preview-drawer";
@@ -43,6 +44,15 @@ function defaultScheduledAt(timezone: string) {
   const get = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:00`;
+}
+
+function todayInTimezone(timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric", month: "2-digit", day: "2-digit", timeZone: timezone,
+  }).formatToParts(new Date());
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
 function ContextCreateButton({
@@ -71,10 +81,12 @@ function ContextCreateButton({
 export function ProgrammingWorkspace({
   project,
   canCreate,
+  canConfirm,
   initialData,
 }: {
   project: ProjectSummary;
   canCreate: boolean;
+  canConfirm: boolean;
   initialData: ProgrammingPageData;
 }) {
   const [view, setView] = useState<ViewMode>("calendar");
@@ -86,6 +98,7 @@ export function ProgrammingWorkspace({
   const [status, setStatus] = useState<ProgrammingEffectiveStatus | "">("");
   const [selected, setSelected] = useState<ProgrammingItem | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [dialogScheduledAt, setDialogScheduledAt] = useState(() =>
     defaultScheduledAt(project.timezone),
   );
@@ -159,7 +172,7 @@ export function ProgrammingWorkspace({
   const onCreated = useCallback(
     () => {
       setCreateOpen(false);
-      setNotice("Programación creada correctamente como borrador.");
+      setNotice("Programación creada pendiente de confirmación.");
       reload(range);
     },
     [range, reload],
@@ -183,6 +196,20 @@ export function ProgrammingWorkspace({
         : isHistoricalProgramming(availability, availabilityNow);
     });
   }, [availabilityNow, items, scope]);
+  const today = useMemo(() => todayInTimezone(project.timezone), [project.timezone]);
+  const creationActions = canCreate && scope === "active" && (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <button
+        type="button"
+        onClick={() => setBulkOpen(true)}
+        disabled={!initialData.suppliers.length}
+        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-semibold text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <FileUp aria-hidden="true" className="size-4" /> Carga masiva
+      </button>
+      <ContextCreateButton label="Nueva programación" disabled={!initialData.suppliers.length} onClick={() => openCreate()} />
+    </div>
+  );
 
   return (
     <MotionPage className="mx-auto max-w-[1600px]">
@@ -336,11 +363,7 @@ export function ProgrammingWorkspace({
               </div>
               {canCreate && scope === "active" && (
                 <div className="sm:text-right">
-                  <ContextCreateButton
-                    label="Nueva programación"
-                    disabled={!initialData.suppliers.length}
-                    onClick={() => openCreate()}
-                  />
+                  {creationActions}
                   {!initialData.suppliers.length && (
                     <p className="mt-2 max-w-xs text-xs text-foreground-muted">
                       Sin proveedores activos. Solicita a un administrador que
@@ -368,16 +391,12 @@ export function ProgrammingWorkspace({
               <div>
                 <h2 className="text-sm font-semibold text-foreground">Kanban de programación</h2>
                 <p className="mt-1 text-xs text-foreground-muted">
-                  Toda programación nueva inicia en la columna Borrador.
+                  Toda programación nueva inicia pendiente de confirmación.
                 </p>
               </div>
               {canCreate && scope === "active" && (
                 <div className="sm:text-right">
-                  <ContextCreateButton
-                    label="Nueva programación"
-                    disabled={!initialData.suppliers.length}
-                    onClick={() => openCreate()}
-                  />
+                  {creationActions}
                   {!initialData.suppliers.length && (
                     <p className="mt-2 max-w-xs text-xs text-foreground-muted">
                       Sin proveedores activos. Solicita a un administrador que
@@ -399,6 +418,12 @@ export function ProgrammingWorkspace({
       <ProgrammingPreviewDrawer
         item={selected}
         timezone={project.timezone}
+        canConfirm={canConfirm}
+        onUpdated={(message) => {
+          setSelected(null);
+          setNotice(message);
+          reload(range);
+        }}
         onClose={() => setSelected(null)}
       />
       {canCreate && (
@@ -412,6 +437,23 @@ export function ProgrammingWorkspace({
           initialScheduledAt={dialogScheduledAt}
           onClose={() => setCreateOpen(false)}
           onCreated={onCreated}
+        />
+      )}
+      {canCreate && (
+        <BulkProgrammingDialog
+          key={bulkOpen ? "bulk-open" : "bulk-closed"}
+          open={bulkOpen}
+          projectId={project.id}
+          projectCode={project.code}
+          timezone={project.timezone}
+          suppliers={initialData.suppliers}
+          today={today}
+          onClose={() => setBulkOpen(false)}
+          onCreated={(count) => {
+            setBulkOpen(false);
+            setNotice(`${count} programaciones creadas pendientes de confirmación.`);
+            reload(range);
+          }}
         />
       )}
     </MotionPage>

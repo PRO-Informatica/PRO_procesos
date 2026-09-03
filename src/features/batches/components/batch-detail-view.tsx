@@ -377,7 +377,7 @@ export function BatchDetailView({
         ) : (
           <EmptyState
             title="No hay guías activas"
-            description="Agrega una guía REGISTERED de esta semana o espera un rollover SYSTEM."
+            description="Agrega una guía despachada de esta semana o espera un rollover del sistema."
           />
         )}
       </MotionSection>

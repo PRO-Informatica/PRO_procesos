@@ -52,7 +52,6 @@ type GuideRow = {
   guide_number: string;
   guide_date: string;
   quantity: number | string;
-  received_quantity: number | string;
   unit_code: string;
   order_number: string | null;
 };
@@ -183,7 +182,7 @@ function summarize(
     if (!guide) continue;
     received.set(
       guide.unit_code,
-      (received.get(guide.unit_code) ?? 0) + numeric(guide.received_quantity),
+      (received.get(guide.unit_code) ?? 0) + numeric(guide.quantity),
     );
   }
   const ready = preview.filter((row) => row.ready_for_review).length;
@@ -241,7 +240,7 @@ export async function getBatchPageData(
     ? await supabase
         .from("dispatch_guides")
         .select(
-          "id, dispatch_id, supplier_id, guide_number, guide_date, quantity, received_quantity, unit_code, order_number",
+          "id, dispatch_id, supplier_id, guide_number, guide_date, quantity, unit_code, order_number",
         )
         .eq("project_id", projectId)
         .in("id", guideIds)
@@ -313,7 +312,7 @@ export async function getBatchDetail(
     .from("dispatches")
     .select("id, programming_id, supplier_id, status, result")
     .eq("project_id", projectId)
-    .eq("status", "REGISTERED");
+    .in("status", ["IN_EXECUTION", "COMPLETED"]);
   if (registeredResult.error) {
     throw new Error(
       `No fue posible cargar las guías elegibles. ${registeredResult.error.message}`,
@@ -329,7 +328,7 @@ export async function getBatchDetail(
         ? createAdminClient()
             .from("dispatch_guides")
             .select(
-              "id, dispatch_id, supplier_id, guide_number, guide_date, quantity, received_quantity, unit_code, order_number",
+              "id, dispatch_id, supplier_id, guide_number, guide_date, quantity, unit_code, order_number",
             )
             .eq("project_id", projectId)
             .in("id", guideQueryIds)
@@ -338,7 +337,7 @@ export async function getBatchDetail(
         ? supabase
             .from("dispatch_guides")
             .select(
-              "id, dispatch_id, supplier_id, guide_number, guide_date, quantity, received_quantity, unit_code, order_number",
+              "id, dispatch_id, supplier_id, guide_number, guide_date, quantity, unit_code, order_number",
             )
             .eq("project_id", projectId)
             .in("dispatch_id", registeredDispatchIds)
@@ -506,7 +505,7 @@ export async function getBatchDetail(
         orderNumber: guide.order_number,
         guideDate: guide.guide_date,
         quantity: numeric(guide.quantity),
-        receivedQuantity: numeric(guide.received_quantity),
+        receivedQuantity: numeric(guide.quantity),
         unitCode: guide.unit_code,
         supplierName:
           supplierNames.get(dispatch.supplier_id) ?? "Proveedor no disponible",
@@ -538,7 +537,7 @@ export async function getBatchDetail(
     (guide) => {
       if (activeGuideIds.has(guide.id)) return [];
       const dispatch = dispatchById.get(guide.dispatch_id);
-      if (!dispatch || dispatch.status !== "REGISTERED") return [];
+      if (!dispatch || dispatch.result === "NOT_DISPATCHED") return [];
       return [
         {
           guideId: guide.id,
@@ -549,7 +548,7 @@ export async function getBatchDetail(
             "Proveedor no disponible",
           programmingCode: formatProgrammingCode(dispatch.programming_id),
           dispatchId: dispatch.id,
-          receivedQuantity: numeric(guide.received_quantity),
+          receivedQuantity: numeric(guide.quantity),
           unitCode: guide.unit_code,
           result: dispatch.result,
         },
@@ -568,7 +567,7 @@ export async function getBatchDetail(
         dispatchId: row.dispatch_id,
         guideNumber: guide.guide_number,
         unitCode: guide.unit_code,
-        receivedQuantity: numeric(guide.received_quantity),
+        receivedQuantity: numeric(guide.quantity),
         ready: row.ready_for_review,
         action: row.rollover_action,
         reason: row.rollover_reason,

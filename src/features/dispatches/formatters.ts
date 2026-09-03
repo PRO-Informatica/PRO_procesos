@@ -10,26 +10,15 @@ export function formatDispatchResult(result: DispatchResult | null) {
 }
 
 export function dispatchStatusTone(status: DispatchStatus) {
-  if (status === "REQUIRES_CORRECTION") {
-    return "bg-destructive-soft text-destructive";
-  }
-  if (status === "CLOSED" || status === "RECONCILED") {
+  if (status === "COMPLETED") {
     return "bg-success-soft text-success";
-  }
-  if (status === "BATCHED" || status === "UNDER_REVIEW") {
-    return "bg-amber-100 text-amber-800 dark:bg-amber-950/55 dark:text-amber-300";
   }
   return "bg-sky-100 text-sky-800 dark:bg-sky-950/55 dark:text-sky-300";
 }
 
 export function dispatchResultTone(result: DispatchResult | null) {
-  if (result === "COMPLETE") return "bg-success-soft text-success";
-  if (result === "PARTIAL") {
-    return "bg-amber-100 text-amber-800 dark:bg-amber-950/55 dark:text-amber-300";
-  }
-  if (result === "RETURNED" || result === "REJECTED" || result === "CANCELLED") {
-    return "bg-destructive-soft text-destructive";
-  }
+  if (result === "DISPATCHED") return "bg-success-soft text-success";
+  if (result === "NOT_DISPATCHED") return "bg-destructive-soft text-destructive";
   return "bg-muted text-foreground-muted";
 }
 

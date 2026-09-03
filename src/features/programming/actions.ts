@@ -6,10 +6,16 @@ import { requireActiveProfile } from "@/features/auth/queries";
 import { getProjectContext } from "@/features/projects/queries";
 import { createClient } from "@/lib/supabase/server";
 
-import { getProgrammingItems } from "./queries";
+import { getProgrammingCatalogs, getProgrammingItems } from "./queries";
+import {
+  extractMixtoProgrammingWorkbook,
+  MIXTO_WORKBOOK_ERROR,
+} from "./mixto-listo-workbook";
 import {
   PROGRAMMING_EFFECTIVE_STATUSES,
+  type CreateProgrammingBatchState,
   type CreateProgrammingState,
+  type ExtractProgrammingWorkbookState,
   type ProgrammingFilters,
   type ProgrammingLoadResult,
   type ProgrammingMutationIntent,
@@ -90,6 +96,18 @@ function localDateTimeToIso(value: string, timezone: string) {
   }
 }
 
+function localDateKey(value: Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: timezone,
+  }).formatToParts(value);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
 function databaseErrorMessage(error: { code?: string; message: string }) {
   const message = error.message.toUpperCase();
   if (message.includes("PERMISSION_DENIED")) {
@@ -102,13 +120,16 @@ function databaseErrorMessage(error: { code?: string; message: string }) {
     return "La programación ya no está disponible.";
   }
   if (message.includes("PROGRAMMING_SCHEDULE_MUST_BE_FUTURE")) {
-    return "La fecha y hora programadas deben estar en el futuro.";
+    return "No puede crear una programación para una fecha anterior a hoy.";
+  }
+  if (message.includes("PROGRAMMING_SCHEDULE_DATE_IN_PAST")) {
+    return "No puede crear una programación para una fecha anterior a hoy.";
+  }
+  if (message.includes("PROGRAMMING_EDIT_WINDOW_CLOSED")) {
+    return "Esta programación solo podía editarse hasta un día antes de la fecha programada.";
   }
   if (message.includes("PROGRAMMING_NOT_EDITABLE")) {
-    return "Solo las programaciones en borrador pueden editarse.";
-  }
-  if (message.includes("PROGRAMMING_NOT_DRAFT")) {
-    return "La programación ya no está en borrador.";
+    return "Solo las programaciones pendientes de confirmación pueden editarse.";
   }
   if (message.includes("PROGRAMMING_NOT_PENDING_CONFIRMATION")) {
     return "La programación ya no está pendiente de confirmación.";
@@ -172,8 +193,6 @@ function databaseErrorMessage(error: { code?: string; message: string }) {
 
 const mutationPermissions: Record<ProgrammingMutationIntent, string> = {
   edit: "programming.modify",
-  submit: "programming.modify",
-  "return-to-draft": "programming.confirm",
   confirm: "programming.confirm",
   cancel: "programming.cancel",
   close: "programming.close",
@@ -257,18 +276,18 @@ export async function mutateProgrammingAction(
           project.timezone || "America/Guatemala",
         )
       : null;
-    if (projectError || !scheduledAtIso) {
+    if (projectError || !project || !scheduledAtIso) {
       return {
         status: "error",
         intent,
         message: "La fecha y hora programadas no son válidas.",
       };
     }
-    if (new Date(scheduledAtIso).valueOf() <= Date.now()) {
+    if (scheduledAt.slice(0, 10) <= localDateKey(new Date(), project.timezone || "America/Guatemala")) {
       return {
         status: "error",
         intent,
-        message: "La fecha y hora programadas deben estar en el futuro.",
+        message: "La edición solo está disponible hasta un día antes de la fecha programada.",
       };
     }
 
@@ -279,17 +298,6 @@ export async function mutateProgrammingAction(
       p_scheduled_at: scheduledAtIso,
       p_lines: lines,
       p_notes: notes || null,
-    }));
-  } else if (intent === "submit") {
-    ({ error } = await supabase.rpc("submit_programming_for_confirmation", {
-      p_programming_id: programmingId,
-      p_expected_version: expectedVersion,
-    }));
-  } else if (intent === "return-to-draft") {
-    ({ error } = await supabase.rpc("return_programming_to_draft", {
-      p_programming_id: programmingId,
-      p_expected_version: expectedVersion,
-      p_reason: readText(formData, "reason"),
     }));
   } else if (intent === "confirm") {
     const confirmedQuantity = Number(readText(formData, "confirmedQuantity"));
@@ -304,7 +312,7 @@ export async function mutateProgrammingAction(
       p_programming_id: programmingId,
       p_confirmed_quantity: confirmedQuantity,
       p_expected_version: expectedVersion,
-      p_notes: readText(formData, "notes") || null,
+      p_notes: null,
     }));
   } else if (intent === "cancel") {
     ({ error } = await supabase.rpc("cancel_programming", {
@@ -449,10 +457,10 @@ export async function createProgrammingAction(
       fields,
     };
   }
-  if (new Date(scheduledAtIso).valueOf() <= Date.now()) {
+  if (scheduledAt.slice(0, 10) < localDateKey(new Date(), project.timezone || "America/Guatemala")) {
     return {
       status: "error",
-      message: "La fecha y hora programadas deben estar en el futuro.",
+      message: "No puede crear una programación para una fecha anterior a hoy.",
       fields,
     };
   }
@@ -481,7 +489,131 @@ export async function createProgrammingAction(
 
   return {
     status: "success",
-    message: "Programación creada como borrador.",
+    message: "Programación creada pendiente de confirmación.",
     programmingId: data,
+  };
+}
+
+export async function extractProgrammingWorkbookAction(
+  _previousState: ExtractProgrammingWorkbookState,
+  formData: FormData,
+): Promise<ExtractProgrammingWorkbookState> {
+  const projectId = readText(formData, "projectId");
+  const file = formData.get("workbook");
+  if (!UUID_PATTERN.test(projectId)) {
+    return { status: "error", message: MIXTO_WORKBOOK_ERROR };
+  }
+  if (!(file instanceof File) || file.size === 0) {
+    return {
+      status: "error",
+      message: "Selecciona un archivo Excel .xlsx antes de generar la vista previa.",
+    };
+  }
+  const context = await authorizeProject(projectId, "programming.create");
+  if (!context) {
+    return { status: "error", message: "No tienes permiso para cargar programaciones." };
+  }
+  try {
+    const projectCode = context.activeProject?.code?.trim() ?? "";
+    const [rows, catalogs] = await Promise.all([
+      extractMixtoProgrammingWorkbook(file, projectCode),
+      getProgrammingCatalogs(projectId),
+    ]);
+    const defaultSupplier =
+      catalogs.suppliers.find((supplier) =>
+        `${supplier.code} ${supplier.name}`.toUpperCase().includes("MIXTO"),
+      ) ?? (catalogs.suppliers.length === 1 ? catalogs.suppliers[0] : null);
+    const m3Unit = catalogs.units.find(
+      (unit) => unit.code.trim().toUpperCase() === "M3",
+    );
+    const today = localDateKey(new Date(), context.activeProject?.timezone || "America/Guatemala");
+    return {
+      status: "success",
+      fileName: file.name,
+      rows: rows.map((row) => ({
+        ...row,
+        supplierId: defaultSupplier?.id ?? "",
+        unitCode: m3Unit?.code ?? "",
+        errors: [
+          ...row.errors,
+          ...(row.scheduledAt && row.scheduledAt.slice(0, 10) < today
+            ? ["La fecha es anterior a hoy"]
+            : []),
+          ...(!defaultSupplier ? ["Selecciona un proveedor"] : []),
+          ...(!m3Unit ? ["La unidad M3 no está activa"] : []),
+        ],
+      })),
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : MIXTO_WORKBOOK_ERROR,
+    };
+  }
+}
+
+export async function createProgrammingBatchAction(
+  _previousState: CreateProgrammingBatchState,
+  formData: FormData,
+): Promise<CreateProgrammingBatchState> {
+  const projectId = readText(formData, "projectId");
+  const rawRows = readText(formData, "rows");
+  if (!UUID_PATTERN.test(projectId) || !rawRows) {
+    return { status: "error", message: "La vista previa no es válida." };
+  }
+  const context = await authorizeProject(projectId, "programming.create");
+  if (!context) {
+    return { status: "error", message: "No tienes permiso para crear programaciones." };
+  }
+  let rows: Array<{
+    scheduledAt: string;
+    quantity: string;
+    unitCode: string;
+    supplierId: string;
+    notes: string;
+  }>;
+  try {
+    rows = JSON.parse(rawRows);
+  } catch {
+    return { status: "error", message: "La vista previa no es válida." };
+  }
+  if (!Array.isArray(rows) || !rows.length || rows.length > 250) {
+    return { status: "error", message: "La carga debe contener entre 1 y 250 filas." };
+  }
+  const timezone = context.activeProject?.timezone || "America/Guatemala";
+  const today = localDateKey(new Date(), timezone);
+  const items = [];
+  for (const [index, row] of rows.entries()) {
+    const quantity = Number(row.quantity);
+    const scheduledAt = localDateTimeToIso(row.scheduledAt, timezone);
+    if (
+      !scheduledAt || row.scheduledAt.slice(0, 10) < today ||
+      !Number.isFinite(quantity) || quantity <= 0 ||
+      !UUID_PATTERN.test(row.supplierId) || !row.unitCode
+    ) {
+      return { status: "error", message: `Revisa la fila ${index + 1} de la vista previa.` };
+    }
+    items.push({
+      supplier_id: row.supplierId,
+      scheduled_at: scheduledAt,
+      lines: [{ quantity, unit_code: row.unitCode }],
+      notes: row.notes || null,
+    });
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("create_programming_batch", {
+    p_project_id: projectId,
+    p_items: items,
+  });
+  if (error) return { status: "error", message: databaseErrorMessage(error) };
+  const result = data as { programming_ids?: unknown } | null;
+  const programmingIds = Array.isArray(result?.programming_ids)
+    ? result.programming_ids.filter((id): id is string => typeof id === "string")
+    : [];
+  revalidatePath("/programming");
+  return {
+    status: "success",
+    programmingIds,
+    message: `${programmingIds.length} programaciones creadas pendientes de confirmación.`,
   };
 }

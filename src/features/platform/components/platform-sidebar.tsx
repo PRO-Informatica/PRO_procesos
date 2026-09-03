@@ -5,7 +5,6 @@ import {
   ChevronLeft,
   FileClock,
   LayoutDashboard,
-  PanelsTopLeft,
   Users,
   X,
 } from "lucide-react";
@@ -33,12 +32,6 @@ const navigation = [
     label: "Usuarios",
     icon: Users,
     href: "/platform/users",
-    enabled: true,
-  },
-  {
-    label: "Plantillas",
-    icon: PanelsTopLeft,
-    href: "/platform/templates",
     enabled: true,
   },
   {

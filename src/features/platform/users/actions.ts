@@ -73,6 +73,29 @@ function authInviteErrorMessage(error: { status?: number; code?: string; message
   return "No fue posible enviar la invitación. Verifica el correo e intenta nuevamente.";
 }
 
+function authCreateErrorMessage(error: { status?: number; code?: string; message: string }) {
+  const message = `${error.code ?? ""} ${error.message}`.toLocaleLowerCase();
+
+  if (
+    error.status === 422 ||
+    message.includes("already") ||
+    message.includes("exists") ||
+    message.includes("registered")
+  ) {
+    return "Ya existe un usuario registrado con ese correo electrónico.";
+  }
+
+  if (message.includes("password") || message.includes("weak")) {
+    return "La contraseña no cumple los requisitos de seguridad de Supabase.";
+  }
+
+  if (error.status === 429 || message.includes("rate")) {
+    return "Se alcanzó temporalmente el límite de creación de usuarios. Intenta más tarde.";
+  }
+
+  return "No fue posible crear el usuario. Verifica los datos e intenta nuevamente.";
+}
+
 function rpcErrorMessage(error: { message: string }) {
   const message = error.message.toUpperCase();
 
@@ -202,6 +225,88 @@ export async function invitePlatformUser(
   return {
     status: "success",
     message: `Invitación enviada a ${email}.`,
+  };
+}
+
+export async function createPlatformUserWithPassword(
+  _previousState: PlatformUserActionState,
+  formData: FormData,
+): Promise<PlatformUserActionState> {
+  const email = readText(formData, "email").toLocaleLowerCase();
+  const fullName = readText(formData, "fullName").replace(/\s+/g, " ");
+  const password = readRawText(formData, "password");
+  const passwordConfirmation = readRawText(formData, "passwordConfirmation");
+  const fields = { email, fullName };
+
+  if (!isEmail(email)) {
+    return actionError("Ingresa un correo electrónico válido.", fields);
+  }
+  if (email.length > 254) {
+    return actionError("El correo electrónico es demasiado largo.", fields);
+  }
+  if (fullName.length < 2 || fullName.length > 160) {
+    return actionError("El nombre debe tener entre 2 y 160 caracteres.", fields);
+  }
+  if (password.length < 8 || password.length > 128) {
+    return actionError("La contraseña debe tener entre 8 y 128 caracteres.", fields);
+  }
+  if (password !== passwordConfirmation) {
+    return actionError("Las contraseñas no coinciden.", fields);
+  }
+
+  const authorization = await authorizePlatformAction();
+  if (!authorization) {
+    return actionError("No tienes autorización para crear usuarios.", fields);
+  }
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: fullName },
+  });
+
+  if (error || !data.user) {
+    return actionError(
+      authCreateErrorMessage(
+        error ?? { message: "Auth Admin no devolvió el usuario creado." },
+      ),
+      fields,
+    );
+  }
+
+  const { data: profile, error: profileError } = await admin
+    .from("profiles")
+    .update({ full_name: fullName, active: true, updated_at: new Date().toISOString() })
+    .eq("id", data.user.id)
+    .select("id")
+    .maybeSingle();
+  const { error: auditError } = await admin.from("audit_events").insert({
+    actor_user_id: authorization.userId,
+    entity_type: "user",
+    entity_id: data.user.id,
+    action: "USER_CREATED_WITH_PASSWORD",
+    new_values: {
+      email,
+      full_name: fullName,
+      email_confirmed: true,
+      creation_method: "ADMIN_PASSWORD",
+    },
+  });
+
+  revalidatePath("/platform/users");
+  revalidatePath(`/platform/users/${data.user.id}`);
+
+  if (!profile || profileError || auditError) {
+    return actionError(
+      "El usuario fue creado y ya puede ingresar, pero no fue posible completar su perfil o auditoría. Repórtalo antes de asignarle accesos.",
+    );
+  }
+
+  return {
+    status: "success",
+    message: `Usuario ${email} creado. Ya puede iniciar sesión con la contraseña definida.`,
   };
 }
 

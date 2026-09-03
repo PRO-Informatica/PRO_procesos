@@ -83,7 +83,7 @@ export function ProgrammingKanban({
   timezone: string;
   onSelect: (item: ProgrammingItem) => void;
 }) {
-  const [mobileStatus, setMobileStatus] = useState<ProgrammingEffectiveStatus>("DRAFT");
+  const [mobileStatus, setMobileStatus] = useState<ProgrammingEffectiveStatus>("PENDING_CONFIRMATION");
   const grouped = Object.fromEntries(
     PROGRAMMING_EFFECTIVE_STATUSES.map((status) => [
       status,

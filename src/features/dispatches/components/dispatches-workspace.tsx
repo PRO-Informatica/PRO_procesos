@@ -1,17 +1,6 @@
 "use client";
 
-import {
-  AlertCircle,
-  CalendarClock,
-  ChevronRight,
-  CircleSlash2,
-  ClipboardList,
-  PackageCheck,
-  Plus,
-  SlidersHorizontal,
-  Truck,
-  X,
-} from "lucide-react";
+import { CalendarDays, ChevronRight, Plus, Search, Truck, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -19,57 +8,73 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { MotionPage } from "@/components/motion/motion-page";
 import { MotionSection } from "@/components/motion/motion-section";
 import type { ProjectSummary } from "@/features/projects/types";
+import { formatStatusLabel } from "@/lib/status-labels";
 
 import {
-  formatDispatchDate,
   formatDispatchDateTime,
   formatDispatchQuantity,
-  formatDispatchResult,
-  formatDispatchStatus,
-  formatIdentifier,
 } from "../formatters";
-import {
-  DISPATCH_RESULTS,
-  DISPATCH_STATUSES,
-  type DispatchPageData,
-  type DispatchResult,
-  type DispatchStatus,
+import type {
+  DispatchPageData,
+  ProgrammingDispatchItem,
+  ProgrammingDispatchStatus,
 } from "../types";
-import { DispatchResultBadge, DispatchStatusBadge } from "./dispatch-badges";
-import { RegisterDispatchDialog } from "./register-dispatch-dialog";
+import { DispatchStatusBadge } from "./dispatch-badges";
+import { DispatchGuideDialog } from "./dispatch-guide-dialog";
+import { StartDispatchDialog } from "./register-dispatch-dialog";
 
-function Metric({
-  label,
-  value,
-  icon: Icon,
-}: {
-  label: string;
-  value: number;
-  icon: typeof Truck;
-}) {
-  return (
-    <div className="min-w-[78vw] snap-start rounded-xl border border-border bg-surface p-4 sm:min-w-0">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-foreground-muted">
-          {label}
-        </p>
-        <Icon aria-hidden="true" className="size-4 text-brand-strong" />
-      </div>
-      <p className="mt-2 text-2xl font-semibold text-foreground">{value}</p>
-    </div>
-  );
+type DateMode = "day" | "week" | "month";
+type DispatchFilter = "" | "NOT_STARTED" | "IN_EXECUTION" | "COMPLETED";
+
+function localDate(value: string, timezone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: timezone,
+  }).format(new Date(value));
 }
 
-function RegisterButton({ compact = false, onClick }: { compact?: boolean; onClick: () => void }) {
+function matchesPeriod(value: string, anchor: string, mode: DateMode) {
+  if (!anchor) return true;
+  if (mode === "day") return value === anchor;
+  if (mode === "month") return value.slice(0, 7) === anchor.slice(0, 7);
+  const selected = new Date(`${anchor}T12:00:00Z`);
+  const weekday = selected.getUTCDay() || 7;
+  const start = new Date(selected);
+  start.setUTCDate(selected.getUTCDate() - weekday + 1);
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 6);
+  const current = new Date(`${value}T12:00:00Z`);
+  return current >= start && current <= end;
+}
+
+function DispatchActions({
+  item,
+  canCreate,
+  canModify,
+  onStart,
+  onAddGuide,
+}: {
+  item: ProgrammingDispatchItem;
+  canCreate: boolean;
+  canModify: boolean;
+  onStart: () => void;
+  onAddGuide: () => void;
+}) {
+  if (!item.dispatchId) {
+    return (
+      <div className="flex flex-wrap justify-end gap-2">
+        <Link href={`/programming/${item.programmingId}`} className="inline-flex min-h-9 items-center rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted">Ver programación</Link>
+        {canCreate && <button type="button" onClick={onStart} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong"><Plus className="size-4" /> Iniciar despacho</button>}
+      </div>
+    );
+  }
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`${compact ? "min-h-10 px-3" : "min-h-11 px-4"} inline-flex items-center justify-center gap-2 rounded-lg bg-brand text-sm font-semibold text-white hover:bg-brand-strong`}
-    >
-      <Plus aria-hidden="true" className="size-4" />
-      Registrar despacho
-    </button>
+    <div className="flex flex-wrap justify-end gap-2">
+      <Link href={`/dispatches/${item.dispatchId}`} className="inline-flex min-h-9 items-center rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted">Ver despacho</Link>
+      {item.dispatchStatus === "IN_EXECUTION" && canModify && <button type="button" onClick={onAddGuide} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong"><Plus className="size-4" /> Agregar guía</button>}
+    </div>
   );
 }
 
@@ -86,246 +91,68 @@ export function DispatchesWorkspace({
   data: DispatchPageData;
   receiverName: string;
 }) {
-  const [registerOpen, setRegisterOpen] = useState(false);
-  const [fixedProgrammingId, setFixedProgrammingId] = useState<string>();
-  const [status, setStatus] = useState<DispatchStatus | "">("");
-  const [result, setResult] = useState<DispatchResult | "NONE" | "">("");
-  const [supplierId, setSupplierId] = useState("");
-  const [programmingId, setProgrammingId] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [programmingStatus, setProgrammingStatus] = useState<ProgrammingDispatchStatus | "">("");
+  const [dispatchStatus, setDispatchStatus] = useState<DispatchFilter>("");
+  const [dateMode, setDateMode] = useState<DateMode>("day");
+  const [date, setDate] = useState("");
+  const [code, setCode] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [startItem, setStartItem] = useState<ProgrammingDispatchItem | null>(null);
+  const [guideItem, setGuideItem] = useState<ProgrammingDispatchItem | null>(null);
 
-  const filtered = useMemo(
-    () =>
-      data.items.filter((item) => {
-        const dispatchDate = item.guideDate ?? item.createdAt.slice(0, 10);
-        return (
-          (!status || item.status === status) &&
-          (!result || (result === "NONE" ? item.result === null : item.result === result)) &&
-          (!supplierId || item.supplierId === supplierId) &&
-          (!programmingId || item.programmingId === programmingId) &&
-          (!dateFrom || dispatchDate >= dateFrom) &&
-          (!dateTo || dispatchDate <= dateTo)
-        );
-      }),
-    [data.items, dateFrom, dateTo, programmingId, result, status, supplierId],
-  );
-  const hasFilters = Boolean(status || result || supplierId || programmingId || dateFrom || dateTo);
-  const programmingOptions = [...new Map(
-    data.items.map((item) => [item.programmingId, item.programmingCode]),
-  ).entries()];
-  const metrics = {
-    total: data.items.length,
-    registered: data.items.filter((item) => item.status === "REGISTERED").length,
-    batched: data.items.filter((item) => item.status === "BATCHED").length,
-    incidents: data.items.filter((item) => item.incidentCount > 0).length,
-    withoutResult: data.items.filter((item) => item.result === null).length,
-  };
-
+  const filtered = useMemo(() => data.items.filter((item) => {
+    const itemDate = localDate(item.scheduledAt, project.timezone || "America/Guatemala");
+    const statusMatches = dispatchStatus === ""
+      || (dispatchStatus === "NOT_STARTED" ? !item.dispatchId : item.dispatchStatus === dispatchStatus);
+    return (
+      (!programmingStatus || item.programmingStatus === programmingStatus)
+      && statusMatches
+      && (!code || item.programmingCode.toLowerCase().includes(code.trim().toLowerCase()))
+      && matchesPeriod(itemDate, date, dateMode)
+    );
+  }), [code, data.items, date, dateMode, dispatchStatus, programmingStatus, project.timezone]);
+  const selected = data.items.find((item) => item.programmingId === selectedId) ?? null;
+  const hasFilters = Boolean(programmingStatus || dispatchStatus || date || code);
   const clearFilters = () => {
-    setStatus("");
-    setResult("");
-    setSupplierId("");
-    setProgrammingId("");
-    setDateFrom("");
-    setDateTo("");
+    setProgrammingStatus("");
+    setDispatchStatus("");
+    setDate("");
+    setCode("");
   };
 
   return (
     <MotionPage className="mx-auto max-w-[1600px] space-y-5 pb-10">
-      <MotionSection className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">
-            Operación · Recepción
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            Despachos
-          </h1>
-          <p className="mt-2 text-sm text-foreground-muted">
-            Registra despachos y administra sus guías, productos, recepción e incidencias en {project.name}.
-          </p>
-        </div>
-        {canCreate && data.eligibleProgramming.length > 0 && <RegisterButton onClick={() => { setFixedProgrammingId(undefined); setRegisterOpen(true); }} />}
-      </MotionSection>
-
-      <MotionSection className="flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain pb-2 [scrollbar-width:thin] sm:grid sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-5">
-        <Metric label="Total despachos" value={metrics.total} icon={Truck} />
-        <Metric label="Registrados" value={metrics.registered} icon={ClipboardList} />
-        <Metric label="En lote" value={metrics.batched} icon={PackageCheck} />
-        <Metric label="Con incidencias" value={metrics.incidents} icon={AlertCircle} />
-        <Metric label="Sin resultado" value={metrics.withoutResult} icon={CircleSlash2} />
+      <MotionSection>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Operación · Despachos en obra</p>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Despachos</h1>
+        <p className="mt-2 text-sm text-foreground-muted">Gestiona una operación progresiva por programación, con múltiples guías y productos.</p>
       </MotionSection>
 
       <MotionSection className="rounded-xl border border-border bg-surface p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">
-            <SlidersHorizontal aria-hidden="true" className="size-4" />
-            Filtros
-          </div>
-          {hasFilters && (
-            <button type="button" onClick={clearFilters} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-strong hover:text-brand">
-              <X aria-hidden="true" className="size-3.5" /> Limpiar
-            </button>
-          )}
-        </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <div>
-            <label htmlFor="dispatch-status" className="sr-only">Estado del proceso</label>
-            <select id="dispatch-status" value={status} onChange={(event) => setStatus(event.target.value as DispatchStatus | "")} className="form-input">
-              <option value="">Todos los estados</option>
-              {DISPATCH_STATUSES.map((value) => <option key={value} value={value}>{formatDispatchStatus(value)}</option>)}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="dispatch-result" className="sr-only">Resultado físico</label>
-            <select id="dispatch-result" value={result} onChange={(event) => setResult(event.target.value as DispatchResult | "NONE" | "")} className="form-input">
-              <option value="">Todos los resultados</option>
-              <option value="NONE">Sin resultado</option>
-              {DISPATCH_RESULTS.map((value) => <option key={value} value={value}>{formatDispatchResult(value)}</option>)}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="dispatch-supplier" className="sr-only">Proveedor</label>
-            <select id="dispatch-supplier" value={supplierId} onChange={(event) => setSupplierId(event.target.value)} className="form-input">
-              <option value="">Todos los proveedores</option>
-              {data.suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="dispatch-programming" className="sr-only">Programación</label>
-            <select id="dispatch-programming" value={programmingId} onChange={(event) => setProgrammingId(event.target.value)} className="form-input">
-              <option value="">Todas las programaciones</option>
-              {programmingOptions.map(([id, code]) => <option key={id} value={id}>{code}</option>)}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label htmlFor="dispatch-date-from" className="sr-only">Fecha desde</label>
-              <input id="dispatch-date-from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="form-input" title="Fecha desde" />
-            </div>
-            <div>
-              <label htmlFor="dispatch-date-to" className="sr-only">Fecha hasta</label>
-              <input id="dispatch-date-to" type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} className="form-input" title="Fecha hasta" />
-            </div>
-          </div>
+        <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">Filtros</p>{hasFilters && <button type="button" onClick={clearFilters} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-strong"><X className="size-3.5" /> Limpiar</button>}</div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_0.8fr_1fr_1.2fr]">
+          <select aria-label="Estado programación" value={programmingStatus} onChange={(event) => setProgrammingStatus(event.target.value as ProgrammingDispatchStatus | "")} className="form-input"><option value="">Estado programación</option><option value="CONFIRMED">Confirmada</option><option value="IN_EXECUTION">En ejecución</option></select>
+          <select aria-label="Estado despacho" value={dispatchStatus} onChange={(event) => setDispatchStatus(event.target.value as DispatchFilter)} className="form-input"><option value="">Estado despacho</option><option value="NOT_STARTED">Sin iniciar</option><option value="IN_EXECUTION">En ejecución</option><option value="COMPLETED">Completado</option></select>
+          <select aria-label="Periodo de fecha" value={dateMode} onChange={(event) => setDateMode(event.target.value as DateMode)} className="form-input"><option value="day">Día</option><option value="week">Semana</option><option value="month">Mes</option></select>
+          <div className="relative"><CalendarDays className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" /><input aria-label="Fecha" type="date" value={date} onChange={(event) => setDate(event.target.value)} className="form-input pl-10" /></div>
+          <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" /><input aria-label="Código programación" value={code} onChange={(event) => setCode(event.target.value)} placeholder="Código programación" className="form-input pl-10" /></div>
         </div>
       </MotionSection>
 
-      <MotionSection>
-        {data.items.length === 0 ? (
-          <EmptyState
-            icon={Truck}
-            title={data.eligibleProgramming.length ? "Aún no hay despachos registrados" : "No hay despachos disponibles"}
-            description={data.eligibleProgramming.length
-              ? "Hay programaciones confirmadas listas para despacho. Usa Registrar despacho para iniciar la recepción."
-              : "Primero debes confirmar una programación para iniciar el flujo de despacho."}
-            action={canCreate && data.eligibleProgramming.length ? <RegisterButton compact onClick={() => { setFixedProgrammingId(undefined); setRegisterOpen(true); }} /> : undefined}
-          />
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={SlidersHorizontal}
-            title="No hay resultados para estos filtros"
-            description="Ajusta los criterios o restablece la vista completa."
-            action={<button type="button" onClick={clearFilters} className="primary-button">Limpiar filtros</button>}
-          />
-        ) : (
+      <MotionSection className="overflow-hidden rounded-xl border border-border bg-surface">
+        <div className="border-b border-border px-5 py-4 sm:px-6"><h2 className="font-semibold">Programaciones listas para despachar</h2><p className="mt-1 text-xs text-foreground-muted">Programaciones confirmadas o actualmente en ejecución</p></div>
+        {!filtered.length ? <div className="p-6"><EmptyState icon={Truck} title="No hay programaciones disponibles" description={hasFilters ? "Ajusta los filtros para ver otros resultados." : "Las programaciones confirmadas aparecerán aquí."} /></div> : (
           <>
-            <div className="hidden max-h-[min(65vh,48rem)] overflow-y-auto rounded-xl border border-border bg-surface lg:block">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
-                  <thead className="sticky top-0 z-10 bg-muted text-[10px] uppercase tracking-[0.08em] text-foreground-muted">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">Fecha de guía</th>
-                      <th className="px-4 py-3 font-semibold">Guía</th>
-                      <th className="px-4 py-3 font-semibold">Programación</th>
-                      <th className="px-4 py-3 font-semibold">Proveedor</th>
-                      <th className="px-4 py-3 font-semibold">Cantidad recibida</th>
-                      <th className="px-4 py-3 font-semibold">Receptor</th>
-                      <th className="px-4 py-3 font-semibold">Estado del proceso</th>
-                      <th className="px-4 py-3 font-semibold">Resultado físico</th>
-                      <th className="px-4 py-3"><span className="sr-only">Abrir</span></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {filtered.map((item) => (
-                      <tr key={item.id} className="group hover:bg-muted/35">
-                        <td className="px-4 py-4 text-foreground-muted">{formatDispatchDate(item.guideDate)}</td>
-                        <td className="px-4 py-4 font-semibold text-foreground">{item.guideNumber ?? "Sin guía"}</td>
-                        <td className="px-4 py-4"><Link href={`/programming/${item.programmingId}`} className="font-mono text-xs font-semibold text-brand-strong hover:underline">{item.programmingCode}</Link></td>
-                        <td className="px-4 py-4 font-medium text-foreground">{item.supplierName}</td>
-                        <td className="px-4 py-4 font-semibold text-foreground">{item.receivedQuantity === null ? "—" : `${formatDispatchQuantity(item.receivedQuantity)} ${item.unitCode}`}</td>
-                        <td className="px-4 py-4 text-foreground-muted">{item.receivedByName ?? "No registrado"}</td>
-                        <td className="px-4 py-4"><DispatchStatusBadge status={item.status} /></td>
-                        <td className="px-4 py-4"><DispatchResultBadge result={item.result} /></td>
-                        <td className="px-4 py-4 text-right"><Link href={`/dispatches/${item.id}`} aria-label={`Abrir ${formatIdentifier("DSP", item.id)}`} className="inline-grid size-9 place-items-center rounded-lg text-foreground-muted group-hover:bg-surface group-hover:text-foreground"><ChevronRight aria-hidden="true" className="size-4" /></Link></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="grid max-h-[65vh] gap-3 overflow-y-auto overscroll-contain pr-1 lg:hidden">
-              {filtered.map((item) => (
-                <Link key={item.id} href={`/dispatches/${item.id}`} className="rounded-xl border border-border bg-surface p-4 transition hover:border-brand/35 hover:shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-foreground">{item.guideNumber ?? "Sin guía"}</p>
-                      <p className="mt-1 truncate text-sm text-foreground-muted">{item.supplierName}</p>
-                      <p className="mt-1 text-xs text-foreground-muted">Pedido {item.orderNumber ?? "Sin pedido"}</p>
-                    </div>
-                    <ChevronRight aria-hidden="true" className="mt-1 size-4 shrink-0 text-foreground-muted" />
-                  </div>
-                  <p className="mt-4 text-xl font-semibold text-foreground">{item.receivedQuantity === null ? "—" : `${formatDispatchQuantity(item.receivedQuantity)} ${item.unitCode}`}</p>
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-                    <div><p className="text-foreground-muted">Programación</p><p className="mt-1 font-mono font-semibold text-foreground">{item.programmingCode}</p></div>
-                    <div><p className="text-foreground-muted">Fecha</p><p className="mt-1 font-semibold text-foreground">{formatDispatchDate(item.guideDate)}</p></div>
-                    <div><p className="mb-1 text-foreground-muted">Estado</p><DispatchStatusBadge status={item.status} /></div>
-                    <div><p className="mb-1 text-foreground-muted">Resultado</p><DispatchResultBadge result={item.result} /></div>
-                  </div>
-                  <span className="mt-4 inline-flex min-h-9 items-center justify-center rounded-lg border border-border px-3 text-xs font-semibold text-brand-strong">
-                    Ver detalle
-                  </span>
-                </Link>
-              ))}
-            </div>
+            <div className="hidden overflow-x-auto lg:block"><table className="w-full min-w-[980px] text-left text-sm"><thead className="bg-muted/60 text-[10px] uppercase tracking-[0.08em] text-foreground-muted"><tr><th className="px-5 py-3">Código programación</th><th className="px-5 py-3">Estado programación</th><th className="px-5 py-3">Proveedor</th><th className="px-5 py-3">Fecha</th><th className="px-5 py-3">Estado despacho</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-border">{filtered.map((item) => <tr key={item.programmingId} onClick={() => setSelectedId(item.programmingId)} className={`cursor-pointer hover:bg-muted/35 ${selectedId === item.programmingId ? "bg-brand-soft/35" : ""}`}><td className="px-5 py-4 font-mono text-xs font-semibold text-brand-strong">{item.programmingCode}</td><td className="px-5 py-4">{formatStatusLabel(item.programmingStatus)}</td><td className="px-5 py-4 font-medium">{item.supplierName}</td><td className="px-5 py-4 text-foreground-muted">{formatDispatchDateTime(item.scheduledAt, project.timezone)}</td><td className="px-5 py-4">{item.dispatchStatus ? <DispatchStatusBadge status={item.dispatchStatus} /> : <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted">Sin iniciar</span>}</td><td className="px-5 py-4" onClick={(event) => event.stopPropagation()}><DispatchActions item={item} canCreate={canCreate} canModify={canModify} onStart={() => setStartItem(item)} onAddGuide={() => setGuideItem(item)} /></td></tr>)}</tbody></table></div>
+            <div className="divide-y divide-border lg:hidden">{filtered.map((item) => <article key={item.programmingId} className="p-4" onClick={() => setSelectedId(item.programmingId)}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-mono text-xs font-semibold text-brand-strong">{item.programmingCode}</p><p className="mt-1 truncate font-semibold">{item.supplierName}</p><p className="mt-1 text-xs text-foreground-muted">{formatDispatchDateTime(item.scheduledAt, project.timezone)}</p></div>{item.dispatchStatus ? <DispatchStatusBadge status={item.dispatchStatus} /> : <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold">Sin iniciar</span>}</div><div className="mt-4" onClick={(event) => event.stopPropagation()}><DispatchActions item={item} canCreate={canCreate} canModify={canModify} onStart={() => setStartItem(item)} onAddGuide={() => setGuideItem(item)} /></div></article>)}</div>
           </>
         )}
       </MotionSection>
 
-      {data.eligibleProgramming.length > 0 && (
-        <MotionSection className="overflow-hidden rounded-xl border border-border bg-surface">
-          <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
-            <div>
-              <h2 className="font-semibold text-foreground">Listas para despacho</h2>
-              <p className="mt-1 text-xs text-foreground-muted">Programaciones confirmadas o actualmente en ejecución.</p>
-            </div>
-            <span className="rounded-full bg-brand-soft px-2.5 py-1 text-xs font-semibold text-brand-strong">{data.eligibleProgramming.length}</span>
-          </div>
-          <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-            {data.eligibleProgramming.map((item) => (
-              <article key={item.id} className="rounded-xl border border-border p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div><p className="font-mono text-xs font-semibold text-brand-strong">{formatIdentifier("PRG", item.id)}</p><p className="mt-1 font-semibold text-foreground">{item.supplierName}</p></div>
-                  <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-foreground-muted">{item.status === "CONFIRMED" ? "Confirmada" : "En ejecución"}</span>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-                  <div><p className="text-foreground-muted">Objetivo</p><p className="mt-1 font-semibold text-foreground">{formatDispatchQuantity(item.confirmedQuantity ?? item.requestedQuantity)} {item.unitCode}</p></div>
-                  <div><p className="text-foreground-muted">Restante</p><p className="mt-1 font-semibold text-foreground">{formatDispatchQuantity(item.remaining)} {item.unitCode}</p></div>
-                  <div><p className="text-foreground-muted">Productos</p><p className="mt-1 font-semibold text-foreground">{item.lineCount}</p></div>
-                  <div><p className="text-foreground-muted">Despachos</p><p className="mt-1 font-semibold text-foreground">{item.dispatchCount}</p></div>
-                </div>
-                <p className="mt-4 flex items-center gap-2 border-t border-border pt-3 text-xs text-foreground-muted"><CalendarClock aria-hidden="true" className="size-3.5" /> {formatDispatchDateTime(item.scheduledAt, project.timezone)}</p>
-                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                  <Link href={`/programming/${item.id}`} className="inline-flex min-h-10 flex-1 items-center justify-center rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted">Ver programación</Link>
-                  {canCreate && <button type="button" onClick={() => { setFixedProgrammingId(item.id); setRegisterOpen(true); }} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong"><Plus aria-hidden="true" className="size-4" /> Registrar despacho</button>}
-                </div>
-              </article>
-            ))}
-          </div>
-        </MotionSection>
-      )}
-      {registerOpen && <RegisterDispatchDialog open projectId={project.id} timezone={project.timezone || "America/Guatemala"} receiverName={receiverName} programming={data.eligibleProgramming} units={data.units} fixedProgrammingId={fixedProgrammingId} canAttachDocument={canModify} onClose={() => setRegisterOpen(false)} />}
+      {selected?.dispatchId && <MotionSection className="overflow-hidden rounded-xl border border-border bg-surface"><div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6"><div><h2 className="font-semibold">Despacho {selected.programmingCode}</h2><p className="mt-1 text-xs text-foreground-muted">Estado: {selected.dispatchStatus ? formatStatusLabel(selected.dispatchStatus) : "Sin iniciar"}</p></div><Link href={`/dispatches/${selected.dispatchId}`} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-strong">Ver detalle <ChevronRight className="size-4" /></Link></div>{selected.guides.length ? <><div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-sm"><thead className="bg-muted/45 text-xs text-foreground-muted"><tr><th className="px-5 py-3">Guía</th><th className="px-5 py-3">Volumen</th><th className="px-5 py-3">Productos</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-border">{selected.guides.map((guide) => <tr key={guide.id}><td className="px-5 py-4 font-semibold">{guide.guideNumber}</td><td className="px-5 py-4">{formatDispatchQuantity(guide.quantity)} {guide.unitCode}</td><td className="px-5 py-4">{guide.productCount}</td><td className="px-5 py-4 text-right"><Link href={`/dispatches/${selected.dispatchId}#guides`} className="text-xs font-semibold text-brand-strong">Ver / Editar</Link></td></tr>)}</tbody></table></div><div className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><p className="font-semibold">Total según guías: {formatDispatchQuantity(selected.guideTotal)} {selected.unitCode}</p>{selected.dispatchStatus === "IN_EXECUTION" && canModify && <button type="button" onClick={() => setGuideItem(selected)} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-semibold text-white"><Plus className="size-4" /> Agregar guía</button>}</div></> : <div className="p-5"><EmptyState title="Sin guías registradas" description="Este despacho aún no tiene entregas documentadas." action={selected.dispatchStatus === "IN_EXECUTION" && canModify ? <button type="button" onClick={() => setGuideItem(selected)} className="primary-button"><Plus className="size-4" /> Agregar guía</button> : undefined} /></div>}</MotionSection>}
+
+      {startItem && <StartDispatchDialog projectId={project.id} timezone={project.timezone || "America/Guatemala"} receiverName={receiverName} programming={startItem} onClose={() => setStartItem(null)} />}
+      {guideItem?.dispatchId && guideItem.version && <DispatchGuideDialog projectId={project.id} programmingId={guideItem.programmingId} dispatchId={guideItem.dispatchId} expectedVersion={guideItem.version} programmedUnitCode={guideItem.unitCode} units={data.units} onClose={() => setGuideItem(null)} />}
     </MotionPage>
   );
 }

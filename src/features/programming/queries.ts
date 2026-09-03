@@ -19,6 +19,7 @@ const DEFAULT_TIMEZONE = "America/Guatemala";
 
 type ProgrammingRow = {
   id: string;
+  version: number;
   project_id: string;
   supplier_id: string;
   created_by: string;
@@ -48,7 +49,6 @@ type DispatchGuideRow = {
   guide_number: string;
   guide_date: string;
   quantity: number | string;
-  received_quantity: number | string;
   unit_code: string;
 };
 
@@ -58,6 +58,11 @@ type ProgrammingLineRow = {
   quantity: number | string;
   unit_code: string;
   position: number;
+};
+
+type ProgrammingActorLabelRow = {
+  profile_id: string;
+  display_label: string;
 };
 
 function numeric(value: number | string | null) {
@@ -149,7 +154,7 @@ export async function getProgrammingItems(
   let programmingQuery = supabase
     .from("programming")
     .select(
-      "id, project_id, supplier_id, created_by, scheduled_at, requested_quantity, confirmed_quantity, unit_code, placement_group, requires_pumping, estimated_work_item_id, status, notes, confirmed_at, confirmed_by",
+      "id, version, project_id, supplier_id, created_by, scheduled_at, requested_quantity, confirmed_quantity, unit_code, placement_group, requires_pumping, estimated_work_item_id, status, notes, confirmed_at, confirmed_by",
     )
     .eq("project_id", projectId)
     .gte("scheduled_at", range.start)
@@ -196,7 +201,7 @@ export async function getProgrammingItems(
             .in("id", workItemIds)
         : Promise.resolve({ data: [], error: null }),
       profileIds.length
-        ? supabase.from("profiles").select("id, full_name").in("id", profileIds)
+        ? supabase.rpc("get_programming_actor_labels", { p_project_id: projectId })
         : Promise.resolve({ data: [], error: null }),
       supabase
         .from("dispatches")
@@ -232,9 +237,9 @@ export async function getProgrammingItems(
     ]),
   );
   const profileNames = new Map(
-    (profilesResult.data ?? []).map((profile) => [
-      profile.id,
-      profile.full_name || "Usuario no disponible",
+    ((profilesResult.data ?? []) as ProgrammingActorLabelRow[]).map((profile) => [
+      profile.profile_id,
+      profile.display_label || "Usuario no disponible",
     ]),
   );
   const dispatchesByProgramming = new Map<string, DispatchRow[]>();
@@ -243,18 +248,19 @@ export async function getProgrammingItems(
   const guidesResult = dispatchIds.length
     ? await supabase
         .from("dispatch_guides")
-        .select("dispatch_id, guide_number, guide_date, quantity, received_quantity, unit_code")
+        .select("dispatch_id, guide_number, guide_date, quantity, unit_code")
         .in("dispatch_id", dispatchIds)
     : { data: [], error: null };
   if (guidesResult.error) {
     throw new Error(`No fue posible resolver las guías relacionadas. ${guidesResult.error.message}`);
   }
-  const guidesByDispatch = new Map(
-    ((guidesResult.data ?? []) as DispatchGuideRow[]).map((guide) => [
-      guide.dispatch_id,
+  const guidesByDispatch = new Map<string, DispatchGuideRow[]>();
+  for (const guide of (guidesResult.data ?? []) as DispatchGuideRow[]) {
+    guidesByDispatch.set(guide.dispatch_id, [
+      ...(guidesByDispatch.get(guide.dispatch_id) ?? []),
       guide,
-    ]),
-  );
+    ]);
+  }
   for (const dispatch of dispatchRows) {
     const current = dispatchesByProgramming.get(dispatch.programming_id) ?? [];
     current.push(dispatch);
@@ -272,6 +278,7 @@ export async function getProgrammingItems(
     const rowDispatches = dispatchesByProgramming.get(row.id) ?? [];
     return {
     id: row.id,
+    version: row.version,
     projectId: row.project_id,
     supplierId: row.supplier_id,
     supplierName: supplierNames.get(row.supplier_id) ?? "Proveedor no disponible",
@@ -308,11 +315,12 @@ export async function getProgrammingItems(
     })),
     dispatches: rowDispatches.map((dispatch) => ({
       ...(() => {
-        const guide = guidesByDispatch.get(dispatch.id);
+        const guides = guidesByDispatch.get(dispatch.id) ?? [];
+        const guide = guides[0];
         return {
-          guideNumber: guide?.guide_number ?? null,
+          guideNumber: guides.length > 1 ? `${guides.length} guías` : guide?.guide_number ?? null,
           guideDate: guide?.guide_date ?? null,
-          quantity: numeric(guide?.received_quantity ?? null),
+          quantity: guides.reduce((sum, item) => sum + (numeric(item.quantity) ?? 0), 0),
           unitCode: guide?.unit_code ?? null,
         };
       })(),
@@ -482,11 +490,11 @@ export async function getProgrammingDetailPageData(
       dispatchIds.length
         ? supabase
             .from("dispatch_guides")
-            .select("dispatch_id, guide_number, guide_date, quantity, received_quantity, unit_code")
+            .select("dispatch_id, guide_number, guide_date, quantity, unit_code")
             .in("dispatch_id", dispatchIds)
         : Promise.resolve({ data: [], error: null }),
       actorIds.length
-        ? supabase.from("profiles").select("id, full_name").in("id", [...new Set(actorIds)])
+        ? supabase.rpc("get_programming_actor_labels", { p_project_id: projectId })
         : Promise.resolve({ data: [], error: null }),
       supabase
         .from("suppliers")
@@ -505,7 +513,10 @@ export async function getProgrammingDetailPageData(
   }
 
   const names = new Map(
-    (profilesResult.data ?? []).map((profile) => [profile.id, profile.full_name]),
+    ((profilesResult.data ?? []) as ProgrammingActorLabelRow[]).map((profile) => [
+      profile.profile_id,
+      profile.display_label,
+    ]),
   );
   const supplierNames = new Map(
     (suppliersResult.data ?? []).map((supplier) => [supplier.id, supplier.name]),
@@ -516,26 +527,31 @@ export async function getProgrammingDetailPageData(
     current.push(line);
     revisionLinesByRevision.set(line.revision_id, current);
   }
-  const guideByDispatch = new Map(
-    ((guidesResult.data ?? []) as DispatchGuideRow[]).map((guide) => [guide.dispatch_id, guide]),
-  );
+  const guideByDispatch = new Map<string, DispatchGuideRow[]>();
+  for (const guide of (guidesResult.data ?? []) as DispatchGuideRow[]) {
+    guideByDispatch.set(guide.dispatch_id, [
+      ...(guideByDispatch.get(guide.dispatch_id) ?? []),
+      guide,
+    ]);
+  }
 
   const mappedDispatches = dispatches.map((dispatch) => {
-    const guide = guideByDispatch.get(dispatch.id);
+    const guides = guideByDispatch.get(dispatch.id) ?? [];
+    const guide = guides[0];
     return {
       id: dispatch.id,
       status: dispatch.status,
       result: dispatch.result,
       createdAt: dispatch.created_at,
-      guideNumber: guide?.guide_number ?? null,
+      guideNumber: guides.length > 1 ? `${guides.length} guías` : guide?.guide_number ?? null,
       guideDate: guide?.guide_date ?? null,
-      quantity: numeric(guide?.received_quantity ?? null),
+      quantity: guides.reduce((sum, item) => sum + (numeric(item.quantity) ?? 0), 0),
       unitCode: guide?.unit_code ?? null,
     };
   });
   const dispatchedQuantity = mappedDispatches.reduce(
     (total, dispatch) =>
-      (dispatch.result === "COMPLETE" || dispatch.result === "PARTIAL") &&
+      dispatch.result === "DISPATCHED" &&
       dispatch.unitCode === row.unit_code
         ? total + (dispatch.quantity ?? 0)
         : total,
@@ -545,6 +561,7 @@ export async function getProgrammingDetailPageData(
 
   const detail: ProgrammingDetail = {
     id: row.id,
+    version: row.version,
     projectId: row.project_id,
     supplierId: row.supplier_id,
     supplierName: supplierNames.get(row.supplier_id) ?? "Proveedor no disponible",
@@ -575,7 +592,6 @@ export async function getProgrammingDetailPageData(
       position: line.position,
     })),
     dispatches: mappedDispatches,
-    version: row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     dispatchedQuantity,

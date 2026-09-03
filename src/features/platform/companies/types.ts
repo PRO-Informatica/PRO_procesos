@@ -30,6 +30,7 @@ export type CompanyProject = {
   id: string;
   name: string;
   code: string;
+  address: string | null;
   status: string;
   timezone: string;
   startDate: string | null;
@@ -69,6 +70,21 @@ export type CompanyDetail = {
 export type ProjectSuppliersActionState = {
   status: "idle" | "success" | "error";
   message?: string;
+};
+
+export type ProjectActionState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  projectId?: string;
+  fields?: {
+    status?: string;
+    name?: string;
+    code?: string;
+    address?: string;
+    timezone?: string;
+    startDate?: string;
+    estimatedEndDate?: string;
+  };
 };
 
 export type CompanyActionState = {
