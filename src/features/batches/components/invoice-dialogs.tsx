@@ -32,7 +32,8 @@ type IndividualProps = {
   onClose: () => void;
 };
 
-function inspectionTone(status: InvoiceInspection["status"]) {
+function inspectionTone(status: InvoiceInspection["status"], duplicate = false) {
+  if (duplicate) return "bg-destructive-soft text-destructive";
   if (status === "READY") return "bg-success-soft text-success";
   if (status === "WITH_DIFFERENCES") {
     return "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200";
@@ -42,7 +43,7 @@ function inspectionTone(status: InvoiceInspection["status"]) {
 
 function InspectionSummary({ inspection }: { inspection: InvoiceInspection }) {
   return (
-    <div className={`rounded-xl p-4 text-sm ${inspectionTone(inspection.status)}`}>
+    <div className={`rounded-xl p-4 text-sm ${inspectionTone(inspection.status, inspection.duplicate)}`}>
       <p className="font-semibold">{inspection.message}</p>
       {inspection.payload && (
         <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
@@ -385,6 +386,7 @@ export function BulkInvoiceDialog({
                         const result = row.inspection;
                         const key = result?.dispatchId && result.requestedType ? `${result.dispatchId}:${result.requestedType}` : "";
                         const duplicated = duplicateKeys.has(key);
+                        const alreadyRegistered = Boolean(result?.duplicate);
                         const payload = result?.payload;
                         return (
                           <tr key={row.key}>
@@ -392,7 +394,7 @@ export function BulkInvoiceDialog({
                             <td className="p-3">{payload?.invoice_number ?? "—"}</td>
                             <td className="p-3">{result?.requestedType === "PRODUCT" ? "Producto" : result?.requestedType === "SERVICE" ? "Servicio" : "—"}</td>
                             <td className="whitespace-nowrap p-3 font-semibold">{payload ? formatInvoiceTotal(payload.total, payload.currency) : "—"}</td>
-                            <td className="max-w-80 p-3"><span className={duplicated || row.saveError || (!group.dispatchId && Boolean(result)) ? "text-destructive" : ""}>{row.saved ? "Guardada" : row.saveError ?? (duplicated ? "Requiere revisión: factura duplicada" : result?.message ?? "Pendiente de validar")}</span></td>
+                            <td className="max-w-80 p-3"><span className={alreadyRegistered || duplicated || row.saveError || (!group.dispatchId && Boolean(result)) ? "text-destructive" : ""}>{row.saved ? "Guardada" : row.saveError ?? (alreadyRegistered ? result?.message : duplicated ? "Requiere revisión: hay más de un PDF del mismo tipo en esta carga" : result?.message ?? "Pendiente de validar")}</span></td>
                                 <td className="p-3 text-right"><IconButton label={row.saved ? "La factura ya fue guardada" : `Quitar ${row.file.name} de la carga`} tone="destructive" disabled={pending || row.saved} onClick={() => removeFile(row.key)} className="size-8 border border-destructive/25"><Trash2 className="size-4" /></IconButton></td>
                           </tr>
                         );

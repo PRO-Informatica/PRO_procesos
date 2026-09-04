@@ -142,7 +142,17 @@ export async function inspectDispatchInvoicePdf(projectId: string, batchId: stri
     const processed = await processInvoicePdf(await file.arrayBuffer(), { ...context, expectedType: requestedType });
     if (processed.status === "error") return { fileName: file.name, dispatchId, requestedType, status: "ERROR", message: [processed.message, ...processed.details].join(" "), payload: null, duplicate: false };
     const duplicate = requestedType === "PRODUCT" ? Boolean(context.productInvoiceId) : Boolean(context.serviceInvoiceId);
-    return { fileName: file.name, dispatchId, requestedType, status: processed.payload.warnings.length ? "WITH_DIFFERENCES" : "READY", message: processed.payload.warnings.join(" ") || "Factura lista para guardar.", payload: processed.payload, duplicate };
+    return {
+      fileName: file.name,
+      dispatchId,
+      requestedType,
+      status: processed.payload.warnings.length ? "WITH_DIFFERENCES" : "READY",
+      message: duplicate
+        ? `Ya existe una factura de ${requestedType === "PRODUCT" ? "producto" : "servicio"} cargada para este despacho.`
+        : processed.payload.warnings.join(" ") || "Factura lista para guardar.",
+      payload: processed.payload,
+      duplicate,
+    };
   } catch {
     return { fileName: file.name, dispatchId, requestedType, status: "ERROR", message: "No fue posible extraer texto del PDF digital.", payload: null, duplicate: false };
   }

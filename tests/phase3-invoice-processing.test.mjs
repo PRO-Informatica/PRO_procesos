@@ -132,6 +132,12 @@ test("carga masiva acumula, permite quitar y valida proyecto antes del pedido", 
   assert.match(previewSection, /La factura no pertenece al proyecto actual/u);
 });
 
+test("la carga masiva explica cuando el despacho ya tiene una factura de ese tipo", () => {
+  assert.match(actions, /Ya existe una factura de.*cargada para este despacho/u);
+  assert.match(invoiceDialogs, /alreadyRegistered \? result\?\.message/u);
+  assert.match(invoiceDialogs, /!result\.duplicate/u);
+});
+
 test("ambos pipelines persisten el total y el despacho muestra dos tarjetas con datos extraídos", () => {
   assert.match(actions, /p_payload: processed\.payload/u);
   assert.match(reconciliationMigration, /v_total := \(p_payload ->> 'total'\)::numeric/u);
