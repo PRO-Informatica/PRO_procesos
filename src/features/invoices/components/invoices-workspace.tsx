@@ -5,6 +5,7 @@ import {
   ReceiptText,
   RefreshCcw,
   Search,
+  Truck,
 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -12,6 +13,8 @@ import { useMemo, useState } from "react";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { DocumentActions } from "@/components/documents/document-preview-dialog";
 import { MotionPage } from "@/components/motion/motion-page";
+import { MotionCard } from "@/components/motion/motion-card";
+import { StatusBadge } from "@/components/ui/badge";
 import { getInvoiceDownloadUrl } from "@/features/batches/actions";
 import {
   formatBatchDate,
@@ -24,12 +27,12 @@ import type { GlobalInvoiceData } from "../types";
 
 function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
+    <MotionCard className="min-w-0 rounded-xl border border-border bg-surface p-3.5 shadow-[0_1px_2px_rgba(16,24,40,0.025)] sm:p-4">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground-muted">
         {label}
       </p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
-    </div>
+      <p className="mt-2 text-xl font-semibold sm:text-2xl">{value}</p>
+    </MotionCard>
   );
 }
 export function InvoicesWorkspace({
@@ -82,7 +85,7 @@ export function InvoicesWorkspace({
           el despacho dentro de su lote.
         </p>
       </header>
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-7">
+      <section className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 lg:grid-cols-7">
         <Metric label="Total" value={data.items.length} />
         <Metric
           label="Producto"
@@ -119,10 +122,10 @@ export function InvoicesWorkspace({
           }
         />
       </section>
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-          <label className="relative xl:col-span-2">
-            <Search className="pointer-events-none absolute left-3 top-3 size-4 text-foreground-muted" />
+      <section className="rounded-xl border border-border bg-surface p-3.5 shadow-[0_1px_2px_rgba(16,24,40,0.02)] sm:p-4">
+        <div className="grid items-center gap-3 md:grid-cols-2 xl:grid-cols-12">
+          <label className="relative xl:col-span-4">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" />
             <input
               aria-label="Buscar facturas"
               value={query}
@@ -135,7 +138,7 @@ export function InvoicesWorkspace({
             aria-label="Filtrar por lote"
             value={batch}
             onChange={(e) => setBatch(e.target.value)}
-            className="form-input"
+            className="form-input xl:col-span-2"
           >
             <option value="">Todos los lotes</option>
             {data.batches.map((b) => (
@@ -148,7 +151,7 @@ export function InvoicesWorkspace({
             aria-label="Filtrar por tipo"
             value={type}
             onChange={(e) => setType(e.target.value)}
-            className="form-input"
+            className="form-input xl:col-span-2"
           >
             <option value="">Producto / Servicio</option>
             <option value="PRODUCT">Producto</option>
@@ -158,7 +161,7 @@ export function InvoicesWorkspace({
             aria-label="Filtrar por estado"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="form-input"
+            className="form-input xl:col-span-2"
           >
             <option value="">Todos los estados</option>
             {statuses.map((s) => (
@@ -170,19 +173,19 @@ export function InvoicesWorkspace({
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="form-input"
+            className="form-input xl:col-span-2"
           />
           <select
             aria-label="Filtrar reemplazos"
             value={replacement}
             onChange={(e) => setReplacement(e.target.value)}
-            className="form-input"
+            className="form-input xl:col-span-2"
           >
             <option value="">Reemplazos: todos</option>
             <option value="YES">Con reemplazo</option>
             <option value="NO">Sin reemplazo</option>
           </select>
-          <p className="self-center text-xs text-foreground-muted xl:col-span-5">
+          <p className="self-center text-xs leading-5 text-foreground-muted xl:col-span-7">
             Proyecto: {project.name}. Cámbialo desde el selector global.
           </p>
           <button
@@ -195,7 +198,7 @@ export function InvoicesWorkspace({
               setDate("");
               setReplacement("");
             }}
-            className="secondary-button text-xs"
+            className="secondary-button gap-2 whitespace-nowrap text-xs xl:col-span-3 xl:justify-self-end"
           >
             <RefreshCcw className="size-3.5" /> Limpiar
           </button>
@@ -203,7 +206,7 @@ export function InvoicesWorkspace({
       </section>
       <section className="overflow-hidden rounded-xl border border-border bg-surface">
         <div className="hidden overflow-x-auto lg:block">
-          <table className="w-full min-w-[1200px] text-left text-sm">
+          <table className="w-full min-w-[1280px] text-left text-sm">
             <thead className="bg-muted/60 text-[10px] uppercase text-foreground-muted">
               <tr>
                 <th className="p-4">Factura</th>
@@ -220,41 +223,41 @@ export function InvoicesWorkspace({
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map((item) => (
-                <tr key={item.id}>
-                  <td className="p-4">
+                <tr key={item.id} className="hover:bg-muted/35">
+                  <td className="p-3.5">
                     <strong>{item.number}</strong>
                     <p className="text-xs text-foreground-muted">
                       {item.createdByName}
                     </p>
                   </td>
-                  <td className="p-4">
+                  <td className="p-3.5">
                     {item.orderNumber ?? "—"}
                     <p className="text-xs text-foreground-muted">
                       {item.batchCode ?? "Sin lote"}
                     </p>
                   </td>
-                  <td className="p-4">{item.supplierName}</td>
-                  <td className="p-4 font-mono text-xs">
+                  <td className="p-3.5">{item.supplierName}</td>
+                  <td className="p-3.5 font-mono text-xs">
                     {item.pcaOriginal ?? "—"}
                   </td>
-                  <td className="p-4">{formatStatusLabel(item.type)}</td>
-                  <td className="p-4">{formatStatusLabel(item.status)}</td>
-                  <td className="p-4">{formatStatusLabel(item.extractionStatus)}</td>
-                  <td className="p-4">
+                  <td className="p-3.5">{formatStatusLabel(item.type)}</td>
+                  <td className="p-3.5"><StatusBadge label={formatStatusLabel(item.status)} tone={item.status === "REGISTERED" ? "info" : item.status === "CANCELLED" ? "danger" : "neutral"} /></td>
+                  <td className="p-3.5"><StatusBadge label={formatStatusLabel(item.extractionStatus)} tone={item.extractionStatus === "CONFIRMED" ? "success" : item.extractionStatus === "CORRECTED" ? "warning" : "neutral"} /></td>
+                  <td className="p-3.5">
                     {formatBatchDate(item.date)}
                     <p className="text-xs">
                       {item.currency} {formatBatchQuantity(item.total)}
                     </p>
                   </td>
-                  <td className="p-4">{item.fileName ?? "Sin PDF"}</td>
-                  <td className="p-4">
-                    <div className="flex gap-2">
+                  <td className="max-w-52 p-3.5"><span className="line-clamp-2" title={item.fileName ?? undefined}>{item.fileName ?? "Sin PDF"}</span></td>
+                  <td className="p-3.5">
+                    <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                       {item.dispatchId && (
                         <Link
                           href={`/dispatches/${item.dispatchId}`}
-                          className="secondary-button text-xs"
+                          className="secondary-button min-h-10 gap-2 px-3 text-xs"
                         >
-                          Ver despacho
+                          <Truck aria-hidden="true" className="size-4" /> Ver despacho
                         </Link>
                       )}
                       {item.documentId && item.fileName && (
@@ -267,15 +270,15 @@ export function InvoicesWorkspace({
             </tbody>
           </table>
         </div>
-        <div className="grid gap-3 p-4 lg:hidden">
+        <div className="grid gap-3 p-3 sm:p-4 lg:hidden">
           {filtered.map((item) => (
             <article
               key={item.id}
-              className="rounded-xl border border-border p-4"
+              className="min-w-0 rounded-xl border border-border p-4"
             >
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <strong>
+                <div className="min-w-0">
+                  <strong className="block break-words">
                     {formatStatusLabel(item.type)} · {item.number}
                   </strong>
                   <p className="mt-1 text-xs text-foreground-muted">
@@ -292,24 +295,33 @@ export function InvoicesWorkspace({
                 </div>
                 <div>
                   <dt className="text-foreground-muted">PCA</dt>
-                  <dd>{item.pcaOriginal ?? "—"}</dd>
+                  <dd className="break-words [overflow-wrap:anywhere]">{item.pcaOriginal ?? "—"}</dd>
                 </div>
                 <div>
                   <dt className="text-foreground-muted">Estado</dt>
-                  <dd>{formatStatusLabel(item.status)}</dd>
+                  <dd className="mt-1"><StatusBadge label={formatStatusLabel(item.status)} tone={item.status === "REGISTERED" ? "info" : item.status === "CANCELLED" ? "danger" : "neutral"} /></dd>
                 </div>
                 <div>
                   <dt className="text-foreground-muted">Extracción</dt>
-                  <dd>{formatStatusLabel(item.extractionStatus)}</dd>
+                  <dd className="mt-1"><StatusBadge label={formatStatusLabel(item.extractionStatus)} tone={item.extractionStatus === "CONFIRMED" ? "success" : item.extractionStatus === "CORRECTED" ? "warning" : "neutral"} /></dd>
+                </div>
+                <div>
+                  <dt className="text-foreground-muted">Total</dt>
+                  <dd className="mt-1 font-semibold">{item.currency} {formatBatchQuantity(item.total)}</dd>
+                </div>
+                <div>
+                  <dt className="text-foreground-muted">Fecha</dt>
+                  <dd className="mt-1 font-medium">{formatBatchDate(item.date)}</dd>
                 </div>
               </dl>
-              <div className="mt-4 flex gap-2">
+              {item.fileName && <p className="mt-4 truncate border-t border-border pt-3 text-xs text-foreground-muted" title={item.fileName}>{item.fileName}</p>}
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 {item.dispatchId && (
                   <Link
                     href={`/dispatches/${item.dispatchId}`}
-                    className="primary-button text-xs"
+                    className="primary-button w-full gap-2 text-xs"
                   >
-                    Ver despacho
+                    <Truck aria-hidden="true" className="size-4" /> Ver despacho
                   </Link>
                 )}
                 {item.documentId && item.fileName && (

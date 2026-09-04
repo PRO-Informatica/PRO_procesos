@@ -1,23 +1,13 @@
-import {
-  dispatchResultTone,
-  dispatchStatusTone,
-  formatDispatchResult,
-  formatDispatchStatus,
-} from "../formatters";
+import { StatusBadge } from "@/components/ui/badge";
+
+import { formatDispatchResult, formatDispatchStatus } from "../formatters";
 import type { DispatchResult, DispatchStatus } from "../types";
 
 export function DispatchStatusBadge({ status }: { status: DispatchStatus }) {
-  return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${dispatchStatusTone(status)}`}>
-      {formatDispatchStatus(status)}
-    </span>
-  );
+  return <StatusBadge label={formatDispatchStatus(status)} tone={status === "COMPLETED" ? "success" : "info"} dot />;
 }
 
 export function DispatchResultBadge({ result }: { result: DispatchResult | null }) {
-  return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${dispatchResultTone(result)}`}>
-      {formatDispatchResult(result)}
-    </span>
-  );
+  const tone = result === "DISPATCHED" ? "success" : result === "NOT_DISPATCHED" ? "danger" : "warning";
+  return <StatusBadge label={formatDispatchResult(result)} tone={tone} />;
 }

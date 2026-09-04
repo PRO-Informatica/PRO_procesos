@@ -4,8 +4,10 @@ import { Pencil, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useActionState, useState } from "react";
 
-import { useGlobalPending } from "@/components/feedback/global-loading-provider";
+import { useActionNotification } from "@/components/feedback/use-action-notification";
 import { LoadingButton } from "@/components/feedback/loading-button";
+import { useDialogAccessibility } from "@/components/ui/dialog";
+import { notifications } from "@/lib/notification-messages";
 
 import { updateCompanyProject } from "../actions";
 import type { CompanyProject, ProjectActionState } from "../types";
@@ -40,16 +42,13 @@ function EditProjectForm({
   );
   const state = actionState ?? INITIAL_STATE;
   const values = state.fields;
+  const dialogRef = useDialogAccessibility<HTMLElement>({ open: true, onClose, pending });
 
-  useGlobalPending(
-    pending,
-    "Actualizando proyecto…",
-    `Guardando los cambios de ${project.name}.`,
-  );
+  useActionNotification({ pending, status: state.status, success: notifications.changesSaved, error: notifications.saveFailed });
 
   return (
     <motion.div
-      className="fixed inset-0 z-[75] grid place-items-center overflow-y-auto bg-black/45 p-3 sm:p-6"
+      className="fixed inset-0 z-[75] grid place-items-center overflow-y-auto bg-black/45 p-2 pb-[max(.5rem,env(safe-area-inset-bottom))] pt-[max(.5rem,env(safe-area-inset-top))] sm:p-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -58,10 +57,12 @@ function EditProjectForm({
       }}
     >
       <motion.section
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby={`edit-project-title-${project.id}`}
-        className="my-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
+        className="my-auto max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-xl border border-border bg-surface shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:rounded-2xl"
         initial={{ opacity: 0, scale: 0.98, y: 6 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.99, y: 3 }}
@@ -83,7 +84,7 @@ function EditProjectForm({
           </div>
           <button
             type="button"
-            className="grid size-9 place-items-center rounded-lg text-foreground-muted hover:bg-muted disabled:opacity-50"
+            className="grid size-11 shrink-0 place-items-center rounded-lg text-foreground-muted hover:bg-muted disabled:opacity-50"
             onClick={onClose}
             disabled={pending}
             aria-label="Cerrar edición"

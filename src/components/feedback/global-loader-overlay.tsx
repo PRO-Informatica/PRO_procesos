@@ -5,6 +5,7 @@ import Image from "next/image";
 import { createPortal } from "react-dom";
 
 import type { GlobalLoadingState } from "./global-loading-provider";
+import { motionTokens } from "@/lib/motion/tokens";
 
 export function GlobalLoaderOverlay({
   state,
@@ -23,7 +24,7 @@ export function GlobalLoaderOverlay({
           initial={reducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: reducedMotion ? 0 : 0.16 }}
+          transition={{ duration: reducedMotion ? 0 : motionTokens.duration.hover }}
           role="status"
           aria-live="polite"
           aria-busy="true"
@@ -34,7 +35,7 @@ export function GlobalLoaderOverlay({
             initial={reducedMotion ? false : { opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={reducedMotion ? undefined : { opacity: 0, scale: 0.99 }}
-            transition={{ duration: reducedMotion ? 0 : 0.18 }}
+            transition={{ duration: reducedMotion ? 0 : motionTokens.duration.hover }}
           >
             <motion.div
               className="mx-auto grid size-20 place-items-center rounded-2xl border border-white/8 bg-sidebar shadow-sm"

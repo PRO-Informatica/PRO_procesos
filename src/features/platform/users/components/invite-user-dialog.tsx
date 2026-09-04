@@ -4,8 +4,10 @@ import { KeyRound, MailPlus, UserPlus, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useActionState, useState } from "react";
 
-import { useGlobalPending } from "@/components/feedback/global-loading-provider";
+import { useActionNotification } from "@/components/feedback/use-action-notification";
 import { LoadingButton } from "@/components/feedback/loading-button";
+import { useDialogAccessibility } from "@/components/ui/dialog";
+import { notifications } from "@/lib/notification-messages";
 
 import { createPlatformUserWithPassword, invitePlatformUser } from "../actions";
 import { initialPlatformUserActionState } from "../types";
@@ -26,17 +28,12 @@ function UserCreationForm({
     directCreation ? createPlatformUserWithPassword : invitePlatformUser,
     initialPlatformUserActionState,
   );
-  useGlobalPending(
-    pending,
-    directCreation ? "Creando usuario…" : "Invitando usuario…",
-    directCreation
-      ? "Estamos creando una cuenta con acceso inmediato."
-      : "Estamos creando el acceso y enviando la invitación segura.",
-  );
+  const dialogRef = useDialogAccessibility<HTMLElement>({ open: true, onClose, pending });
+  useActionNotification({ pending, status: state.status, success: directCreation ? notifications.changesSaved : notifications.userInvited, error: notifications.saveFailed });
 
   return (
     <motion.div
-      className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-black/45 p-4"
+      className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-black/45 p-2 pb-[max(.5rem,env(safe-area-inset-bottom))] pt-[max(.5rem,env(safe-area-inset-top))] sm:p-4"
       role="presentation"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -47,10 +44,12 @@ function UserCreationForm({
       }}
     >
       <motion.section
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-user-title"
-        className="my-auto w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-2xl"
+        className="my-auto max-h-[calc(100dvh-1rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-xl border border-border bg-surface p-4 shadow-2xl sm:rounded-2xl sm:p-6"
         initial={{ opacity: 0, scale: 0.98, y: 4 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.99, y: 2 }}
@@ -71,14 +70,14 @@ function UserCreationForm({
             <p className="mt-1.5 text-sm leading-6 text-foreground-muted">
               {directCreation
                 ? "Crea la cuenta con una contraseña inicial, sin enviar correos."
-                : "Supabase enviará un correo para que el usuario active su cuenta."}
+                : "Se enviará un correo para que el usuario active su cuenta."}
             </p>
           </div>
           <button
             type="button"
             disabled={pending}
             onClick={onClose}
-            className="grid size-8 shrink-0 place-items-center rounded-lg text-foreground-muted hover:bg-muted hover:text-foreground disabled:opacity-50"
+            className="grid size-11 shrink-0 place-items-center rounded-lg text-foreground-muted hover:bg-muted hover:text-foreground disabled:opacity-50"
             aria-label="Cerrar creación de usuario"
           >
             <X aria-hidden="true" className="size-4" />
@@ -204,7 +203,7 @@ function UserCreationForm({
             </motion.p>
           )}
 
-          <div className="flex flex-col-reverse gap-3 border-t border-border pt-5 sm:flex-row sm:justify-end">
+          <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t border-border bg-surface pt-4 pb-[max(.25rem,env(safe-area-inset-bottom))] sm:static sm:flex-row sm:justify-end sm:gap-3 sm:pt-5">
             <button
               type="button"
               disabled={pending}

@@ -3,6 +3,7 @@
 import { motion } from "motion/react";
 
 import { fadeUp } from "@/lib/motion/variants";
+import { motionTokens } from "@/lib/motion/tokens";
 
 export function MotionCard({
   children,
@@ -18,7 +19,8 @@ export function MotionCard({
       className={className}
       variants={fadeUp}
       whileHover={interactive ? { y: -2 } : undefined}
-      transition={{ duration: 0.18 }}
+      whileTap={interactive ? { scale: 0.995 } : undefined}
+      transition={{ duration: motionTokens.duration.hover, ease: motionTokens.ease }}
     >
       {children}
     </motion.div>

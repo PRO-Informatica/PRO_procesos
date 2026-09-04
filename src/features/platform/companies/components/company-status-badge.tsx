@@ -1,22 +1,9 @@
 import type { CompanyStatus } from "../types";
+import { StatusBadge } from "@/components/ui/badge";
 import { formatStatusLabel } from "@/lib/status-labels";
 
 export function CompanyStatusBadge({ status }: { status: CompanyStatus }) {
   const active = status === "ACTIVE";
 
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
-        active
-          ? "bg-success-soft text-success"
-          : "bg-muted text-foreground-muted"
-      }`}
-    >
-      <span
-        aria-hidden="true"
-        className={`size-1.5 rounded-full ${active ? "bg-success" : "bg-foreground-muted"}`}
-      />
-      {formatStatusLabel(status)}
-    </span>
-  );
+  return <StatusBadge label={formatStatusLabel(status)} tone={active ? "success" : "neutral"} dot />;
 }

@@ -16,6 +16,12 @@ import type {
   InvoiceType,
 } from "../types";
 import { Modal } from "./batch-dialogs";
+import { LoadingButton } from "@/components/feedback/loading-button";
+import { Button } from "@/components/ui/button";
+import { DialogFooter } from "@/components/ui/dialog";
+import { IconButton } from "@/components/ui/icon-button";
+import { notifications } from "@/lib/notification-messages";
+import { notify } from "@/lib/notify";
 
 type IndividualProps = {
   projectId: string;
@@ -64,10 +70,12 @@ export function DispatchInvoiceDialog({
   const [file, setFile] = useState<File | null>(null);
   const [inspection, setInspection] = useState<InvoiceInspection | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [operation, setOperation] = useState<"inspect" | "save" | null>(null);
   const [pending, startTransition] = useTransition();
 
   function inspect() {
     if (!file) return;
+    setOperation("inspect");
     startTransition(async () => {
       const data = new FormData();
       data.set("file", file);
@@ -80,11 +88,13 @@ export function DispatchInvoiceDialog({
       );
       setInspection(result);
       setMessage(null);
+      setOperation(null);
     });
   }
 
   function save() {
     if (!file || !inspection?.payload) return;
+    setOperation("save");
     startTransition(async () => {
       const data = new FormData();
       data.set("file", file);
@@ -99,9 +109,13 @@ export function DispatchInvoiceDialog({
       );
       setMessage(result.message);
       if (result.status === "success") {
+        notify.success(notifications.invoiceSaved);
         router.refresh();
         onClose();
+      } else {
+        notify.error(notifications.saveFailed);
       }
+      setOperation(null);
     });
   }
 
@@ -139,11 +153,11 @@ export function DispatchInvoiceDialog({
         )}
         {message && <p className="rounded-xl bg-destructive-soft p-3 text-sm text-destructive">{message}</p>}
       </div>
-      <div className="flex flex-col-reverse gap-3 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-        <button type="button" onClick={onClose} disabled={pending} className="secondary-button">Cancelar</button>
-        <button type="button" onClick={inspect} disabled={!file || pending} className="secondary-button gap-2"><FileText className="size-4" /> Validar PDF</button>
-        <button type="button" onClick={save} disabled={!canSave || pending} className="primary-button gap-2"><Upload className="size-4" /> {pending ? "Procesando…" : "Guardar factura"}</button>
-      </div>
+      <DialogFooter>
+        <Button variant="secondary" onClick={onClose} disabled={pending}>Cancelar</Button>
+        <LoadingButton type="button" variant="secondary" onClick={inspect} disabled={!file || pending} loading={pending && operation === "inspect"} loadingLabel="Validando…"><FileText className="size-4" /> Validar PDF</LoadingButton>
+        <LoadingButton type="button" onClick={save} disabled={!canSave || pending} loading={pending && operation === "save"} loadingLabel="Guardando…"><Upload className="size-4" /> Guardar factura</LoadingButton>
+      </DialogFooter>
     </Modal>
   );
 }
@@ -186,6 +200,7 @@ export function BulkInvoiceDialog({
   const router = useRouter();
   const [rows, setRows] = useState<BulkRow[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const [operation, setOperation] = useState<"inspect" | "save" | null>(null);
   const [pending, startTransition] = useTransition();
 
   function addFiles(files: FileList | null) {
@@ -271,6 +286,7 @@ export function BulkInvoiceDialog({
   }, [rows]);
 
   function inspectAll() {
+    setOperation("inspect");
     startTransition(async () => {
       const next: BulkRow[] = [];
       for (const row of rows) {
@@ -284,10 +300,12 @@ export function BulkInvoiceDialog({
       }
       setRows(next);
       setMessage(null);
+      setOperation(null);
     });
   }
 
   function saveAll() {
+    setOperation("save");
     startTransition(async () => {
       let saved = 0;
       const next = [...rows];
@@ -308,7 +326,13 @@ export function BulkInvoiceDialog({
       }
       setRows(next);
       setMessage(`${saved} factura(s) guardada(s). Los casos con error o duplicidad no fueron persistidos.`);
+      if (saved > 0) {
+        notify.success(notifications.invoicesSaved, `${saved} ${saved === 1 ? "archivo procesado" : "archivos procesados"}.`);
+      } else {
+        notify.error(notifications.saveFailed);
+      }
       router.refresh();
+      setOperation(null);
     });
   }
 
@@ -369,7 +393,7 @@ export function BulkInvoiceDialog({
                             <td className="p-3">{result?.requestedType === "PRODUCT" ? "Producto" : result?.requestedType === "SERVICE" ? "Servicio" : "—"}</td>
                             <td className="whitespace-nowrap p-3 font-semibold">{payload ? formatInvoiceTotal(payload.total, payload.currency) : "—"}</td>
                             <td className="max-w-80 p-3"><span className={duplicated || row.saveError || (!group.dispatchId && Boolean(result)) ? "text-destructive" : ""}>{row.saved ? "Guardada" : row.saveError ?? (duplicated ? "Requiere revisión: factura duplicada" : result?.message ?? "Pendiente de validar")}</span></td>
-                            <td className="p-3 text-right"><button type="button" disabled={pending || row.saved} onClick={() => removeFile(row.key)} className="inline-grid size-8 place-items-center rounded-lg border border-destructive/25 text-destructive disabled:cursor-not-allowed disabled:opacity-40" aria-label={`Quitar ${row.file.name} de la carga`} title={row.saved ? "La factura ya fue guardada." : "Quitar PDF"}><Trash2 className="size-4" /></button></td>
+                                <td className="p-3 text-right"><IconButton label={row.saved ? "La factura ya fue guardada" : `Quitar ${row.file.name} de la carga`} tone="destructive" disabled={pending || row.saved} onClick={() => removeFile(row.key)} className="size-8 border border-destructive/25"><Trash2 className="size-4" /></IconButton></td>
                           </tr>
                         );
                       })}
@@ -383,11 +407,11 @@ export function BulkInvoiceDialog({
         {message && <p className="rounded-xl bg-muted p-3 text-sm">{message}</p>}
         {duplicateKeys.size > 0 && <p className="flex gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"><AlertTriangle className="size-4 shrink-0" /> Dos facturas del mismo tipo para el mismo despacho requieren revisión y no se guardan automáticamente.</p>}
       </div>
-      <div className="flex flex-col-reverse gap-3 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-        <button type="button" onClick={onClose} disabled={pending} className="secondary-button">Cerrar</button>
-        <button type="button" onClick={inspectAll} disabled={!rows.length || pending} className="secondary-button">Clasificar facturas</button>
-        <button type="button" onClick={saveAll} disabled={!readyCount || pending} className="primary-button">{pending ? "Procesando…" : `Guardar cambios (${readyCount})`}</button>
-      </div>
+      <DialogFooter>
+        <Button variant="secondary" onClick={onClose} disabled={pending}>Cerrar</Button>
+        <LoadingButton type="button" variant="secondary" onClick={inspectAll} disabled={!rows.length || pending} loading={pending && operation === "inspect"} loadingLabel="Clasificando…">Clasificar facturas</LoadingButton>
+        <LoadingButton type="button" onClick={saveAll} disabled={!readyCount || pending} loading={pending && operation === "save"} loadingLabel="Guardando…">Guardar cambios ({readyCount})</LoadingButton>
+      </DialogFooter>
     </Modal>
   );
 }

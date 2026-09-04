@@ -1,11 +1,9 @@
 "use client";
 
-import { CalendarDays, FileUp, History, KanbanSquare, Plus, SlidersHorizontal, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { CalendarDays, FileUp, History, KanbanSquare, LoaderCircle, Plus, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { ErrorState } from "@/components/feedback/error-state";
-import { useGlobalPending } from "@/components/feedback/global-loading-provider";
 import { MotionPage } from "@/components/motion/motion-page";
 import { MotionSection } from "@/components/motion/motion-section";
 import type { ProjectSummary } from "@/features/projects/types";
@@ -70,7 +68,7 @@ function ContextCreateButton({
       onClick={onClick}
       disabled={disabled}
       title={disabled ? "El proyecto no tiene proveedores activos" : undefined}
-      className="primary-button gap-2 disabled:cursor-not-allowed"
+      className="primary-button w-full gap-2 disabled:cursor-not-allowed sm:w-auto"
     >
       <Plus aria-hidden="true" className="size-4" />
       {label}
@@ -102,19 +100,12 @@ export function ProgrammingWorkspace({
     defaultScheduledAt(project.timezone),
   );
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const filtersRef = useRef<ProgrammingFilters>({});
   const rangeRef = useRef(initialData.range);
   const itemsRef = useRef(initialData.items);
   const requestId = useRef(0);
   const skippedInitialFilters = useRef(false);
-  useGlobalPending(
-    pending,
-    "Actualizando planificación…",
-    "Consultando el rango visible del proyecto.",
-  );
-
   const reload = useCallback(
     (nextRange: ProgrammingRange, filters = filtersRef.current) => {
       const currentRequest = ++requestId.current;
@@ -171,7 +162,6 @@ export function ProgrammingWorkspace({
   const onCreated = useCallback(
     () => {
       setCreateOpen(false);
-      setNotice("Programación creada pendiente de confirmación.");
       reload(range);
     },
     [range, reload],
@@ -199,12 +189,12 @@ export function ProgrammingWorkspace({
   }, [items, scope]);
   const today = useMemo(() => todayInTimezone(project.timezone), [project.timezone]);
   const creationActions = canCreate && scope === "active" && (
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+    <div className="grid w-full gap-2 sm:flex sm:w-auto sm:items-center">
       <button
         type="button"
         onClick={() => setBulkOpen(true)}
         disabled={!initialData.suppliers.length}
-        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-semibold text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-semibold text-foreground transition-colors hover:bg-muted active:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
       >
         <FileUp aria-hidden="true" className="size-4" /> Carga masiva
       </button>
@@ -226,12 +216,12 @@ export function ProgrammingWorkspace({
             {project.name} · {project.companyName} · {project.timezone}
           </p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="grid gap-2 sm:flex sm:flex-row">
           <div className="inline-flex rounded-xl border border-border bg-surface p-1" role="group" aria-label="Alcance temporal">
             <button
               type="button"
               onClick={() => setScope("active")}
-              className={`inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition sm:flex-none ${
+              className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition sm:flex-none sm:px-4 ${
                 scope === "active" ? "bg-brand text-white" : "text-foreground-muted hover:bg-muted"
               }`}
             >
@@ -240,7 +230,7 @@ export function ProgrammingWorkspace({
             <button
               type="button"
               onClick={() => setScope("history")}
-              className={`inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition sm:flex-none ${
+              className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition sm:flex-none sm:px-4 ${
                 scope === "history" ? "bg-sidebar text-white" : "text-foreground-muted hover:bg-muted"
               }`}
             >
@@ -251,7 +241,7 @@ export function ProgrammingWorkspace({
             <button
               type="button"
               onClick={() => setView("calendar")}
-              className={`inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition sm:flex-none ${
+              className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition sm:flex-none sm:px-4 ${
                 view === "calendar"
                   ? "bg-sidebar text-white shadow-sm"
                   : "text-foreground-muted hover:bg-muted hover:text-foreground"
@@ -263,7 +253,7 @@ export function ProgrammingWorkspace({
             <button
               type="button"
               onClick={() => setView("kanban")}
-              className={`inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition sm:flex-none ${
+              className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition sm:flex-none sm:px-4 ${
                 view === "kanban"
                   ? "bg-sidebar text-white shadow-sm"
                   : "text-foreground-muted hover:bg-muted hover:text-foreground"
@@ -276,27 +266,13 @@ export function ProgrammingWorkspace({
         </div>
       </MotionSection>
 
-      <AnimatePresence initial={false}>
-        {notice && (
-          <motion.div
-            className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-success/20 bg-success-soft px-4 py-3 text-sm text-success"
-            initial={{ opacity: 0, y: -5 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -3 }}
-            role="status"
-          >
-            <span>{notice}</span>
-            <button type="button" onClick={() => setNotice(null)} aria-label="Cerrar mensaje">
-              <X aria-hidden="true" className="size-4" />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <MotionSection className="mt-4 rounded-xl border border-border bg-surface p-4">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">
-          <SlidersHorizontal aria-hidden="true" className="size-4" />
-          Filtros compartidos
+      <MotionSection className="mt-4 rounded-xl border border-border bg-surface p-4 shadow-[0_1px_2px_rgba(16,24,40,0.02)]">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">
+            <SlidersHorizontal aria-hidden="true" className="size-4" />
+            Filtros compartidos
+          </div>
+          {pending && <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground-muted" role="status"><LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" /> Actualizando…</span>}
         </div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(13rem,1fr)_minmax(13rem,1fr)_auto]">
           <div>
@@ -335,9 +311,9 @@ export function ProgrammingWorkspace({
             type="button"
             onClick={clearFilters}
             disabled={!supplierId && !status}
-            className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border px-4 text-sm font-semibold text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            className="secondary-button gap-2 whitespace-nowrap"
           >
-            Limpiar
+            <RotateCcw aria-hidden="true" className="size-4" /> Limpiar
           </button>
         </div>
       </MotionSection>
@@ -352,10 +328,16 @@ export function ProgrammingWorkspace({
         </MotionSection>
       )}
 
-      <MotionSection className="mt-4">
+      <MotionSection className="relative mt-4" aria-busy={pending}>
+        {pending && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-0.5 overflow-hidden rounded-full bg-brand-soft" role="status">
+            <span className="sr-only">Actualizando programación…</span>
+            <span className="indeterminate-progress block h-full w-1/3 rounded-full bg-brand" />
+          </div>
+        )}
         {view === "calendar" ? (
           <div>
-            <div className="mb-3 flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-3 flex flex-col gap-3 rounded-xl border border-border bg-surface p-3.5 sm:flex-row sm:items-center sm:justify-between sm:p-4">
               <div>
                 <h2 className="text-sm font-semibold text-foreground">Calendario de programación</h2>
                 <p className="mt-1 text-xs text-foreground-muted">
@@ -363,7 +345,7 @@ export function ProgrammingWorkspace({
                 </p>
               </div>
               {canCreate && scope === "active" && (
-                <div className="sm:text-right">
+                <div className="w-full sm:w-auto sm:text-right">
                   {creationActions}
                   {!initialData.suppliers.length && (
                     <p className="mt-2 max-w-xs text-xs text-foreground-muted">
@@ -388,7 +370,7 @@ export function ProgrammingWorkspace({
           </div>
         ) : (
           <div>
-            <div className="mb-3 flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-3 flex flex-col gap-3 rounded-xl border border-border bg-surface p-3.5 sm:flex-row sm:items-center sm:justify-between sm:p-4">
               <div>
                 <h2 className="text-sm font-semibold text-foreground">Kanban de programación</h2>
                 <p className="mt-1 text-xs text-foreground-muted">
@@ -396,7 +378,7 @@ export function ProgrammingWorkspace({
                 </p>
               </div>
               {canCreate && scope === "active" && (
-                <div className="sm:text-right">
+                <div className="w-full sm:w-auto sm:text-right">
                   {creationActions}
                   {!initialData.suppliers.length && (
                     <p className="mt-2 max-w-xs text-xs text-foreground-muted">
@@ -420,9 +402,8 @@ export function ProgrammingWorkspace({
         item={selected}
         timezone={project.timezone}
         canConfirm={canConfirm}
-        onUpdated={(message) => {
+        onUpdated={() => {
           setSelected(null);
-          setNotice(message);
           reload(range);
         }}
         onClose={() => setSelected(null)}
@@ -450,9 +431,8 @@ export function ProgrammingWorkspace({
           suppliers={initialData.suppliers}
           today={today}
           onClose={() => setBulkOpen(false)}
-          onCreated={(count) => {
+          onCreated={() => {
             setBulkOpen(false);
-            setNotice(`${count} programaciones creadas pendientes de confirmación.`);
             reload(range);
           }}
         />

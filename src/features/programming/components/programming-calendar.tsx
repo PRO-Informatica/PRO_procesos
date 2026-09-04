@@ -172,7 +172,7 @@ export function ProgrammingCalendar({
 
   return (
     <div
-      className={`programming-calendar min-h-[680px] overflow-hidden rounded-xl border border-border bg-surface ${
+      className={`programming-calendar min-h-[500px] overflow-hidden rounded-xl border border-border bg-surface sm:min-h-[680px] ${
         onCreateAt ? "programming-calendar--create-enabled" : ""
       }`}
     >

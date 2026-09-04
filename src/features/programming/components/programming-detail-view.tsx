@@ -10,17 +10,19 @@ import {
   PackageOpen,
   Pencil,
   Truck,
-  X,
   XCircle,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useMemo, useState } from "react";
 
 import { LoadingButton } from "@/components/feedback/loading-button";
-import { useGlobalPending } from "@/components/feedback/global-loading-provider";
+import { useActionNotification } from "@/components/feedback/use-action-notification";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogFooter } from "@/components/ui/dialog";
 import type { ProjectSummary } from "@/features/projects/types";
+import { notifications } from "@/lib/notification-messages";
 import { formatStatusLabel } from "@/lib/status-labels";
 
 import { mutateProgrammingAction } from "../actions";
@@ -81,6 +83,12 @@ const revisionLabels: Record<string, string> = {
   PROGRAMMING_COMPLETED: "Programación completada",
 };
 
+const actionNotification = {
+  edit: notifications.programmingUpdated,
+  cancel: notifications.programmingCancelled,
+  close: notifications.statusUpdated,
+} as const;
+
 function zonedInputValue(value: string, timezone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     year: "numeric",
@@ -127,7 +135,7 @@ function MutationDialog({
   );
   const closeNeedsReason = detail.remainingQuantity > 0 || detail.excessQuantity > 0;
 
-  useGlobalPending(pending, copy.loading, copy.description);
+  useActionNotification({ pending, status: state.status, success: actionNotification[intent] });
 
   useEffect(() => {
     if (state.status === "success") {
@@ -139,41 +147,7 @@ function MutationDialog({
   }, [onClose, router, state.conflict, state.status]);
 
   return (
-    <motion.div
-      className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-black/45 p-3 backdrop-blur-[2px] sm:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="programming-action-title"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        className="my-auto w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-        initial={{ opacity: 0, y: 10, scale: 0.99 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 6, scale: 0.99 }}
-      >
-        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
-          <div>
-            <h2 id="programming-action-title" className="font-semibold text-foreground">
-              {copy.title}
-            </h2>
-            <p className="mt-1 text-xs text-foreground-muted">
-              PRG-{detail.id.slice(0, 8).toUpperCase()} · versión {detail.version}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={pending}
-            className="grid size-9 place-items-center rounded-lg text-foreground-muted hover:bg-muted hover:text-foreground disabled:opacity-50"
-            aria-label="Cerrar diálogo"
-          >
-            <X aria-hidden="true" className="size-5" />
-          </button>
-        </div>
-
+    <Dialog title={copy.title} description={`PRG-${detail.id.slice(0, 8).toUpperCase()} · versión ${detail.version}`} onClose={onClose} pending={pending} size="lg" tone={intent === "cancel" ? "destructive" : "default"}>
         <form action={formAction} aria-busy={pending}>
           <input type="hidden" name="intent" value={intent} />
           <input type="hidden" name="projectId" value={detail.projectId} />
@@ -268,20 +242,17 @@ function MutationDialog({
             )}
           </div>
 
-          <div className="flex flex-col-reverse gap-3 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-            <button type="button" onClick={onClose} disabled={pending} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border px-4 text-sm font-semibold text-foreground-muted hover:bg-muted disabled:opacity-50">
-              Volver
-            </button>
+          <DialogFooter>
+            <Button variant="secondary" onClick={onClose} disabled={pending}>Volver</Button>
             <LoadingButton
               loadingLabel={copy.loading}
-              className={intent === "cancel" ? "inline-flex min-h-11 items-center justify-center rounded-lg bg-destructive px-4 text-sm font-semibold text-white" : "primary-button"}
+              variant={intent === "cancel" ? "destructive" : "primary"}
             >
               {copy.label}
             </LoadingButton>
-          </div>
+          </DialogFooter>
         </form>
-      </motion.div>
-    </motion.div>
+    </Dialog>
   );
 }
 
@@ -291,7 +262,7 @@ function DirectConfirmButton({ detail }: { detail: ProgrammingDetailPageData["de
     mutateProgrammingAction,
     initialProgrammingMutationState,
   );
-  useGlobalPending(pending, "Confirmando programación…", "Actualizando estado y trazabilidad.");
+  useActionNotification({ pending, status: state.status, success: notifications.programmingConfirmed });
   useEffect(() => {
     if (state.status === "success" || state.conflict) router.refresh();
   }, [router, state.conflict, state.status]);

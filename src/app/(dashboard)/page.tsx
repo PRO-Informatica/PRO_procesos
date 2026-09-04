@@ -1,10 +1,12 @@
+import { Suspense } from "react";
 import { EmptyState } from "@/components/feedback/empty-state";
+import { DashboardSkeleton } from "@/features/dashboard/components/dashboard-skeleton";
 import { ProjectDashboard } from "@/features/dashboard/components/project-dashboard";
 import { getProjectDashboard } from "@/features/dashboard/queries";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { getProjectContext } from "@/features/projects/queries";
 
-export default async function HomePage() {
+async function DashboardContent() {
   const profile = await requireActiveProfile();
   const projectContext = await getProjectContext(profile.id);
 
@@ -34,5 +36,13 @@ export default async function HomePage() {
       roleCodes={projectContext.roleCodes}
       data={dashboard}
     />
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<DashboardSkeleton />}>
+      <DashboardContent />
+    </Suspense>
   );
 }

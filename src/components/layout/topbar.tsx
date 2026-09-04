@@ -29,18 +29,18 @@ export function Topbar({
   const projectContext = useProjectContext();
 
   return (
-    <header className="sticky top-0 z-30 flex h-20 items-center border-b border-border bg-surface/95 px-4 backdrop-blur-sm sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 flex min-h-16 items-center border-b border-border bg-surface/95 px-3 pt-[env(safe-area-inset-top)] backdrop-blur-sm sm:h-20 sm:px-6 lg:px-8">
       <button
         type="button"
         onClick={onOpenNavigation}
-        className="mr-3 grid size-9 place-items-center rounded-lg border border-border text-foreground-muted hover:bg-muted hover:text-foreground lg:hidden"
+        className="mr-2 grid size-11 shrink-0 place-items-center rounded-lg border border-border text-foreground-muted transition-colors hover:bg-muted hover:text-foreground active:bg-muted lg:hidden sm:mr-3"
         aria-label="Abrir navegación"
       >
         <Menu aria-hidden="true" className="size-5" />
       </button>
 
-      <div className="min-w-0">
-        <p className="truncate text-xs text-foreground-muted">
+      <div className="min-w-0 max-w-[34vw] sm:max-w-none">
+        <p className="hidden truncate text-xs text-foreground-muted sm:block">
           {projectContext.activeProject?.companyName ?? "PRO Procesos"}
         </p>
         <p className="truncate text-sm font-semibold text-foreground">
@@ -48,11 +48,11 @@ export function Topbar({
         </p>
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
         <ThemeToggle />
         <Link
           href="/notifications"
-          className="relative grid size-9 place-items-center rounded-lg border border-border bg-surface text-foreground-muted hover:bg-muted hover:text-foreground"
+          className="relative grid size-11 place-items-center rounded-lg border border-border bg-surface text-foreground-muted transition-colors hover:bg-muted hover:text-foreground active:bg-muted"
           aria-label={`${unreadNotifications} notificaciones sin leer`}
           title="Notificaciones"
         >
@@ -61,7 +61,7 @@ export function Topbar({
         </Link>
 
         <details className="group relative ml-1">
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 pr-2 transition-colors hover:bg-muted [&::-webkit-details-marker]:hidden">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 transition-colors hover:bg-muted active:bg-muted sm:pr-2 [&::-webkit-details-marker]:hidden">
             <span className="grid size-8 place-items-center rounded-lg bg-brand-soft text-xs font-bold text-brand-strong">
               {initials(profile.fullName)}
             </span>
@@ -79,7 +79,7 @@ export function Topbar({
             />
           </summary>
 
-          <div className="absolute right-0 mt-2 w-56 rounded-xl border border-border bg-surface p-2 shadow-lg">
+          <div className="menu-popover absolute right-0 mt-2 w-[min(14rem,calc(100vw-1.5rem))] rounded-xl border border-border bg-surface p-2 shadow-lg">
             <div className="border-b border-border px-2 py-2 sm:hidden">
               <p className="truncate text-sm font-semibold text-foreground">
                 {profile.fullName}

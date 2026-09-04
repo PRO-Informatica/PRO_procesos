@@ -1,37 +1,20 @@
 import { authStatusLabel } from "../formatters";
 import type { PlatformUserAuthStatus } from "../types";
+import { StatusBadge } from "@/components/ui/badge";
 
 export function UserProfileStatusBadge({ active }: { active: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
-        active
-          ? "bg-success-soft text-success"
-          : "bg-muted text-foreground-muted"
-      }`}
-    >
-      <span
-        aria-hidden="true"
-        className={`size-1.5 rounded-full ${active ? "bg-success" : "bg-foreground-muted"}`}
-      />
-      {active ? "Activo" : "Inactivo"}
-    </span>
-  );
+  return <StatusBadge label={active ? "Activo" : "Inactivo"} tone={active ? "success" : "neutral"} dot />;
 }
 
 export function UserAuthStatusBadge({ status }: { status: PlatformUserAuthStatus }) {
-  const className =
+  const tone =
     status === "CONFIRMED"
-      ? "bg-success-soft text-success"
+      ? "success"
       : status === "BANNED"
-        ? "bg-destructive-soft text-destructive"
+        ? "danger"
         : status === "INVITED"
-          ? "bg-brand-soft text-brand-strong"
-          : "bg-muted text-foreground-muted";
+          ? "brand"
+          : "neutral";
 
-  return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${className}`}>
-      {authStatusLabel(status)}
-    </span>
-  );
+  return <StatusBadge label={authStatusLabel(status)} tone={tone} />;
 }

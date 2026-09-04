@@ -1,76 +1,84 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-
-import { Workbook, type Cell, type Row, type Worksheet } from "exceljs";
+import { Workbook, type Worksheet } from "exceljs";
+import JSZip from "jszip";
 import type { NextRequest } from "next/server";
 
 import { requireActiveProfile } from "@/features/auth/queries";
 import { getProjectContext } from "@/features/projects/queries";
+import { reportArchiveItems, reportArchivePath, sanitizeArchiveSegment } from "@/features/reports/export-utils";
 import { parseGuideReportFilters } from "@/features/reports/filters";
 import { getGuideReport } from "@/features/reports/queries";
-import type { GuideReportData } from "@/features/reports/types";
+import type { GuideReportData, ProgrammingReportItem, ReportInvoice } from "@/features/reports/types";
 import { formatStatusLabel } from "@/lib/status-labels";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
-const COLORS = {
-  ink: "FF17191F",
-  muted: "FF667085",
-  border: "FFE4E7EC",
-  white: "FFFFFFFF",
-  surface: "FFF7F8FA",
-  red: "FFED1B2F",
-  redSoft: "FFFFEAEC",
-  green: "FF027A48",
-  greenSoft: "FFECFDF3",
-  amber: "FFB54708",
-  amberSoft: "FFFFFAEB",
-  blue: "FF175CD3",
-  blueSoft: "FFEFF4FF",
-  graySoft: "FFF2F4F7",
-} as const;
+const COLORS = { ink: "FF17191F", muted: "FF667085", border: "FFE4E7EC", white: "FFFFFFFF", surface: "FFF7F8FA", red: "FFED1B2F" } as const;
 
-const TABLE_HEADER_ROW = 9;
-const FIRST_DATA_ROW = TABLE_HEADER_ROW + 1;
-const LAST_COLUMN = "AA";
+type Column = { header: string; key: string; width: number; kind?: "date" | "datetime" | "quantity" | "money" | "integer" };
 
-const COLUMNS = [
-  ["Programación", "programmingCode", 18],
-  ["Fecha programada", "scheduledAt", 21],
-  ["Proyecto", "projectName", 24],
-  ["Proveedor", "supplierName", 26],
-  ["Estado de Programación", "programmingStatus", 22],
-  ["Cantidad programada", "programmedQuantity", 20],
-  ["UM", "unitCode", 10],
-  ["Programación creada por", "programmingCreatedBy", 26],
-  ["Despacho", "dispatchCode", 18],
-  ["Número de guía", "guideNumber", 24],
-  ["Fecha de guía", "guideDate", 15],
-  ["Pedido", "orderNumber", 16],
-  ["Lote", "batchCode", 20],
-  ["Cantidad documentada", "documentedQuantity", 20],
-  ["Cantidad recibida", "receivedQuantity", 18],
-  ["Resultado físico", "physicalResult", 20],
-  ["Estado del Despacho", "dispatchStatus", 22],
-  ["Despacho registrado por", "registeredByName", 26],
-  ["Fecha de registro", "createdAt", 21],
-  ["Incidencias", "incidentCount", 12],
-  ["Documentos", "documentCount", 12],
-  ["Estado del Pedido", "orderStatus", 21],
-  ["Estado de conciliación", "reconciliationStatus", 23],
-  ["Cantidad facturada PRODUCT", "productInvoicedQuantity", 25],
-  ["Diferencia", "difference", 15],
-  ["Cantidad de facturas", "invoiceCount", 19],
-  ["Requirió refacturación", "requiredReinvoicing", 22],
-] as const;
+const REPORT_COLUMNS: Column[] = [
+  { header: "Programación", key: "programmingCode", width: 18 },
+  { header: "Estado programación", key: "programmingStatus", width: 22 },
+  { header: "Fecha programación", key: "scheduledAt", width: 21, kind: "datetime" },
+  { header: "Proyecto", key: "projectName", width: 22 },
+  { header: "Proveedor", key: "supplierName", width: 26 },
+  { header: "Cantidad programada", key: "programmedQuantity", width: 20, kind: "quantity" },
+  { header: "UM programada", key: "programmedUnit", width: 14 },
+  { header: "Programación creada por", key: "programmingCreatedBy", width: 25 },
+  { header: "Despacho", key: "dispatchCode", width: 18 },
+  { header: "Estado despacho", key: "dispatchStatus", width: 20 },
+  { header: "Resultado", key: "dispatchResult", width: 18 },
+  { header: "Pedido", key: "orderNumber", width: 16 },
+  { header: "Lote", key: "batchCode", width: 19 },
+  { header: "Volumen real", key: "realVolume", width: 16, kind: "quantity" },
+  { header: "UM real", key: "realUnit", width: 11 },
+  { header: "Cantidad según guías", key: "documentedQuantity", width: 20, kind: "quantity" },
+  { header: "Guías", key: "guideCount", width: 10, kind: "integer" },
+  { header: "Incidencias", key: "incidentCount", width: 12, kind: "integer" },
+  { header: "Documentos operativos", key: "documentCount", width: 20, kind: "integer" },
+  { header: "Despacho registrado por", key: "dispatchCreatedBy", width: 25 },
+  { header: "Fecha registro despacho", key: "dispatchCreatedAt", width: 21, kind: "datetime" },
+  { header: "Estado conciliación", key: "reconciliationStatus", width: 23 },
+  { header: "Diferencia", key: "difference", width: 15, kind: "quantity" },
+  { header: "Facturas vigentes", key: "invoiceCount", width: 16, kind: "integer" },
+  { header: "Requirió refacturación", key: "reinvoicing", width: 21 },
+  { header: "Factura producto", key: "productInvoiceNumber", width: 20 },
+  { header: "Fecha factura producto", key: "productInvoiceDate", width: 19, kind: "date" },
+  { header: "Cantidad producto", key: "productQuantity", width: 18, kind: "quantity" },
+  { header: "Total producto", key: "productTotal", width: 17, kind: "money" },
+  { header: "Factura servicio", key: "serviceInvoiceNumber", width: 20 },
+  { header: "Fecha factura servicio", key: "serviceInvoiceDate", width: 19, kind: "date" },
+  { header: "Total servicio", key: "serviceTotal", width: 17, kind: "money" },
+];
 
-function localDateTime(value: string | null, timezone: string) {
-  if (!value) return "";
-  return new Intl.DateTimeFormat("es-GT", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: timezone,
-  }).format(new Date(value));
+const INVOICE_COLUMNS: Column[] = [
+  { header: "Programación", key: "programmingCode", width: 18 },
+  { header: "Despacho", key: "dispatchCode", width: 18 },
+  { header: "Pedido despacho", key: "dispatchOrder", width: 18 },
+  { header: "Lote", key: "batchCode", width: 20 },
+  { header: "No. factura", key: "number", width: 20 },
+  { header: "Fecha", key: "date", width: 14, kind: "date" },
+  { header: "PCA", key: "pca", width: 22 },
+  { header: "Pedido detectado", key: "invoiceOrder", width: 18 },
+  { header: "Emisor", key: "supplierLegalName", width: 30 },
+  { header: "NIT emisor", key: "supplierTaxId", width: 17 },
+  { header: "Receptor", key: "billingLegalName", width: 30 },
+  { header: "NIT receptor", key: "billingTaxId", width: 17 },
+  { header: "Cantidad facturada", key: "quantity", width: 20, kind: "quantity" },
+  { header: "UM", key: "unit", width: 10 },
+  { header: "Subtotal", key: "subtotal", width: 17, kind: "money" },
+  { header: "Total", key: "total", width: 17, kind: "money" },
+  { header: "Moneda", key: "currency", width: 11 },
+  { header: "Estado factura", key: "status", width: 18 },
+  { header: "Estado extracción", key: "extractionStatus", width: 20 },
+  { header: "Documento", key: "fileName", width: 38 },
+];
+
+function excelDate(value: string | null | undefined) {
+  if (!value) return null;
+  const date = /^\d{4}-\d{2}-\d{2}$/u.test(value) ? new Date(`${value}T12:00:00Z`) : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function displayDate(value: string) {
@@ -78,152 +86,138 @@ function displayDate(value: string) {
   return `${day}/${month}/${year}`;
 }
 
-function solidFill(argb: string) {
-  return { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb } };
-}
-
-function applyThinBorder(row: Row) {
-  row.eachCell((cell) => {
-    cell.border = { bottom: { style: "thin", color: { argb: COLORS.border } } };
-  });
-}
-
-function applyStatusStyle(cell: Cell, value: unknown) {
-  const label = String(value ?? "").toLocaleUpperCase("es-GT");
-  let color: string = COLORS.muted;
-  let background: string = COLORS.graySoft;
-
-  if (/CONCILIADO|COMPLETADO|COMPLETO|CONFIRMADO|MATCHED/u.test(label)) {
-    color = COLORS.green;
-    background = COLORS.greenSoft;
-  } else if (/REFACTUR|DIFERENCIA|CORRECCI|RECHAZ|CANCEL/u.test(label)) {
-    color = COLORS.red;
-    background = COLORS.redSoft;
-  } else if (/PENDIENTE|REVISI[ÓO]N|EJECUCI[ÓO]N|PARCIAL/u.test(label)) {
-    color = COLORS.amber;
-    background = COLORS.amberSoft;
-  } else if (/LOTE|REGISTRADO|VALIDACI[ÓO]N/u.test(label)) {
-    color = COLORS.blue;
-    background = COLORS.blueSoft;
+function setupSheet(sheet: Worksheet, columns: Column[]) {
+  sheet.columns = columns.map(({ header, key, width }) => ({ header, key, width }));
+  sheet.views = [{ state: "frozen", ySplit: 1, showGridLines: false }];
+  const header = sheet.getRow(1);
+  header.height = 34;
+  header.font = { bold: true, size: 10, color: { argb: COLORS.white } };
+  header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.red } };
+  header.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  header.eachCell((cell) => { cell.border = { right: { style: "thin", color: { argb: "FFFF8791" } } }; });
+  sheet.autoFilter = { from: "A1", to: { row: 1, column: columns.length } };
+  for (const column of columns) {
+    if (column.kind === "date") sheet.getColumn(column.key).numFmt = "dd/mm/yyyy";
+    if (column.kind === "datetime") sheet.getColumn(column.key).numFmt = "dd/mm/yyyy hh:mm";
+    if (column.kind === "quantity") sheet.getColumn(column.key).numFmt = "#,##0.000";
+    if (column.kind === "money") sheet.getColumn(column.key).numFmt = "#,##0.00";
+    if (column.kind === "integer") sheet.getColumn(column.key).numFmt = "0";
   }
-
-  cell.font = { bold: true, color: { argb: color }, size: 10 };
-  cell.fill = solidFill(background);
-  cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
 }
 
-function addKpi(
-  sheet: Worksheet,
-  range: string,
-  label: string,
-  value: number,
-  color: string,
-) {
-  const [labelRange, valueRange] = range.split("|");
-  sheet.mergeCells(labelRange);
-  sheet.mergeCells(valueRange);
-  const labelCell = sheet.getCell(labelRange.split(":")[0]);
-  const valueCell = sheet.getCell(valueRange.split(":")[0]);
-  labelCell.value = label;
-  valueCell.value = value;
-  labelCell.font = { bold: true, size: 9, color: { argb: COLORS.muted } };
-  valueCell.font = { bold: true, size: 18, color: { argb: color } };
-  for (const rowNumber of [6, 7]) {
-    const [start, end] = rowNumber === 6 ? labelRange.split(":") : valueRange.split(":");
-    const row = sheet.getRow(rowNumber);
-    for (let column = sheet.getCell(start).col; column <= sheet.getCell(end).col; column += 1) {
-      const cell = row.getCell(column);
-      cell.fill = solidFill(COLORS.white);
-      cell.border = {
-        top: { style: "thin", color: { argb: COLORS.border } },
-        bottom: { style: "thin", color: { argb: COLORS.border } },
-        left: column === sheet.getCell(start).col
-          ? { style: "thin", color: { argb: COLORS.border } }
-          : undefined,
-        right: column === sheet.getCell(end).col
-          ? { style: "thin", color: { argb: COLORS.border } }
-          : undefined,
-      };
-      cell.alignment = { vertical: "middle", horizontal: "left" };
+function addStyledRow(sheet: Worksheet, values: Record<string, unknown>) {
+  const row = sheet.addRow(values);
+  row.height = 31;
+  row.alignment = { vertical: "middle", wrapText: true };
+  if (row.number % 2 === 0) row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.surface } };
+  row.eachCell((cell) => { cell.border = { bottom: { style: "thin", color: { argb: COLORS.border } } }; });
+}
+
+function invoiceRow(programming: ProgrammingReportItem, dispatch: ProgrammingReportItem["dispatches"][number], invoice: ReportInvoice) {
+  return {
+    programmingCode: programming.code,
+    dispatchCode: dispatch.dispatchCode,
+    dispatchOrder: dispatch.orderNumber ?? "",
+    batchCode: dispatch.batchCode ?? "",
+    number: invoice.number,
+    date: excelDate(invoice.date),
+    pca: invoice.pcaOriginal ?? "",
+    invoiceOrder: invoice.orderNumber ?? "",
+    supplierLegalName: invoice.supplierLegalName ?? dispatch.supplierName,
+    supplierTaxId: invoice.supplierTaxId ?? "",
+    billingLegalName: invoice.billingLegalName ?? "",
+    billingTaxId: invoice.billingTaxId ?? "",
+    quantity: invoice.invoicedQuantity,
+    unit: invoice.unitCode ?? "",
+    subtotal: invoice.subtotal,
+    total: invoice.total,
+    currency: invoice.currency,
+    status: formatStatusLabel(invoice.status),
+    extractionStatus: formatStatusLabel(invoice.extractionStatus, "Sin extracción"),
+    fileName: invoice.fileName ?? "",
+  };
+}
+
+async function buildWorkbook(report: GuideReportData, companyName: string, projectLabel: string, dateFrom: string, dateTo: string) {
+  const workbook = new Workbook();
+  workbook.creator = "PRO Procesos";
+  workbook.company = companyName;
+  workbook.created = new Date();
+  workbook.title = `Reporte de programaciones, despachos y facturas · ${projectLabel}`;
+  workbook.subject = `${companyName} · ${displayDate(dateFrom)} a ${displayDate(dateTo)}`;
+
+  const reportSheet = workbook.addWorksheet("Reporte", { properties: { tabColor: { argb: COLORS.red } } });
+  const productSheet = workbook.addWorksheet("Facturas Producto");
+  const serviceSheet = workbook.addWorksheet("Facturas Servicio");
+  setupSheet(reportSheet, REPORT_COLUMNS);
+  setupSheet(productSheet, INVOICE_COLUMNS);
+  setupSheet(serviceSheet, INVOICE_COLUMNS);
+
+  for (const programming of report.programming) {
+    const dispatches = programming.dispatches.length ? programming.dispatches : [null];
+    for (const dispatch of dispatches) {
+      addStyledRow(reportSheet, {
+        programmingCode: programming.code,
+        programmingStatus: formatStatusLabel(programming.status),
+        scheduledAt: excelDate(programming.scheduledAt),
+        projectName: programming.projectName,
+        supplierName: programming.supplierName,
+        programmedQuantity: programming.confirmedQuantity ?? programming.requestedQuantity,
+        programmedUnit: programming.unitCode,
+        programmingCreatedBy: programming.createdByName,
+        dispatchCode: dispatch?.dispatchCode ?? "Sin despacho",
+        dispatchStatus: dispatch ? formatStatusLabel(dispatch.dispatchStatus) : "Sin despacho",
+        dispatchResult: dispatch ? formatStatusLabel(dispatch.physicalResult) : "",
+        orderNumber: dispatch?.orderNumber ?? "",
+        batchCode: dispatch?.batchCode ?? "",
+        realVolume: dispatch?.receivedQuantity ?? null,
+        realUnit: dispatch?.unitCode ?? "",
+        documentedQuantity: dispatch?.documentedQuantity ?? null,
+        guideCount: dispatch?.guideCount ?? 0,
+        incidentCount: dispatch?.incidentCount ?? 0,
+        documentCount: dispatch?.documentCount ?? 0,
+        dispatchCreatedBy: dispatch?.registeredByName ?? "",
+        dispatchCreatedAt: excelDate(dispatch?.createdAt),
+        reconciliationStatus: dispatch ? formatStatusLabel(dispatch.reconciliationStatus) : "Pendiente de despacho",
+        difference: dispatch?.difference ?? null,
+        invoiceCount: dispatch?.invoiceCount ?? 0,
+        reinvoicing: dispatch ? (dispatch.reinvoicingRequired ? "Sí" : "No") : "",
+        productInvoiceNumber: dispatch?.productInvoice?.number ?? "",
+        productInvoiceDate: excelDate(dispatch?.productInvoice?.date),
+        productQuantity: dispatch?.productInvoice?.invoicedQuantity ?? null,
+        productTotal: dispatch?.productInvoice?.total ?? null,
+        serviceInvoiceNumber: dispatch?.serviceInvoice?.number ?? "",
+        serviceInvoiceDate: excelDate(dispatch?.serviceInvoice?.date),
+        serviceTotal: dispatch?.serviceInvoice?.total ?? null,
+      });
+      if (dispatch?.productInvoice) addStyledRow(productSheet, invoiceRow(programming, dispatch, dispatch.productInvoice));
+      if (dispatch?.serviceInvoice) addStyledRow(serviceSheet, invoiceRow(programming, dispatch, dispatch.serviceInvoice));
     }
   }
+  return workbook;
 }
 
-async function addReportBranding(
-  workbook: Workbook,
-  sheet: Worksheet,
-  companyName: string,
-  projectLabel: string,
-  dateFrom: string,
-  dateTo: string,
-  timezone: string,
-  report: GuideReportData,
-) {
-  for (let row = 1; row <= 4; row += 1) {
-    for (let column = 1; column <= COLUMNS.length; column += 1) {
-      sheet.getRow(row).getCell(column).fill = solidFill(COLORS.ink);
-    }
+async function buildZip(report: GuideReportData) {
+  const admin = createAdminClient();
+  const items = reportArchiveItems(report);
+  const documentIds = [...new Set(items.map((item) => item.invoice.documentId).filter((id): id is string => Boolean(id)))];
+  if (!documentIds.length) return { zip: new JSZip(), fileCount: 0 };
+  const versions = await admin.from("document_versions").select("document_id, storage_bucket, storage_path").in("document_id", documentIds).eq("upload_status", "UPLOADED").eq("is_current", true);
+  if (versions.error) throw new Error("No fue posible preparar los documentos del reporte.");
+  const versionByDocument = new Map((versions.data ?? []).map((version) => [version.document_id, version]));
+  const zip = new JSZip();
+  const usedPaths = new Set<string>();
+  let fileCount = 0;
+  for (const item of items) {
+    const documentId = item.invoice.documentId;
+    const version = documentId ? versionByDocument.get(documentId) : null;
+    if (!version) continue;
+    const downloaded = await admin.storage.from(version.storage_bucket).download(version.storage_path);
+    if (downloaded.error || !downloaded.data) throw new Error("No fue posible descargar uno de los PDF del reporte.");
+    zip.file(reportArchivePath(item, usedPaths), await downloaded.data.arrayBuffer());
+    fileCount += 1;
   }
-
-  try {
-    const logo = await readFile(join(process.cwd(), "public", "pro-logo.png"));
-    const logoId = workbook.addImage({
-      base64: `data:image/png;base64,${logo.toString("base64")}`,
-      extension: "png",
-    });
-    sheet.addImage(logoId, {
-      tl: { col: 0.35, row: 0.45 },
-      ext: { width: 132, height: 66 },
-      editAs: "oneCell",
-    });
-  } catch {
-    sheet.mergeCells("A1:C2");
-    const fallbackLogo = sheet.getCell("A1");
-    fallbackLogo.value = "PRO";
-    fallbackLogo.font = { bold: true, italic: true, size: 26, color: { argb: COLORS.white } };
-    fallbackLogo.alignment = { vertical: "middle", horizontal: "center" };
-  }
-
-  sheet.mergeCells("D1:AA2");
-  const title = sheet.getCell("D1");
-  title.value = "REPORTE DE PROGRAMACIONES Y DESPACHOS";
-  title.font = { bold: true, size: 20, color: { argb: COLORS.white } };
-  title.alignment = { vertical: "middle", horizontal: "left" };
-
-  sheet.mergeCells("D3:J3");
-  sheet.mergeCells("K3:Q3");
-  sheet.mergeCells("R3:AA3");
-  sheet.getCell("D3").value = `Empresa: ${companyName}`;
-  sheet.getCell("K3").value = `Proyecto: ${projectLabel}`;
-  sheet.getCell("R3").value = `Período: ${displayDate(dateFrom)} — ${displayDate(dateTo)}`;
-
-  sheet.mergeCells("D4:AA4");
-  sheet.getCell("D4").value = `Generado: ${localDateTime(new Date().toISOString(), timezone)} · Zona horaria: ${timezone}`;
-  for (const address of ["D3", "K3", "R3", "D4"]) {
-    const cell = sheet.getCell(address);
-    cell.font = {
-      size: address === "D4" ? 9 : 10,
-      color: { argb: address === "D4" ? "FFBFC5D2" : COLORS.white },
-      bold: address !== "D4",
-    };
-    cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
-  }
-
-  const matchedOrders = new Set(
-    report.rows
-      .filter((row) => row.reconciliationStatus === "MATCHED")
-      .map((row) => `${row.projectId}:${row.batchId ?? ""}:${row.orderNumber ?? ""}`),
-  ).size;
-  const reinvoicingOrders = new Set(
-    report.rows
-      .filter((row) => row.reinvoicingRequired)
-      .map((row) => `${row.projectId}:${row.batchId ?? ""}:${row.orderNumber ?? ""}`),
-  ).size;
-
-  addKpi(sheet, "A6:F6|A7:F7", "PROGRAMACIONES", report.programming.length, COLORS.ink);
-  addKpi(sheet, "G6:L6|G7:L7", "DESPACHOS", report.rows.length, COLORS.blue);
-  addKpi(sheet, "M6:R6|M7:R7", "PEDIDOS CONCILIADOS", matchedOrders, COLORS.green);
-  addKpi(sheet, "S6:AA6|S7:AA7", "PEDIDOS CON REFACTURACIÓN", reinvoicingOrders, COLORS.red);
+  return { zip, fileCount };
 }
 
 export async function GET(request: NextRequest) {
@@ -233,159 +227,27 @@ export async function GET(request: NextRequest) {
     return Response.json({ message: "No tienes acceso a Reportería." }, { status: 403 });
   }
 
-  const filters = parseGuideReportFilters(request.nextUrl.searchParams);
-  const projects = context.isCompanyAdmin
-    ? context.projects.filter((project) => project.companyId === context.activeProject?.companyId)
-    : [context.activeProject];
-  const report = await getGuideReport(
-    projects.map(({ id, name, timezone }) => ({ id, name, timezone })),
-    filters,
-  );
-  const selectedProject = filters.projectId
-    ? projects.find((project) => project.id === filters.projectId)
-    : null;
-  const projectLabel = selectedProject?.name
-    ?? (projects.length === 1 ? projects[0]?.name : `Todos los proyectos (${projects.length})`)
-    ?? context.activeProject.name;
+  try {
+    const filters = parseGuideReportFilters(request.nextUrl.searchParams);
+    const projects = context.isCompanyAdmin ? context.projects.filter((project) => project.companyId === context.activeProject?.companyId) : [context.activeProject];
+    const report = await getGuideReport(projects.map(({ id, name, timezone }) => ({ id, name, timezone })), filters);
+    const selectedProject = filters.projectId ? projects.find((project) => project.id === filters.projectId) : null;
+    const projectLabel = selectedProject?.name ?? (projects.length === 1 ? projects[0]?.name : `Todos los proyectos (${projects.length})`) ?? context.activeProject.name;
+    const safeProject = sanitizeArchiveSegment(projectLabel, "Proyectos");
+    const format = request.nextUrl.searchParams.get("format") === "zip" ? "zip" : "xlsx";
 
-  const workbook = new Workbook();
-  workbook.creator = "PRO Procesos";
-  workbook.company = context.activeProject.companyName;
-  workbook.created = new Date();
-  workbook.modified = new Date();
-  workbook.title = `Reporte de programaciones y despachos · ${projectLabel}`;
-  workbook.subject = `${context.activeProject.companyName} · ${displayDate(filters.dateFrom)} a ${displayDate(filters.dateTo)}`;
-
-  const sheet = workbook.addWorksheet("Reporte", {
-    properties: { tabColor: { argb: COLORS.red }, defaultRowHeight: 19 },
-    views: [{
-      state: "frozen",
-      ySplit: TABLE_HEADER_ROW,
-      showGridLines: false,
-      topLeftCell: `A${FIRST_DATA_ROW}`,
-    }],
-    pageSetup: {
-      orientation: "landscape",
-      paperSize: 9,
-      fitToPage: true,
-      fitToWidth: 1,
-      fitToHeight: 0,
-      margins: { left: 0.25, right: 0.25, top: 0.45, bottom: 0.45, header: 0.2, footer: 0.2 },
-    },
-  });
-  sheet.columns = COLUMNS.map(([, key, width]) => ({ key, width }));
-  sheet.getRow(1).height = 30;
-  sheet.getRow(2).height = 30;
-  sheet.getRow(3).height = 23;
-  sheet.getRow(4).height = 20;
-  sheet.getRow(5).height = 10;
-  sheet.getRow(6).height = 22;
-  sheet.getRow(7).height = 32;
-  sheet.getRow(8).height = 10;
-
-  await addReportBranding(
-    workbook,
-    sheet,
-    context.activeProject.companyName,
-    projectLabel,
-    filters.dateFrom,
-    filters.dateTo,
-    context.activeProject.timezone,
-    report,
-  );
-
-  const tableHeader = sheet.getRow(TABLE_HEADER_ROW);
-  tableHeader.values = COLUMNS.map(([header]) => header);
-  tableHeader.font = { bold: true, size: 10, color: { argb: COLORS.white } };
-  tableHeader.fill = solidFill(COLORS.red);
-  tableHeader.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-  tableHeader.height = 38;
-  tableHeader.eachCell((cell) => {
-    cell.border = {
-      right: { style: "thin", color: { argb: "FFFF8791" } },
-      bottom: { style: "thin", color: { argb: COLORS.red } },
-    };
-  });
-  sheet.autoFilter = { from: `A${TABLE_HEADER_ROW}`, to: `${LAST_COLUMN}${TABLE_HEADER_ROW}` };
-
-  for (const programming of report.programming) {
-    const dispatches = programming.dispatches.length ? programming.dispatches : [null];
-    for (const dispatch of dispatches) {
-      const row = sheet.addRow({
-        programmingCode: programming.code,
-        scheduledAt: localDateTime(programming.scheduledAt, programming.timezone),
-        projectName: programming.projectName,
-        supplierName: programming.supplierName,
-        programmingStatus: formatStatusLabel(programming.status),
-        programmedQuantity: programming.confirmedQuantity ?? programming.requestedQuantity,
-        unitCode: programming.unitCode,
-        programmingCreatedBy: programming.createdByName,
-        dispatchCode: dispatch ? `DSP-${dispatch.dispatchId.slice(0, 8).toUpperCase()}` : "Sin despacho",
-        guideNumber: dispatch?.guideNumber ?? "Sin guía",
-        guideDate: dispatch?.guideDate ?? "",
-        orderNumber: dispatch?.orderNumber ?? "",
-        batchCode: dispatch?.batchCode ?? "",
-        documentedQuantity: dispatch?.documentedQuantity ?? 0,
-        receivedQuantity: dispatch?.receivedQuantity ?? 0,
-        physicalResult: dispatch ? formatStatusLabel(dispatch.physicalResult) : "Sin resultado",
-        dispatchStatus: dispatch ? formatStatusLabel(dispatch.dispatchStatus) : "Sin despacho",
-        registeredByName: dispatch?.registeredByName ?? "",
-        createdAt: dispatch ? localDateTime(dispatch.createdAt, dispatch.timezone) : "",
-        incidentCount: dispatch?.incidentCount ?? 0,
-        documentCount: dispatch?.documentCount ?? 0,
-        orderStatus: dispatch ? formatStatusLabel(dispatch.orderStatus) : "Sin Pedido",
-        reconciliationStatus: dispatch ? formatStatusLabel(dispatch.reconciliationStatus) : "Sin evaluar",
-        productInvoicedQuantity: dispatch?.productInvoicedQuantity ?? 0,
-        difference: dispatch?.difference ?? 0,
-        invoiceCount: dispatch?.invoiceCount ?? 0,
-        requiredReinvoicing: dispatch?.reinvoicingRequired
-          ? "Sí"
-          : dispatch?.reconciliationStatus === "MATCHED" ? "No" : "Pendiente",
-      });
-      row.height = 34;
-      row.alignment = { vertical: "middle", wrapText: true };
-      if (row.number % 2 === 0) row.fill = solidFill(COLORS.surface);
-      applyThinBorder(row);
-
-      for (const column of [6, 14, 15, 20, 21, 24, 25, 26]) {
-        row.getCell(column).alignment = { vertical: "middle", horizontal: "right", wrapText: true };
-      }
-      for (const column of [5, 16, 17, 22, 23, 27]) {
-        applyStatusStyle(row.getCell(column), row.getCell(column).value);
-      }
-      if (Number(row.getCell(20).value) > 0) {
-        row.getCell(20).font = { bold: true, color: { argb: COLORS.red } };
-      }
-      const difference = Number(row.getCell(25).value ?? 0);
-      row.getCell(25).font = {
-        bold: true,
-        color: { argb: difference === 0 ? COLORS.green : COLORS.red },
-      };
+    if (format === "zip") {
+      const { zip, fileCount } = await buildZip(report);
+      if (!fileCount) return Response.json({ message: "El resultado filtrado no contiene facturas con PDF disponible." }, { status: 404 });
+      const buffer = await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE", compressionOptions: { level: 6 } });
+      return new Response(buffer, { headers: { "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="Reporte_${safeProject}_${filters.dateFrom}_${filters.dateTo}.zip"`, "Cache-Control": "private, no-store" } });
     }
-  }
 
-  for (const key of [
-    "programmedQuantity",
-    "documentedQuantity",
-    "receivedQuantity",
-    "productInvoicedQuantity",
-    "difference",
-  ]) {
-    sheet.getColumn(key).numFmt = "#,##0.000";
+    const workbook = await buildWorkbook(report, context.activeProject.companyName, projectLabel, filters.dateFrom, filters.dateTo);
+    const buffer = await workbook.xlsx.writeBuffer();
+    return new Response(new Uint8Array(buffer), { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="Reporte_${safeProject}_${filters.dateFrom}_${filters.dateTo}.xlsx"`, "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    console.error("Report export failed", error);
+    return Response.json({ message: "No fue posible generar la exportación." }, { status: 500 });
   }
-  sheet.getColumn("incidentCount").numFmt = "0";
-  sheet.getColumn("documentCount").numFmt = "0";
-  sheet.getColumn("invoiceCount").numFmt = "0";
-  sheet.pageSetup.printTitlesRow = `${TABLE_HEADER_ROW}:${TABLE_HEADER_ROW}`;
-  sheet.headerFooter.oddFooter = "&LPRO Procesos&CReporte confidencial&RPágina &P de &N";
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  const filename = `reporte-programaciones_${filters.dateFrom}_${filters.dateTo}.xlsx`;
-  return new Response(new Uint8Array(buffer), {
-    headers: {
-      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename=\"${filename}\"`,
-      "Cache-Control": "private, no-store",
-    },
-  });
 }

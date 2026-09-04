@@ -1,7 +1,10 @@
 "use client";
 
 import { FileSpreadsheet, Upload, X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useId, useRef, useState } from "react";
+
+import { motionTokens } from "@/lib/motion/tokens";
 
 export function FileDropField({
   name,
@@ -20,6 +23,13 @@ export function FileDropField({
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+
+  const formattedSize = file
+    ? file.size >= 1024 * 1024
+      ? `${(file.size / 1024 / 1024).toFixed(1)} MB`
+      : `${Math.max(1, Math.round(file.size / 1024))} KB`
+    : "";
 
   const choose = (next: File | null, syncInput = false) => {
     if (next && next.size > maxBytes) {
@@ -58,48 +68,73 @@ export function FileDropField({
         className="sr-only"
         onChange={(event) => choose(event.target.files?.[0] ?? null)}
       />
+      <AnimatePresence mode="wait" initial={false}>
       {file ? (
-        <div className="flex min-w-0 items-center gap-3 rounded-xl border border-border bg-muted/25 p-4">
+        <motion.div
+          key="selected-file"
+          initial={{ opacity: 0, y: 5 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: motionTokens.duration.hover, ease: motionTokens.ease }}
+          className="flex min-w-0 items-center gap-3 rounded-xl border border-success/20 bg-success-soft/40 p-3 sm:p-4"
+        >
           <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-success-soft text-success">
             <FileSpreadsheet aria-hidden="true" className="size-5" />
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-foreground">{file.name}</p>
             <p className="mt-0.5 text-xs text-foreground-muted">
-              {(file.size / 1024).toFixed(1)} KB
+              {formattedSize} · {file.type || "Archivo"}
             </p>
           </div>
           <button
             type="button"
             onClick={remove}
             disabled={disabled}
-            className="grid size-9 shrink-0 place-items-center rounded-lg text-foreground-muted hover:bg-muted hover:text-foreground disabled:opacity-50"
+            className="icon-button shrink-0"
             aria-label="Quitar archivo"
           >
             <X aria-hidden="true" className="size-4" />
           </button>
-        </div>
+        </motion.div>
       ) : (
-        <label
+        <motion.label
+          key="dropzone"
           htmlFor={id}
-          onDragOver={(event) => event.preventDefault()}
+          onDragEnter={(event) => { event.preventDefault(); if (!disabled) setDragActive(true); }}
+          onDragOver={(event) => { event.preventDefault(); if (!disabled) setDragActive(true); }}
+          onDragLeave={(event) => {
+            const nextTarget = event.relatedTarget;
+            if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+              setDragActive(false);
+            }
+          }}
           onDrop={(event) => {
             event.preventDefault();
+            setDragActive(false);
             if (!disabled) {
               choose(event.dataTransfer.files?.[0] ?? null, true);
             }
           }}
-          className="flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-5 py-8 text-center transition hover:border-brand/40 hover:bg-brand-soft/30"
+          initial={{ opacity: 0.88 }}
+          animate={{ opacity: 1, scale: dragActive ? 1.006 : 1 }}
+          whileHover={disabled ? undefined : { y: -1 }}
+          transition={{ duration: motionTokens.duration.hover, ease: motionTokens.ease }}
+          className={`group flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-6 text-center transition-colors duration-200 sm:min-h-44 sm:px-5 sm:py-8 ${dragActive ? "border-brand bg-brand-soft/55 shadow-[inset_0_0_0_1px_var(--brand)]" : "border-border bg-muted/20 hover:border-brand/45 hover:bg-brand-soft/30"} ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
         >
-          <Upload aria-hidden="true" className="size-7 text-brand-strong" />
+          <motion.span animate={{ y: dragActive ? -2 : 0, scale: dragActive ? 1.06 : 1 }} transition={{ duration: motionTokens.duration.hover }}>
+            <Upload aria-hidden="true" className="size-7 text-brand-strong transition-transform duration-200 group-hover:-translate-y-0.5" />
+          </motion.span>
           <span className="mt-3 text-sm font-semibold text-foreground">
-            Selecciona o arrastra el archivo
+            <span className="sm:hidden">Selecciona el archivo</span>
+            <span className="hidden sm:inline">Selecciona o arrastra el archivo</span>
           </span>
           <span className="mt-1 text-xs text-foreground-muted">
             Excel .xlsx · máximo {Math.round(maxBytes / 1024 / 1024)} MiB
           </span>
-        </label>
+        </motion.label>
       )}
+      </AnimatePresence>
       {error && <p className="mt-2 text-xs font-medium text-destructive">{error}</p>}
     </div>
   );

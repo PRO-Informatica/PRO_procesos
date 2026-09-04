@@ -8,13 +8,14 @@ export function MotionSection({
   children,
   className,
   style,
+  ...props
 }: {
   children: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
-}) {
+} & Omit<React.ComponentPropsWithoutRef<typeof motion.section>, "children" | "className" | "style">) {
   return (
-    <motion.section className={className} style={style} variants={fadeUp}>
+    <motion.section className={className} style={style} variants={fadeUp} {...props}>
       {children}
     </motion.section>
   );

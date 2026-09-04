@@ -1,0 +1,40 @@
+export type NotificationMessage = {
+  title: string;
+  description?: string;
+};
+
+export const notifications = {
+  batchCreated: { title: "Lote creado" },
+  batchClosed: { title: "Semana cerrada", description: "Siguiente lote preparado." },
+  dispatchAdded: { title: "Despacho agregado" },
+  dispatchRemoved: { title: "Despacho removido" },
+  invoiceSaved: { title: "Factura cargada", description: "Asociada al despacho." },
+  invoicesSaved: { title: "Facturas guardadas" },
+  reconciliationCompleted: { title: "Conciliación completada" },
+  reconciliationDifferences: { title: "Diferencias encontradas", description: "Revisa la conciliación." },
+  reinvoicingRequested: { title: "Refacturación solicitada" },
+  programmingCreated: { title: "Programación creada" },
+  programmingUpdated: { title: "Programación actualizada" },
+  programmingConfirmed: { title: "Programación confirmada" },
+  programmingCancelled: { title: "Programación cancelada" },
+  programmingImported: { title: "Programaciones cargadas" },
+  dispatchStarted: { title: "Despacho iniciado" },
+  dispatchSaved: { title: "Despacho guardado" },
+  dispatchCompleted: { title: "Despacho completado" },
+  guideSaved: { title: "Guía guardada" },
+  guideRemoved: { title: "Guía eliminada" },
+  incidentCreated: { title: "Incidencia registrada" },
+  documentUploaded: { title: "Documento cargado" },
+  documentsUploaded: { title: "Documentos cargados" },
+  documentRemoved: { title: "Documento eliminado" },
+  companyCreated: { title: "Empresa creada" },
+  projectCreated: { title: "Proyecto creado" },
+  changesSaved: { title: "Cambios guardados" },
+  userInvited: { title: "Invitación enviada" },
+  statusUpdated: { title: "Estado actualizado" },
+  actionFailed: { title: "Acción no completada", description: "Intenta nuevamente." },
+  saveFailed: { title: "Error al guardar", description: "Intenta nuevamente." },
+  uploadFailed: { title: "Error de carga", description: "Revisa el archivo." },
+  invoiceInvalid: { title: "Factura no válida", description: "Revisa el archivo." },
+  actionNotAllowed: { title: "Acción no permitida" },
+} satisfies Record<string, NotificationMessage>;

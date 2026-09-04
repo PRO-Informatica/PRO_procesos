@@ -1,12 +1,13 @@
 "use client";
 
-import { FileSpreadsheet, Trash2, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { FileSpreadsheet, Trash2 } from "lucide-react";
 import { useActionState, useEffect, useMemo, useState } from "react";
 
 import { LoadingButton } from "@/components/feedback/loading-button";
-import { useGlobalPending } from "@/components/feedback/global-loading-provider";
 import { FileDropField } from "@/components/forms/file-drop-field";
+import { Dialog } from "@/components/ui/dialog";
+import { notifications } from "@/lib/notification-messages";
+import { notify } from "@/lib/notify";
 
 import {
   createProgrammingBatchAction,
@@ -72,14 +73,13 @@ export function BulkProgrammingDialog({
     [editedRows, extractState.rows],
   );
   const pending = extracting || creating;
-  useGlobalPending(
-    pending,
-    extracting ? "Leyendo archivo…" : "Creando programaciones…",
-    extracting ? "Validando el formato de Mixto Listo." : "Guardando toda la carga en una transacción.",
-  );
 
   useEffect(() => {
-    if (batchState.status === "success") onCreated(batchState.programmingIds?.length ?? rows.length);
+    if (batchState.status === "success") {
+      const count = batchState.programmingIds?.length ?? rows.length;
+      notify.success(notifications.programmingImported, `${count} ${count === 1 ? "registro creado" : "registros creados"}.`);
+      onCreated(count);
+    }
   }, [batchState.programmingIds?.length, batchState.status, onCreated, rows.length]);
 
   const validatedRows = useMemo(
@@ -95,34 +95,10 @@ export function BulkProgrammingDialog({
     }));
   };
 
+  if (!open) return null;
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-black/45 p-3 backdrop-blur-[2px] sm:p-6"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="bulk-programming-title"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        >
-          <motion.div
-            className="my-auto flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-            initial={{ y: 10, scale: 0.99 }} animate={{ y: 0, scale: 1 }} exit={{ y: 6, scale: 0.99 }}
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
-              <div className="flex gap-3">
-                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-strong"><FileSpreadsheet className="size-5" /></span>
-                <div>
-                  <h2 id="bulk-programming-title" className="font-semibold text-foreground">Cargar programaciones</h2>
-                  <p className="mt-1 text-xs text-foreground-muted">
-                    Solicitud de Concreto de Mixto Listo · Razón Social esperada: {billingLegalName || "Sin configurar"} · {timezone}
-                  </p>
-                </div>
-              </div>
-              <button type="button" onClick={onClose} disabled={pending} className="grid size-9 place-items-center rounded-lg text-foreground-muted hover:bg-muted" aria-label="Cerrar"><X className="size-5" /></button>
-            </div>
-
-            <div className="subtle-scrollbar flex-1 overflow-y-auto p-5 sm:p-6">
+    <Dialog title="Cargar programaciones" description={`Solicitud de Concreto · Razón social: ${billingLegalName || "Sin configurar"} · ${timezone}`} icon={FileSpreadsheet} onClose={onClose} pending={pending} size="full">
+            <div className="subtle-scrollbar max-h-[calc(92vh-5rem)] overflow-y-auto p-5 sm:p-6">
               {!rows.length ? (
                 <form action={extractAction} className="mx-auto max-w-2xl">
                   <input type="hidden" name="projectId" value={projectId} />
@@ -169,9 +145,6 @@ export function BulkProgrammingDialog({
                 </form>
               )}
             </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    </Dialog>
   );
 }

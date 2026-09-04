@@ -1,9 +1,11 @@
 "use client";
 
 import { CalendarClock, Droplets, Truck } from "lucide-react";
+import { motion } from "motion/react";
 import { useState } from "react";
 
 import { EmptyState } from "@/components/feedback/empty-state";
+import { motionTokens } from "@/lib/motion/tokens";
 
 import {
   formatProgrammingDate,
@@ -28,10 +30,12 @@ function ProgrammingCard({
   onSelect: (item: ProgrammingItem) => void;
 }) {
   return (
-    <button
+    <motion.button
       type="button"
       onClick={() => onSelect(item)}
-      className="w-full rounded-xl border border-border bg-surface p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand/25 hover:shadow-md"
+      className="data-card-interactive w-full touch-manipulation rounded-xl border border-border bg-surface p-3.5 text-left shadow-sm active:border-brand/30 active:bg-brand-soft/10"
+      whileTap={{ scale: 0.995 }}
+      transition={{ duration: motionTokens.duration.hover, ease: motionTokens.ease }}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -48,12 +52,12 @@ function ProgrammingCard({
           </span>
         )}
       </div>
-      <div className="mt-4 flex items-center gap-2 text-xs text-foreground-muted">
+      <div className="mt-3.5 flex items-center gap-2 text-xs leading-5 text-foreground-muted">
         <CalendarClock aria-hidden="true" className="size-3.5 text-brand-strong" />
         <span>{formatProgrammingDate(item.scheduledAt, timezone)}</span>
         <strong className="ml-auto text-foreground">{formatProgrammingTime(item.scheduledAt, timezone)}</strong>
       </div>
-      <p className="mt-3 text-lg font-semibold tracking-tight text-foreground">
+      <p className="mt-2.5 text-base font-semibold tracking-tight text-foreground">
         {formatProgrammingQuantity(item.requestedQuantity)} {item.unitCode}
       </p>
       {item.placementGroup && (
@@ -61,8 +65,8 @@ function ProgrammingCard({
           {item.placementGroup}
         </p>
       )}
-      <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
-        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${programmingStatusTone(item.effectiveStatus)}`}>
+      <div className="mt-3.5 flex items-end justify-between gap-2 border-t border-border pt-3">
+        <span className={`inline-flex w-fit max-w-[10.5rem] rounded-full px-2.5 py-1 text-[10px] font-semibold leading-3.5 [overflow-wrap:anywhere] ${programmingStatusTone(item.effectiveStatus)}`}>
           {formatProgrammingStatus(item.effectiveStatus)}
         </span>
         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground-muted">
@@ -70,7 +74,7 @@ function ProgrammingCard({
           {item.dispatches.length}
         </span>
       </div>
-    </button>
+    </motion.button>
   );
 }
 
@@ -129,10 +133,10 @@ export function ProgrammingKanban({
         </div>
       </div>
 
-      <div className="hidden overflow-x-auto pb-3 lg:block">
-        <div className="grid min-w-[1440px] grid-cols-7 gap-3">
+      <div className="subtle-scrollbar hidden overflow-x-auto pb-3 lg:block">
+        <div className="grid min-w-[1540px] grid-cols-7 gap-3">
           {PROGRAMMING_EFFECTIVE_STATUSES.map((status) => (
-            <section key={status} className="rounded-xl border border-border bg-muted/35 p-3">
+            <section key={status} className="min-w-0 rounded-xl border border-border bg-muted/30 p-3">
               <div className="flex items-center justify-between gap-2 px-1 pb-3">
                 <h2 className="text-xs font-semibold text-foreground">
                   {formatProgrammingStatus(status)}

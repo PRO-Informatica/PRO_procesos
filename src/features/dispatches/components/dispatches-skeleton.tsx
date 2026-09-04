@@ -1,6 +1,7 @@
 export function DispatchesSkeleton({ detail = false }: { detail?: boolean }) {
   return (
-    <div className="mx-auto max-w-[1600px] animate-pulse" aria-label="Cargando despachos">
+    <div className="skeleton-pulse mx-auto max-w-[1600px]" role="status" aria-live="polite" aria-busy="true">
+      <span className="sr-only">Cargando despachos…</span>
       <div className="h-4 w-40 rounded bg-muted" />
       <div className="mt-3 h-9 w-64 rounded bg-muted" />
       <div className="mt-3 h-4 w-96 max-w-full rounded bg-muted" />

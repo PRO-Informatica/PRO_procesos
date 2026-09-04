@@ -45,7 +45,7 @@ export function UsersList({
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">
             Administración global
           </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             Usuarios
           </h1>
           <p className="mt-2 text-sm text-foreground-muted">
@@ -125,7 +125,7 @@ export function UsersList({
         </div>
       ) : (
         <MotionSection className="mt-4 overflow-hidden rounded-xl border border-border bg-surface">
-          <div className="overflow-x-auto">
+          <div className="hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[1100px] border-collapse text-left">
               <thead className="bg-muted/80 text-[11px] font-semibold uppercase tracking-[0.1em] text-foreground-muted">
                 <tr>
@@ -201,18 +201,35 @@ export function UsersList({
               </tbody>
             </table>
           </div>
+          <div className="divide-y divide-border lg:hidden">
+            {result.items.map((user) => (
+              <article key={user.id} className="p-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <UserAvatar name={user.fullName} avatarUrl={user.avatarUrl} />
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/platform/users/${user.id}`} className="block truncate text-sm font-semibold text-foreground">{user.fullName}</Link>
+                    <p className="mt-1 truncate text-xs text-foreground-muted" title={user.email}>{user.email}</p>
+                    {user.isPlatformAdmin && <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-brand-strong"><ShieldCheck aria-hidden="true" className="size-3" />Platform Admin</span>}
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2"><UserProfileStatusBadge active={user.profileActive} /><UserAuthStatusBadge status={user.authStatus} /></div>
+                <dl className="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-muted/45 p-3 text-xs"><div><dt className="text-foreground-muted">Último acceso</dt><dd className="mt-1 font-medium">{formatUserDate(user.lastSignInAt, true)}</dd></div><div><dt className="text-foreground-muted">Creado</dt><dd className="mt-1 font-medium">{formatUserDate(user.createdAt)}</dd></div></dl>
+                <div className="mt-4 flex items-center justify-end gap-2"><Link href={`/platform/users/${user.id}`} className="secondary-button flex-1 gap-2 text-xs"><Eye aria-hidden="true" className="size-4" /> Ver</Link><UserStatusDialog key={`${user.id}-mobile-${user.profileActive ? "active" : "inactive"}`} userId={user.id} userName={user.fullName} active={user.profileActive} compact disabled={user.isCurrentUser && user.profileActive} /></div>
+              </article>
+            ))}
+          </div>
         </MotionSection>
       )}
 
       {result.totalPages > 1 && (
         <nav
-          className="mt-5 flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3"
+          className="mt-5 flex flex-col gap-3 rounded-xl border border-border bg-surface px-4 py-3 min-[390px]:flex-row min-[390px]:items-center min-[390px]:justify-between"
           aria-label="Paginación de usuarios"
         >
           <p className="text-xs text-foreground-muted">
             Página {result.page} de {result.totalPages}
           </p>
-          <div className="flex gap-2">
+          <div className="grid w-full grid-cols-2 gap-2 min-[390px]:w-auto">
             {result.page > 1 ? (
               <Link
                 href={pageHref(filters, result.page - 1)}

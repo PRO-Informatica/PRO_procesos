@@ -27,11 +27,11 @@ export function PlatformTopbar({
   const { hasOperationalAccess } = usePlatformContext();
 
   return (
-    <header className="sticky top-0 z-30 flex h-20 items-center border-b border-border bg-surface/95 px-4 backdrop-blur-sm sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 flex min-h-16 items-center border-b border-border bg-surface/95 px-3 pt-[env(safe-area-inset-top)] backdrop-blur-sm sm:h-20 sm:px-6 lg:px-8">
       <button
         type="button"
         onClick={onOpenNavigation}
-        className="mr-3 grid size-9 place-items-center rounded-lg border border-border text-foreground-muted hover:bg-muted hover:text-foreground lg:hidden"
+        className="mr-2 grid size-11 shrink-0 place-items-center rounded-lg border border-border text-foreground-muted transition-colors hover:bg-muted hover:text-foreground active:bg-muted lg:hidden sm:mr-3"
         aria-label="Abrir navegación"
       >
         <Menu aria-hidden="true" className="size-5" />
@@ -42,7 +42,7 @@ export function PlatformTopbar({
         <p className="truncate text-sm font-semibold text-foreground">Plataforma global</p>
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
         {hasOperationalAccess && (
           <ScopeSwitchLink
             href="/"
@@ -56,7 +56,7 @@ export function PlatformTopbar({
         <ThemeToggle />
 
         <details className="group relative ml-1">
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 pr-2 transition-colors hover:bg-muted [&::-webkit-details-marker]:hidden">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 transition-colors hover:bg-muted active:bg-muted sm:pr-2 [&::-webkit-details-marker]:hidden">
             <span className="grid size-8 place-items-center rounded-lg bg-brand-soft text-xs font-bold text-brand-strong">
               {initials(profile.fullName)}
             </span>
@@ -74,7 +74,7 @@ export function PlatformTopbar({
             />
           </summary>
 
-          <div className="absolute right-0 mt-2 w-56 rounded-xl border border-border bg-surface p-2 shadow-lg">
+          <div className="menu-popover absolute right-0 mt-2 w-[min(14rem,calc(100vw-1.5rem))] rounded-xl border border-border bg-surface p-2 shadow-lg">
             {hasOperationalAccess && (
               <ScopeSwitchLink
                 href="/"

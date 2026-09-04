@@ -1,10 +1,14 @@
 "use client";
 
-import { Clock3, Truck, X } from "lucide-react";
+import { Clock3, Truck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
 
 import { LoadingButton } from "@/components/feedback/loading-button";
+import { useActionNotification } from "@/components/feedback/use-action-notification";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogFooter } from "@/components/ui/dialog";
+import { notifications } from "@/lib/notification-messages";
 
 import { startDispatchAction } from "../actions";
 import { formatDispatchDateTime, formatDispatchQuantity } from "../formatters";
@@ -57,6 +61,12 @@ export function StartDispatchDialog({
     startDispatchAction,
     initialDispatchMutationState,
   );
+  useActionNotification({
+    pending,
+    status: state.status,
+    success: notifications.dispatchStarted,
+    error: notifications.actionFailed,
+  });
   useEffect(() => {
     if (state.status === "success" && state.dispatchId) {
       router.push(`/dispatches/${state.dispatchId}`);
@@ -65,18 +75,7 @@ export function StartDispatchDialog({
   }, [router, state]);
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/55 p-3" role="dialog" aria-modal="true">
-      <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
-          <div className="flex items-start gap-3">
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-strong"><Truck className="size-5" /></span>
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">Iniciar despacho</h2>
-              <p className="mt-1 text-sm text-foreground-muted">Se creará el único despacho operativo de esta programación.</p>
-            </div>
-          </div>
-          <button type="button" onClick={onClose} disabled={pending} className="grid size-9 place-items-center rounded-lg hover:bg-muted" aria-label="Cerrar"><X className="size-5" /></button>
-        </div>
+    <Dialog title="Iniciar despacho" description="Se creará el despacho operativo de esta programación." icon={Truck} onClose={onClose} pending={pending}>
         <form action={action}>
           <input type="hidden" name="projectId" value={projectId} />
           <input type="hidden" name="programmingId" value={programming.programmingId} />
@@ -101,12 +100,11 @@ export function StartDispatchDialog({
             </div>
             {state.status === "error" && <p role="alert" className="rounded-lg bg-destructive-soft px-4 py-3 text-sm text-destructive">{state.message}</p>}
           </div>
-          <div className="flex flex-col-reverse gap-3 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-            <button type="button" onClick={onClose} disabled={pending} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted">Cancelar</button>
+          <DialogFooter>
+            <Button variant="secondary" onClick={onClose} disabled={pending}>Cancelar</Button>
             <LoadingButton loadingLabel="Iniciando…">Iniciar despacho</LoadingButton>
-          </div>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+    </Dialog>
   );
 }

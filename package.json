@@ -11,7 +11,8 @@
     "test:programming-project-reference": "node --no-warnings --experimental-strip-types --test tests/programming-project-reference.test.mjs",
     "test:programming-scope": "node --no-warnings --experimental-strip-types --test tests/programming-scope.test.mjs",
     "test:phase2-dispatch": "node --no-warnings --experimental-strip-types --test tests/phase2-dispatch.test.mjs",
-    "test:phase3-invoices": "node --no-warnings --experimental-strip-types --test tests/phase3-invoice-processing.test.mjs"
+    "test:phase3-invoices": "node --no-warnings --experimental-strip-types --test tests/phase3-invoice-processing.test.mjs",
+    "test:reports": "node --no-warnings --experimental-strip-types --test tests/report-export.test.mjs"
   },
   "dependencies": {
     "@schedule-x/calendar": "^4.7.0",
@@ -20,12 +21,15 @@
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.112.4",
     "exceljs": "^4.4.0",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.34.0",
     "motion": "^13.1.1",
     "next": "^16.3.3",
     "next-themes": "^0.4.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "recharts": "^3.10.1",
+    "sileo": "^0.1.5",
     "unpdf": "^1.8.1"
   },
   "devDependencies": {

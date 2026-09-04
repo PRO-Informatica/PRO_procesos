@@ -1,5 +1,5 @@
-import { SectionLoader } from "@/components/feedback/section-loader";
+import { WorkspaceSkeleton } from "@/components/feedback/skeletons";
 
 export default function BatchesLoading() {
-  return <SectionLoader label="Cargando lotes semanales…" />;
+  return <WorkspaceSkeleton rows={6} filters={false} />;
 }

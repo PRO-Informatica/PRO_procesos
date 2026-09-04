@@ -5,7 +5,9 @@ import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { LoadingButton } from "@/components/feedback/loading-button";
-import { useGlobalPending } from "@/components/feedback/global-loading-provider";
+import { useActionNotification } from "@/components/feedback/use-action-notification";
+import { useDialogAccessibility } from "@/components/ui/dialog";
+import { notifications } from "@/lib/notification-messages";
 import { formatStatusLabel } from "@/lib/status-labels";
 
 import { mutateProgrammingAction } from "../actions";
@@ -39,7 +41,7 @@ export function ProgrammingPreviewDrawer({
   item: ProgrammingItem | null;
   timezone: string;
   canConfirm: boolean;
-  onUpdated: (message: string) => void;
+  onUpdated: () => void;
   onClose: () => void;
 }) {
   const [availabilityNow] = useState(() => Date.now());
@@ -52,7 +54,8 @@ export function ProgrammingPreviewDrawer({
     initialProgrammingMutationState,
   );
   const handledSuccess = useRef(false);
-  useGlobalPending(pending, "Confirmando programación…", "Actualizando el estado y la trazabilidad.");
+  const dialogRef = useDialogAccessibility<HTMLElement>({ open: Boolean(item), onClose, pending });
+  useActionNotification({ pending, status: state.status, success: notifications.programmingConfirmed });
   useEffect(() => {
     if (pending) {
       handledSuccess.current = false;
@@ -60,7 +63,7 @@ export function ProgrammingPreviewDrawer({
     }
     if (state.status === "success" && item && !handledSuccess.current) {
       handledSuccess.current = true;
-      onUpdated("Programación confirmada correctamente.");
+      onUpdated();
     }
   }, [item, onUpdated, pending, state.status]);
   return (
@@ -77,7 +80,9 @@ export function ProgrammingPreviewDrawer({
             exit={{ opacity: 0 }}
           />
           <motion.aside
-            className="fixed inset-y-0 right-0 z-[71] flex w-full max-w-lg flex-col border-l border-border bg-surface shadow-2xl"
+            ref={dialogRef}
+            tabIndex={-1}
+            className="fixed inset-y-0 right-0 z-[71] flex w-full max-w-lg flex-col border-l border-border bg-surface pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-labelledby="programming-preview-title"
@@ -86,7 +91,7 @@ export function ProgrammingPreviewDrawer({
             exit={{ x: "100%" }}
             transition={{ duration: 0.2, ease: "easeOut" }}
           >
-            <div className="flex items-start justify-between gap-4 border-b border-border p-5 sm:p-6">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-4 sm:gap-4 sm:p-6">
               <div className="flex min-w-0 gap-3">
                 <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-strong">
                   <CalendarClock aria-hidden="true" className="size-5" />
@@ -103,14 +108,14 @@ export function ProgrammingPreviewDrawer({
               <button
                 type="button"
                 onClick={onClose}
-                className="grid size-9 shrink-0 place-items-center rounded-lg text-foreground-muted hover:bg-muted hover:text-foreground"
+                className="grid size-11 shrink-0 place-items-center rounded-lg text-foreground-muted transition-colors hover:bg-muted hover:text-foreground active:bg-muted"
                 aria-label="Cerrar vista previa"
               >
                 <X aria-hidden="true" className="size-5" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5 sm:p-6">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
               <div className="flex flex-wrap items-center gap-2">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.effectiveStatus)}`}>
                   {formatProgrammingStatus(item.effectiveStatus)}

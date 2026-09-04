@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useActionState } from "react";
 
-import { useGlobalPending } from "@/components/feedback/global-loading-provider";
+import { LoadingButton } from "@/components/feedback/loading-button";
 import { MotionItem, MotionList } from "@/components/motion/motion-list";
 
 import { createCompany } from "../actions";
@@ -15,11 +15,6 @@ export function CreateCompanyForm() {
   const [state, formAction, pending] = useActionState(
     createCompany,
     initialCompanyActionState,
-  );
-  useGlobalPending(
-    pending,
-    "Creando empresa…",
-    "Estamos guardando la empresa y preparando su información inicial.",
   );
 
   return (
@@ -102,14 +97,7 @@ export function CreateCompanyForm() {
           <ArrowLeft aria-hidden="true" className="size-4" />
           Volver
         </Link>
-        <motion.button
-          type="submit"
-          disabled={pending}
-          className="primary-button min-w-36"
-          whileTap={pending ? undefined : { scale: 0.98 }}
-        >
-          Crear empresa
-        </motion.button>
+        <LoadingButton loadingLabel="Creando…" className="min-w-36">Crear empresa</LoadingButton>
       </MotionItem>
       </MotionList>
     </form>

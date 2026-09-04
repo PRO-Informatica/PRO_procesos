@@ -45,7 +45,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </p>
       </section>
 
-      <section className="grid min-h-screen place-items-center px-5 py-10 sm:px-8">
+      <section className="grid min-h-screen place-items-center px-3 py-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 sm:py-10">
         {children}
       </section>
     </main>

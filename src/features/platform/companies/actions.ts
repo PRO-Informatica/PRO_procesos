@@ -431,6 +431,12 @@ export async function createCompany(
   });
 
   if (error) {
+    console.error("platform.createCompany failed", {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
     return actionError(databaseErrorMessage(error), fields);
   }
 

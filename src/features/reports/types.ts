@@ -16,21 +16,41 @@ export type GuideReportFilters = {
 
 export type ReportOption = { value: string; label: string };
 
+export type ReportInvoice = {
+  id: string;
+  type: "PRODUCT" | "SERVICE";
+  number: string;
+  date: string;
+  status: string;
+  subtotal: number;
+  total: number;
+  currency: string;
+  orderNumber: string | null;
+  pcaOriginal: string | null;
+  invoicedQuantity: number | null;
+  unitCode: string | null;
+  documentId: string | null;
+  fileName: string | null;
+  extractionStatus: string | null;
+  supplierLegalName: string | null;
+  supplierTaxId: string | null;
+  billingLegalName: string | null;
+  billingTaxId: string | null;
+};
+
 export type GuideReportRow = {
-  guideId: string;
   dispatchId: string;
+  dispatchCode: string;
   projectId: string;
   projectName: string;
   timezone: string;
-  guideNumber: string;
-  guideDate: string;
-  guideTime: string | null;
   supplierId: string;
   supplierName: string;
   programmingCode: string;
   orderNumber: string | null;
   batchId: string | null;
   batchCode: string | null;
+  guideCount: number;
   documentedQuantity: number;
   unitCode: string;
   receivedQuantity: number;
@@ -47,6 +67,8 @@ export type GuideReportRow = {
   productInvoicedQuantity: number;
   difference: number;
   invoiceCount: number;
+  productInvoice: ReportInvoice | null;
+  serviceInvoice: ReportInvoice | null;
 };
 
 export type ProgrammingReportItem = {

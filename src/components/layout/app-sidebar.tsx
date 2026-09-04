@@ -136,24 +136,24 @@ export function AppSidebar({
       </AnimatePresence>
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex bg-sidebar text-white transition-[width,transform] duration-200 ${
-          collapsed ? "w-20" : "w-64"
+        className={`fixed inset-y-0 left-0 z-50 flex w-[min(20rem,calc(100vw-1.5rem))] bg-sidebar text-white transition-[width,transform] duration-200 ${
+          collapsed ? "lg:w-20" : "lg:w-64"
         } ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden border-r border-white/8">
-          <div className="flex h-20 shrink-0 items-center border-b border-white/8 px-5">
+          <div className="flex h-16 shrink-0 items-center border-b border-white/8 px-4 pt-[env(safe-area-inset-top)] sm:h-20 sm:px-5">
             <Image
               src="/pro-logo.png"
               alt="PRO"
               width={120}
               height={60}
               priority
-              className={`h-auto object-contain ${collapsed ? "w-10 object-left" : "w-28"}`}
+              className={`h-auto w-28 object-contain object-left ${collapsed ? "lg:w-10" : "lg:w-28"}`}
             />
             <button
               type="button"
               onClick={onMobileClose}
-              className="ml-auto grid size-9 place-items-center rounded-lg text-white/60 hover:bg-white/8 hover:text-white lg:hidden"
+              className="ml-auto grid size-11 place-items-center rounded-lg text-white/60 transition-colors hover:bg-white/8 hover:text-white active:bg-white/12 lg:hidden"
               aria-label="Cerrar navegación"
             >
               <X aria-hidden="true" className="size-5" />
@@ -161,7 +161,7 @@ export function AppSidebar({
           </div>
 
           <div className="border-b border-white/8 p-3">
-            <ProjectSelector collapsed={collapsed} />
+            <ProjectSelector collapsed={collapsed && !mobileOpen} />
           </div>
 
           <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Navegación principal">
@@ -179,8 +179,8 @@ export function AppSidebar({
                       item.href === "/"
                         ? pathname === "/"
                         : Boolean(item.href && pathname.startsWith(item.href));
-                    const sharedClass = `flex h-10 w-full items-center rounded-lg text-sm transition-colors ${
-                      collapsed ? "justify-center px-2" : "gap-3 px-3"
+                    const sharedClass = `flex min-h-11 w-full items-center rounded-lg text-sm transition-colors ${
+                      collapsed ? "gap-3 px-3 lg:justify-center lg:px-2" : "gap-3 px-3"
                     }`;
 
                     if (item.href) {
@@ -198,7 +198,7 @@ export function AppSidebar({
                           aria-current={active ? "page" : undefined}
                         >
                           <Icon aria-hidden="true" className="size-[18px] shrink-0" />
-                          {!collapsed && <span>{item.label}</span>}
+                          <span className={collapsed ? "lg:hidden" : undefined}>{item.label}</span>
                         </Link>
                       );
                     }
@@ -212,7 +212,7 @@ export function AppSidebar({
                         title={`${item.label} · Próxima fase`}
                       >
                         <Icon aria-hidden="true" className="size-[18px] shrink-0" />
-                        {!collapsed && <span>{item.label}</span>}
+                        <span className={collapsed ? "lg:hidden" : undefined}>{item.label}</span>
                       </button>
                     );
                   })}
@@ -238,7 +238,7 @@ export function AppSidebar({
             </div>
           )}
 
-          <div className="hidden border-t border-white/8 p-3 lg:block">
+          <div className="hidden border-t border-white/8 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))] lg:block">
             <button
               type="button"
               onClick={onCollapse}

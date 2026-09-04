@@ -64,16 +64,16 @@ function DispatchActions({
 }) {
   if (!item.dispatchId) {
     return (
-      <div className="flex flex-wrap justify-end gap-2">
-        <Link href={`/programming/${item.programmingId}`} className="inline-flex min-h-9 items-center rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted">Ver programación</Link>
-        {canCreate && <button type="button" onClick={onStart} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong"><Plus className="size-4" /> Iniciar despacho</button>}
+      <div className="grid w-full gap-2 sm:flex sm:flex-wrap sm:justify-end">
+        <Link href={`/programming/${item.programmingId}`} className="secondary-button w-full gap-1.5 px-3 text-xs sm:w-auto">Ver programación <ChevronRight className="size-3.5" /></Link>
+        {canCreate && <button type="button" onClick={onStart} className="primary-button w-full gap-1.5 px-3 text-xs sm:w-auto"><Plus className="size-4" /> Iniciar despacho</button>}
       </div>
     );
   }
   return (
-    <div className="flex flex-wrap justify-end gap-2">
-      <Link href={`/dispatches/${item.dispatchId}`} className="inline-flex min-h-9 items-center rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted">Ver despacho</Link>
-      {item.dispatchStatus === "IN_EXECUTION" && canModify && <button type="button" onClick={onAddGuide} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong"><Plus className="size-4" /> Agregar guía</button>}
+    <div className="grid w-full gap-2 sm:flex sm:flex-wrap sm:justify-end">
+      <Link href={`/dispatches/${item.dispatchId}`} className="secondary-button w-full gap-1.5 px-3 text-xs sm:w-auto">Ver despacho <ChevronRight className="size-3.5" /></Link>
+      {item.dispatchStatus === "IN_EXECUTION" && canModify && <button type="button" onClick={onAddGuide} className="primary-button w-full gap-1.5 px-3 text-xs sm:w-auto"><Plus className="size-4" /> Agregar guía</button>}
     </div>
   );
 }
@@ -128,8 +128,8 @@ export function DispatchesWorkspace({
         <p className="mt-2 text-sm text-foreground-muted">Gestiona una operación progresiva por programación, con múltiples guías y productos.</p>
       </MotionSection>
 
-      <MotionSection className="rounded-xl border border-border bg-surface p-4">
-        <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">Filtros</p>{hasFilters && <button type="button" onClick={clearFilters} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-strong"><X className="size-3.5" /> Limpiar</button>}</div>
+      <MotionSection className="rounded-xl border border-border bg-surface p-4 shadow-[0_1px_2px_rgba(16,24,40,0.02)]">
+        <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">Filtros</p>{hasFilters && <button type="button" onClick={clearFilters} className="secondary-button min-h-9 gap-1.5 px-3 text-xs"><X className="size-3.5" /> Limpiar</button>}</div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_0.8fr_1fr_1.2fr]">
           <select aria-label="Estado programación" value={programmingStatus} onChange={(event) => setProgrammingStatus(event.target.value as ProgrammingDispatchStatus | "")} className="form-input"><option value="">Estado programación</option><option value="CONFIRMED">Confirmada</option><option value="IN_EXECUTION">En ejecución</option></select>
           <select aria-label="Estado despacho" value={dispatchStatus} onChange={(event) => setDispatchStatus(event.target.value as DispatchFilter)} className="form-input"><option value="">Estado despacho</option><option value="NOT_STARTED">Sin iniciar</option><option value="IN_EXECUTION">En ejecución</option><option value="COMPLETED">Completado</option></select>

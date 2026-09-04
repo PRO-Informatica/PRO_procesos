@@ -15,6 +15,11 @@
   --destructive: #b42318;
   --destructive-soft: #fef3f2;
   --sidebar: #111216;
+  --motion-instant: 120ms;
+  --motion-hover: 180ms;
+  --motion-route: 250ms;
+  --motion-content: 350ms;
+  --motion-progress: 900ms;
 }
 
 .dark {
@@ -49,8 +54,9 @@
   --color-destructive: var(--destructive);
   --color-destructive-soft: var(--destructive-soft);
   --color-sidebar: var(--sidebar);
-  --font-sans: Arial, Helvetica, sans-serif;
-  --font-mono: Menlo, Consolas, monospace;
+  --font-sans: var(--font-poppins), Arial, Helvetica, sans-serif;
+  --font-display: var(--font-poppins), Arial, Helvetica, sans-serif;
+  --font-mono: var(--font-poppins), Arial, Helvetica, sans-serif;
 }
 
 * {
@@ -62,6 +68,30 @@ body {
   background: var(--canvas);
   color: var(--foreground);
   font-family: var(--font-sans);
+  font-weight: 400;
+}
+
+h1,
+h2,
+.font-display {
+  font-family: var(--font-sans);
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+h1 {
+  font-weight: 700 !important;
+  line-height: 1.12;
+}
+
+h2 {
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.font-display {
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 button,
@@ -119,16 +149,63 @@ input {
   }
 }
 
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.58; }
+  50% { opacity: 0.92; }
+}
+
+@keyframes table-body-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(-3px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes status-in {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.skeleton-pulse {
+  animation: skeleton-pulse 1.45s ease-in-out infinite;
+}
+
+tbody {
+  animation: table-body-in var(--motion-route) ease-out both;
+}
+
+tbody tr {
+  transition: background-color var(--motion-hover) ease;
+}
+
+details[open] > .menu-popover {
+  transform-origin: top right;
+  animation: menu-in var(--motion-hover) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.status-feedback {
+  animation: status-in var(--motion-hover) ease-out both;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .form-label {
   display: block;
   margin-bottom: 0.5rem;
   color: var(--foreground);
   font-size: 0.875rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .form-input {
+  min-width: 0;
+  max-width: 100%;
   width: 100%;
+  min-height: 2.75rem;
   border: 1px solid var(--border);
   border-radius: 0.625rem;
   background: var(--surface);
@@ -149,6 +226,22 @@ input {
   outline: none;
 }
 
+.auth-card .form-label {
+  margin-bottom: 0.625rem;
+  font-size: 0.9375rem;
+}
+
+.auth-card .form-input {
+  min-height: 3.25rem;
+  padding: 0.875rem 1rem;
+  font-size: 0.9375rem;
+}
+
+.auth-card .primary-button {
+  min-height: 3.25rem;
+  font-size: 0.9375rem;
+}
+
 .primary-button {
   display: inline-flex;
   min-height: 2.75rem;
@@ -161,11 +254,13 @@ input {
   color: white;
   font-size: 0.875rem;
   font-weight: 600;
-  transition: background-color 150ms ease, opacity 150ms ease;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--brand) 18%, transparent);
+  transition: background-color var(--motion-hover) ease, border-color var(--motion-hover) ease, box-shadow var(--motion-hover) ease, transform var(--motion-hover) ease, opacity 150ms ease;
 }
 
 .primary-button:hover:not(:disabled) {
   background: var(--brand-strong);
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--brand) 20%, transparent);
 }
 
 .primary-button:disabled {
@@ -185,17 +280,128 @@ input {
   color: var(--foreground);
   font-size: 0.875rem;
   font-weight: 600;
-  transition: background-color 150ms ease, border-color 150ms ease, opacity 150ms ease;
+  transition: background-color var(--motion-hover) ease, border-color var(--motion-hover) ease, box-shadow var(--motion-hover) ease, transform var(--motion-hover) ease, opacity 150ms ease;
 }
 
 .secondary-button:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
   background: var(--muted);
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--foreground) 7%, transparent);
 }
 
 .secondary-button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.destructive-button,
+.ghost-button,
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.625rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: background-color var(--motion-hover) ease, border-color var(--motion-hover) ease, color var(--motion-hover) ease, box-shadow var(--motion-hover) ease, transform var(--motion-hover) ease, opacity 150ms ease;
+}
+
+.destructive-button {
+  min-height: 2.75rem;
+  border: 1px solid transparent;
+  background: var(--destructive);
+  padding: 0.625rem 1rem;
+  color: white;
+}
+
+.destructive-button:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+.ghost-button {
+  min-height: 2.75rem;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 0.625rem 1rem;
+  color: var(--foreground-muted);
+}
+
+.ghost-button:hover:not(:disabled) {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.icon-button {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--foreground-muted);
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.primary-button:active:not(:disabled),
+.secondary-button:active:not(:disabled),
+.destructive-button:active:not(:disabled),
+.ghost-button:active:not(:disabled),
+.icon-button:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.data-card-interactive {
+  transition: border-color var(--motion-hover) ease, box-shadow var(--motion-hover) ease, transform var(--motion-hover) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .data-card-interactive:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--brand) 24%, var(--border));
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--foreground) 8%, transparent);
+  }
+}
+
+@keyframes indeterminate-progress {
+  from { transform: translateX(-110%) scaleX(0.55); }
+  to { transform: translateX(240%) scaleX(0.8); }
+}
+
+.indeterminate-progress {
+  transform-origin: left;
+  animation: indeterminate-progress 1.1s ease-in-out infinite;
+}
+
+.destructive-button:disabled,
+.ghost-button:disabled,
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+[data-sileo-viewport] {
+  --sileo-width: min(320px, calc(100vw - 32px));
+  --sileo-duration: 240ms;
+  z-index: 200 !important;
+}
+
+[data-sileo-title] {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  text-transform: none;
+}
+
+[data-sileo-description] {
+  overflow: hidden;
+  display: -webkit-box;
+  padding: 0.75rem 1rem 0.875rem;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
 }
 
 .auth-grid {
@@ -226,11 +432,117 @@ input {
   font-family: var(--font-sans);
 }
 
+.programming-calendar .sx__calendar-header {
+  min-height: 4.25rem;
+  gap: 0.625rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem;
+}
+
+.programming-calendar .sx__calendar-header-content {
+  gap: 0.5rem;
+}
+
+.programming-calendar .sx__button,
+.programming-calendar .sx__today-button,
+.programming-calendar .sx__view-selection-selected-item,
+.programming-calendar .sx__date-input {
+  min-height: 2.5rem;
+  border-radius: 0.625rem;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: background-color var(--motion-hover) ease, border-color var(--motion-hover) ease, color var(--motion-hover) ease, box-shadow var(--motion-hover) ease, transform var(--motion-hover) ease;
+}
+
+.programming-calendar .sx__today-button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+.programming-calendar .sx__today-button:hover,
+.programming-calendar .sx__view-selection-selected-item:hover {
+  border-color: color-mix(in srgb, var(--brand) 28%, var(--border));
+  background: var(--muted);
+}
+
+.programming-calendar .sx__chevron-wrapper {
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  border-radius: 0.5rem;
+  font-size: 0;
+  transition: background-color var(--motion-hover) ease, transform var(--motion-hover) ease;
+}
+
+.programming-calendar .sx__chevron-wrapper:hover {
+  background: var(--muted);
+  transform: translateY(-1px);
+}
+
+.programming-calendar .sx__range-heading {
+  color: var(--foreground);
+  font-size: clamp(1rem, 1.25vw, 1.125rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.programming-calendar .sx__month-grid-day__header-day-name,
+.programming-calendar .sx__week-grid__day-name {
+  color: var(--foreground-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.programming-calendar .sx__month-grid-day__header-date {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: background-color var(--motion-hover) ease, color var(--motion-hover) ease;
+}
+
+.programming-calendar .sx__month-grid-day__header-date.sx__is-today,
+.programming-calendar .sx__week-grid__date--is-today .sx__week-grid__date-number {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 2px 7px color-mix(in srgb, var(--brand) 22%, transparent);
+}
+
+.programming-calendar .sx__month-grid-cell,
+.programming-calendar .sx__time-grid-day {
+  transition: background-color var(--motion-hover) ease;
+}
+
 .programming-calendar .sx__time-grid-event,
 .programming-calendar .sx__month-grid-event,
 .programming-calendar .sx__month-agenda-event,
 .programming-calendar .sx__week-agenda-event {
   cursor: pointer;
+  border-radius: 0.375rem;
+  border-left-width: 3px;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 7%, transparent);
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.25;
+  transition: box-shadow var(--motion-hover) ease, filter var(--motion-hover) ease, transform var(--motion-hover) ease;
+  animation: status-in var(--motion-route) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .programming-calendar .sx__time-grid-event:hover,
+  .programming-calendar .sx__month-grid-event:hover,
+  .programming-calendar .sx__month-agenda-event:hover,
+  .programming-calendar .sx__week-agenda-event:hover {
+    z-index: 2;
+    filter: saturate(1.05);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 9px color-mix(in srgb, var(--foreground) 11%, transparent);
+  }
 }
 
 .programming-calendar--create-enabled .sx__month-grid-day,
@@ -252,8 +564,61 @@ input {
 }
 
 @media (max-width: 699px) {
+  .programming-calendar .sx__calendar-header {
+    min-height: auto;
+    padding: 0.625rem;
+  }
+
   .programming-calendar .sx-react-calendar-wrapper {
-    height: 720px;
+    height: min(640px, calc(100dvh - 7rem));
+    min-height: 500px;
     max-height: none;
+  }
+
+  .programming-calendar .sx__calendar-header {
+    align-items: stretch;
+    gap: 0.375rem;
+  }
+
+  .programming-calendar .sx__calendar-header-content {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .programming-calendar .sx__button,
+  .programming-calendar .sx__today-button,
+  .programming-calendar .sx__view-selection-selected-item,
+  .programming-calendar .sx__date-input,
+  .programming-calendar .sx__chevron-wrapper {
+    min-height: 2.75rem;
+  }
+
+  .programming-calendar .sx__range-heading {
+    max-width: 100%;
+    font-size: 0.9375rem;
+  }
+
+  .programming-calendar .sx__month-grid-event,
+  .programming-calendar .sx__month-agenda-event,
+  .programming-calendar .sx__week-agenda-event,
+  .programming-calendar .sx__time-grid-event {
+    overflow: hidden;
+    font-size: 0.625rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (max-width: 639px) {
+  .icon-button {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"] {
+    min-width: 0;
+    max-width: 100%;
   }
 }

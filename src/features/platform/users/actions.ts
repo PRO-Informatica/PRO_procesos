@@ -86,7 +86,7 @@ function authCreateErrorMessage(error: { status?: number; code?: string; message
   }
 
   if (message.includes("password") || message.includes("weak")) {
-    return "La contraseña no cumple los requisitos de seguridad de Supabase.";
+    return "La contraseña no cumple los requisitos de seguridad.";
   }
 
   if (error.status === 429 || message.includes("rate")) {

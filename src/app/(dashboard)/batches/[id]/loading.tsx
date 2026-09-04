@@ -1,5 +1,5 @@
-import { SectionLoader } from "@/components/feedback/section-loader";
+import { DetailSkeleton } from "@/components/feedback/skeletons";
 
 export default function BatchDetailLoading() {
-  return <SectionLoader label="Cargando detalle del lote…" />;
+  return <DetailSkeleton />;
 }

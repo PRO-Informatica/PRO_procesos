@@ -1,6 +1,7 @@
 export default function ProgrammingDetailLoading() {
   return (
-    <div className="mx-auto w-full max-w-7xl animate-pulse space-y-6" aria-label="Cargando detalle de programación">
+    <div className="skeleton-pulse mx-auto w-full max-w-7xl space-y-6" role="status" aria-live="polite" aria-busy="true">
+      <span className="sr-only">Cargando detalle de programación…</span>
       <div className="h-24 rounded-2xl bg-muted" />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {Array.from({ length: 5 }).map((_, index) => (

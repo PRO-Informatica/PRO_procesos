@@ -8,12 +8,13 @@ import {
   Power,
   PowerOff,
   ShieldCheck,
-  X,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { useActionState, useState } from "react";
 
-import { useGlobalPending } from "@/components/feedback/global-loading-provider";
+import { useActionNotification } from "@/components/feedback/use-action-notification";
+import { Dialog } from "@/components/ui/dialog";
+import { notifications } from "@/lib/notification-messages";
 
 import {
   assignPlatformCompany,
@@ -35,16 +36,12 @@ import {
 } from "../types";
 
 function ActionMessage({ state }: { state: typeof initialPlatformUserActionState }) {
-  if (state.status === "idle") return null;
+  if (state.status !== "error") return null;
 
   return (
     <p
-      className={`rounded-lg px-4 py-3 text-sm ${
-        state.status === "success"
-          ? "bg-success-soft text-success"
-          : "bg-destructive-soft text-destructive"
-      }`}
-      role={state.status === "error" ? "alert" : "status"}
+      className="rounded-lg bg-destructive-soft px-4 py-3 text-sm text-destructive"
+      role="alert"
     >
       {state.message}
     </p>
@@ -70,55 +67,8 @@ function DialogFrame({
   children: React.ReactNode;
   width?: string;
 }) {
-  return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-black/45 p-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.16 }}
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !pending) onClose();
-          }}
-        >
-          <motion.section
-            role="dialog"
-            aria-modal="true"
-            aria-label={title}
-            className={`my-auto w-full ${width} rounded-2xl border border-border bg-surface p-6 shadow-2xl`}
-            initial={{ opacity: 0, scale: 0.985 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.99 }}
-            transition={{ duration: 0.18 }}
-          >
-            <div className="flex items-start gap-4">
-              <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-strong">
-                {icon}
-              </span>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-                <p className="mt-1.5 text-sm leading-6 text-foreground-muted">
-                  {description}
-                </p>
-              </div>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={onClose}
-                className="grid size-8 place-items-center rounded-lg text-foreground-muted hover:bg-muted disabled:opacity-50"
-                aria-label="Cerrar"
-              >
-                <X aria-hidden="true" className="size-4" />
-              </button>
-            </div>
-            <div className="mt-6">{children}</div>
-          </motion.section>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
+  if (!open) return null;
+  return <Dialog title={title} description={description} icon={icon} onClose={onClose} pending={pending} size={width === "max-w-2xl" ? "md" : "sm"}><div className="p-6">{children}</div></Dialog>;
 }
 
 function DialogButton({
@@ -158,7 +108,7 @@ export function EditUserDialog({
     updatePlatformUserProfile,
     initialPlatformUserActionState,
   );
-  useGlobalPending(pending, "Actualizando usuario…", "Estamos guardando la información del perfil.");
+  useActionNotification({ pending, status: state.status, success: notifications.changesSaved, error: notifications.saveFailed });
 
   return (
     <>
@@ -204,7 +154,7 @@ function RecoveryEmailForm({ userId }: { userId: string }) {
     requestPlatformPasswordReset,
     initialPlatformUserActionState,
   );
-  useGlobalPending(pending, "Enviando restablecimiento…", "Estamos enviando un enlace seguro al usuario.");
+  useActionNotification({ pending, status: state.status, success: notifications.changesSaved, error: notifications.actionFailed });
 
   return (
     <form action={formAction} className="rounded-xl border border-border p-4">
@@ -222,7 +172,7 @@ function AdminPasswordForm({ userId }: { userId: string }) {
     setPlatformUserPassword,
     initialPlatformUserActionState,
   );
-  useGlobalPending(pending, "Actualizando contraseña…", "Estamos aplicando el cambio mediante Auth Admin.");
+  useActionNotification({ pending, status: state.status, success: notifications.changesSaved, error: notifications.saveFailed });
 
   return (
     <form action={formAction} className="space-y-4 rounded-xl border border-border p-4">
@@ -283,7 +233,7 @@ export function AssignCompanyDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(assignPlatformCompany, initialPlatformUserActionState);
-  useGlobalPending(pending, "Asignando empresa…", "Estamos creando o reactivando la relación y sus roles seleccionados.");
+  useActionNotification({ pending, status: state.status, success: notifications.changesSaved, error: notifications.saveFailed });
 
   return (
     <>
@@ -345,12 +295,12 @@ export function AssignProjectDialog({
   const [projectId, setProjectId] = useState("");
   const [state, formAction, pending] = useActionState(assignPlatformProject, initialPlatformUserActionState);
   const filteredProjects = projects.filter((project) => project.companyId === companyId);
-  useGlobalPending(pending, "Asignando proyecto…", "Estamos garantizando la empresa y creando la relación de proyecto.");
+  useActionNotification({ pending, status: state.status, success: notifications.changesSaved, error: notifications.saveFailed });
 
   return (
     <>
       <DialogButton disabled={disabled || companies.length === 0} onClick={() => setOpen(true)} icon={<FolderKanban className="size-3.5" />}>Asignar proyecto</DialogButton>
-      <DialogFrame open={open} onClose={() => setOpen(false)} pending={pending} title="Asignar proyecto" description="Selecciona primero la empresa. El proyecto se valida nuevamente en la RPC." icon={<FolderKanban className="size-5" />} width="max-w-2xl">
+      <DialogFrame open={open} onClose={() => setOpen(false)} pending={pending} title="Asignar proyecto" description="Selecciona primero la empresa. La disponibilidad se valida al guardar." icon={<FolderKanban className="size-5" />} width="max-w-2xl">
         <form action={formAction} className="space-y-5">
           <input type="hidden" name="userId" value={userId} />
           <div className="grid gap-4 sm:grid-cols-2">
@@ -401,7 +351,7 @@ export function MembershipStatusDialog({
   const action = scope === "COMPANY" ? setPlatformCompanyMembership : setPlatformProjectMembership;
   const [state, formAction, pending] = useActionState(action, initialPlatformUserActionState);
   const activating = !active;
-  useGlobalPending(pending, activating ? "Reactivando acceso…" : "Desactivando acceso…", "Estamos actualizando memberships y roles relacionados.");
+  useActionNotification({ pending, status: state.status, success: notifications.statusUpdated, error: notifications.actionFailed });
 
   return (
     <>
@@ -440,7 +390,7 @@ function RoleToggleForm({
   const action = scope === "COMPANY" ? setPlatformCompanyRole : setPlatformProjectRole;
   const [state, formAction, pending] = useActionState(action, initialPlatformUserActionState);
   const assigned = Boolean(assignment);
-  useGlobalPending(pending, "Actualizando roles…", "Estamos conservando el historial de asignaciones.");
+  useActionNotification({ pending, status: state.status, success: notifications.changesSaved, error: notifications.saveFailed });
 
   return (
     <form action={formAction} className="rounded-lg border border-border p-3">

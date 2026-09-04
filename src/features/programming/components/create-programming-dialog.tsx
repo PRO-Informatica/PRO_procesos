@@ -1,11 +1,13 @@
 "use client";
 
-import { CalendarPlus, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { CalendarPlus } from "lucide-react";
 import { useActionState, useEffect, useState } from "react";
 
 import { LoadingButton } from "@/components/feedback/loading-button";
-import { useGlobalPending } from "@/components/feedback/global-loading-provider";
+import { useActionNotification } from "@/components/feedback/use-action-notification";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogFooter } from "@/components/ui/dialog";
+import { notifications } from "@/lib/notification-messages";
 
 import { createProgrammingAction } from "../actions";
 import {
@@ -55,11 +57,7 @@ export function CreateProgrammingDialog({
     createProgrammingAction,
     initialCreateProgrammingState,
   );
-  useGlobalPending(
-    pending,
-    "Creando programación…",
-    "Se guardará pendiente de confirmación.",
-  );
+  useActionNotification({ pending, status: state.status, success: notifications.programmingCreated });
 
   useEffect(() => {
     if (state.status === "success" && state.programmingId) {
@@ -67,50 +65,9 @@ export function CreateProgrammingDialog({
     }
   }, [onCreated, state.programmingId, state.status]);
 
+  if (!open) return null;
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-black/45 p-3 backdrop-blur-[2px] sm:p-6"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="new-programming-title"
-        >
-          <motion.div
-            className="my-auto w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-            initial={{ opacity: 0, y: 10, scale: 0.99 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.99 }}
-            transition={{ duration: 0.18 }}
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
-              <div className="flex gap-3">
-                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-strong">
-                  <CalendarPlus aria-hidden="true" className="size-5" />
-                </span>
-                <div>
-                  <h2 id="new-programming-title" className="font-semibold text-foreground">
-                    Nueva programación
-                  </h2>
-                  <p className="mt-1 text-xs text-foreground-muted">
-                    Fecha y hora en {timezone}. Estado inicial: Pendiente de confirmación.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={pending}
-                className="grid size-9 place-items-center rounded-lg text-foreground-muted hover:bg-muted hover:text-foreground disabled:opacity-50"
-                aria-label="Cerrar formulario"
-              >
-                <X aria-hidden="true" className="size-5" />
-              </button>
-            </div>
-
+    <Dialog title="Nueva programación" description={`Fecha y hora en ${timezone}. Estado inicial: Pendiente de confirmación.`} icon={CalendarPlus} onClose={onClose} pending={pending} size="lg">
             <form action={formAction} aria-busy={pending}>
               <input type="hidden" name="projectId" value={projectId} />
               <input
@@ -212,23 +169,13 @@ export function CreateProgrammingDialog({
                 )}
               </div>
 
-              <div className="flex flex-col-reverse gap-3 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  disabled={pending}
-                  className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border px-4 text-sm font-semibold text-foreground-muted hover:bg-muted hover:text-foreground disabled:opacity-50"
-                >
-                  Cancelar
-                </button>
+              <DialogFooter>
+                <Button variant="secondary" onClick={onClose} disabled={pending}>Cancelar</Button>
                 <LoadingButton loadingLabel="Creando programación…">
                   Crear programación
                 </LoadingButton>
-              </div>
+              </DialogFooter>
             </form>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    </Dialog>
   );
 }

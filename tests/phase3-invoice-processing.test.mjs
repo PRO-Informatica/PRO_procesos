@@ -120,7 +120,7 @@ test("pipeline individual y masivo consumen el mismo motor y preview no persiste
 test("carga masiva acumula, permite quitar y valida proyecto antes del pedido", () => {
   assert.match(invoiceDialogs, /return \[\.\.\.current, \.\.\.additions\]/u);
   assert.match(invoiceDialogs, /removeFile\(row\.key\)/u);
-  assert.match(invoiceDialogs, /aria-label=\{`Quitar \$\{row\.file\.name\} de la carga`\}/u);
+  assert.match(invoiceDialogs, /label=\{row\.saved \? "La factura ya fue guardada" : `Quitar \$\{row\.file\.name\} de la carga`\}/u);
   assert.match(invoiceDialogs, /!row\.saved && result\?\.payload/u);
   assert.match(invoiceDialogs, /Pedido \$\{orderNumber \?\? "sin número"\}/u);
   assert.match(invoiceDialogs, /Las facturas de este grupo se asociarán al despacho/u);

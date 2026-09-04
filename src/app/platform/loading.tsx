@@ -1,5 +1,5 @@
-import { PageLoader } from "@/components/feedback/app-loader";
+import { WorkspaceSkeleton } from "@/components/feedback/skeletons";
 
 export default function PlatformLoading() {
-  return <PageLoader label="Cargando administración global…" />;
+  return <WorkspaceSkeleton rows={4} metrics={4} filters={false} />;
 }

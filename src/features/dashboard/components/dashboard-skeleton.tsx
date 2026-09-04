@@ -1,10 +1,11 @@
-import { SkeletonCard, SkeletonTable } from "@/components/feedback/skeletons";
+import { SkeletonBlock, SkeletonCard, SkeletonTable } from "@/components/feedback/skeletons";
 
 export function DashboardSkeleton() {
   return (
-    <div className="mx-auto max-w-[1440px]" aria-label="Cargando dashboard">
-      <div className="h-8 w-64 animate-pulse rounded-md bg-border/75" />
-      <div className="mt-3 h-4 w-80 max-w-full animate-pulse rounded-md bg-border/75" />
+    <div className="mx-auto max-w-[1440px]" role="status" aria-live="polite" aria-busy="true">
+      <span className="sr-only">Cargando dashboard…</span>
+      <SkeletonBlock className="h-8 w-64" />
+      <SkeletonBlock className="mt-3 h-4 w-80 max-w-full" />
       <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <SkeletonCard key={index} />

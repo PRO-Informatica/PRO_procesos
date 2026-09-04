@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import type { SessionProfile } from "@/features/auth/types";
+import { RouteTransition } from "@/components/motion/route-transition";
 
 import { PlatformSidebar } from "./platform-sidebar";
 import { PlatformTopbar } from "./platform-topbar";
@@ -18,7 +19,7 @@ export function PlatformShell({
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-canvas">
+    <div className="min-h-screen overflow-x-clip bg-canvas">
       <PlatformSidebar
         collapsed={sidebarCollapsed}
         mobileOpen={mobileSidebarOpen}
@@ -27,7 +28,7 @@ export function PlatformShell({
       />
 
       <div
-        className={`min-h-screen transition-[padding] duration-200 ${
+        className={`min-h-screen min-w-0 transition-[padding] duration-200 ${
           sidebarCollapsed ? "lg:pl-20" : "lg:pl-64"
         }`}
       >
@@ -35,7 +36,7 @@ export function PlatformShell({
           profile={profile}
           onOpenNavigation={() => setMobileSidebarOpen(true)}
         />
-        <main className="p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="min-w-0 overflow-x-clip p-3 sm:p-6 lg:p-8"><RouteTransition>{children}</RouteTransition></main>
       </div>
     </div>
   );
