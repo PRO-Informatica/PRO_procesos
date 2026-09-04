@@ -2,7 +2,11 @@ import "server-only";
 
 import { extractMixtoListoInvoicePdf } from "@/features/batches/mixto-listo-extractor";
 import { orderNumberFromMixtoListoPca } from "@/features/batches/mixto-listo-parser";
-import { normalizeBusinessIdentity } from "@/lib/business-identity";
+import {
+  matchesFiscalIdentity,
+  normalizeBusinessIdentity,
+  normalizeTaxIdentity,
+} from "@/lib/business-identity";
 
 export type ProcessedInvoiceType = "PRODUCT" | "SERVICE" | "UNKNOWN";
 
@@ -54,7 +58,7 @@ export type InvoiceProcessingResult =
   | { status: "success"; payload: InvoiceProcessingPayload };
 
 export function normalizeTaxId(value: string | null | undefined) {
-  return value?.toUpperCase().replace(/[^A-Z0-9]/g, "") || null;
+  return normalizeTaxIdentity(value);
 }
 
 export function normalizeInvoiceUnit(value: string | null | undefined) {
@@ -142,17 +146,16 @@ export async function processInvoicePdf(
   const detectedOrder = normalizeOperationalOrder(extracted.pca_original);
   const expectedOrder = normalizeOperationalOrder(context.orderNumber);
   const billingName = normalizeBusinessIdentity(extracted.billing_legal_name);
-  const expectedBillingName = normalizeBusinessIdentity(context.billingLegalName);
-  const billingTax = normalizeTaxId(extracted.billing_tax_id);
-  const expectedBillingTax = normalizeTaxId(context.billingTaxId);
   const supplierName = normalizeBusinessIdentity(extracted.supplier_legal_name);
   const expectedSupplierName = normalizeBusinessIdentity(context.supplierName);
   const supplierTax = normalizeTaxId(extracted.supplier_tax_id);
   const expectedSupplierTax = normalizeTaxId(context.supplierTaxId);
-  const projectValid = Boolean(
-    expectedBillingName && billingName === expectedBillingName &&
-      (!expectedBillingTax || !billingTax || billingTax === expectedBillingTax),
-  );
+  const projectValid = matchesFiscalIdentity({
+    expectedName: context.billingLegalName,
+    actualName: extracted.billing_legal_name,
+    expectedTaxId: context.billingTaxId,
+    actualTaxId: extracted.billing_tax_id,
+  });
   const supplierValid = expectedSupplierTax
     ? supplierTax === expectedSupplierTax
     : Boolean(expectedSupplierName && supplierName === expectedSupplierName);

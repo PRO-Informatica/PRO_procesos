@@ -9,6 +9,7 @@ import {
   FileText,
   PackageOpen,
   Plus,
+  ReceiptText,
   Trash2,
   Truck,
   X,
@@ -21,6 +22,7 @@ import { DocumentActions } from "@/components/documents/document-preview-dialog"
 import { EmptyState } from "@/components/feedback/empty-state";
 import { LoadingButton } from "@/components/feedback/loading-button";
 import { MotionPage } from "@/components/motion/motion-page";
+import { getInvoiceDownloadUrl } from "@/features/batches/actions";
 import type { ProjectSummary } from "@/features/projects/types";
 import { formatStatusLabel } from "@/lib/status-labels";
 
@@ -40,6 +42,7 @@ import {
   type DispatchDetail,
   type DispatchDocument,
   type DispatchGuide,
+  type DispatchInvoiceSummary,
   type DispatchPermissions,
   type DispatchResult,
 } from "../types";
@@ -72,6 +75,66 @@ function localTime(value: string | null, timezone: string) {
 
 function guideVolume(guides: DispatchGuide[]) {
   return guides.reduce((total, guide) => total + guide.quantity, 0);
+}
+
+function formatInvoiceTotal(value: number, currency: string) {
+  try {
+    return new Intl.NumberFormat("es-GT", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${currency} ${new Intl.NumberFormat("es-GT", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value)}`;
+  }
+}
+
+function InvoiceCard({
+  title,
+  invoice,
+  projectId,
+}: {
+  title: string;
+  invoice: DispatchInvoiceSummary | null;
+  projectId: string;
+}) {
+  return (
+    <article className="rounded-xl border border-border bg-muted/20 p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="grid size-9 place-items-center rounded-lg bg-brand-soft text-brand-strong">
+            <ReceiptText className="size-4" />
+          </span>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">{title}</p>
+            <p className="mt-0.5 font-semibold">{invoice?.number ?? "Pendiente"}</p>
+          </div>
+        </div>
+        {invoice && <span className="rounded-full bg-success-soft px-2.5 py-1 text-[10px] font-semibold text-success">{formatStatusLabel(invoice.status)}</span>}
+      </div>
+
+      {invoice ? <>
+        <p className="mt-5 text-2xl font-semibold tracking-tight text-foreground">
+          {formatInvoiceTotal(invoice.total, invoice.currency)}
+        </p>
+        <p className="mt-1 text-xs text-foreground-muted">Total extraído de la factura</p>
+        <dl className="mt-5 grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2">
+          <div><dt className="form-label">Fecha</dt><dd className="font-medium">{formatDispatchDate(invoice.date)}</dd></div>
+          <div><dt className="form-label">Pedido</dt><dd className="font-medium">{invoice.orderNumber ?? "—"}</dd></div>
+          <div className="sm:col-span-2"><dt className="form-label">PCA detectado</dt><dd className="break-all font-medium">{invoice.pcaOriginal ?? "—"}</dd></div>
+          <div className="sm:col-span-2"><dt className="form-label">Emisor</dt><dd className="font-medium">{invoice.supplierLegalName ?? "No extraído"}</dd>{invoice.supplierTaxId && <dd className="mt-0.5 text-xs text-foreground-muted">NIT {invoice.supplierTaxId}</dd>}</div>
+          <div className="sm:col-span-2"><dt className="form-label">Receptor</dt><dd className="font-medium">{invoice.billingLegalName ?? "No extraído"}</dd>{invoice.billingTaxId && <dd className="mt-0.5 text-xs text-foreground-muted">NIT {invoice.billingTaxId}</dd>}</div>
+          <div><dt className="form-label">Líneas extraídas</dt><dd className="font-medium">{invoice.extractedLineCount}</dd></div>
+          {invoice.type === "PRODUCT" && <div><dt className="form-label">Cantidad conciliable</dt><dd className="font-medium">{invoice.invoicedQuantity === null ? "—" : `${formatDispatchQuantity(invoice.invoicedQuantity)} ${invoice.unitCode ?? ""}`}</dd></div>}
+        </dl>
+        {invoice.documentId && invoice.fileName && <div className="mt-5 flex items-center justify-between gap-3 border-t border-border pt-4"><p className="min-w-0 truncate text-xs text-foreground-muted" title={invoice.fileName}>{invoice.fileName}</p><DocumentActions projectId={projectId} documentId={invoice.documentId} fileName={invoice.fileName} mimeType="application/pdf" getSignedUrl={getInvoiceDownloadUrl} /></div>}
+      </> : <p className="mt-5 text-sm text-foreground-muted">Todavía no se ha cargado esta factura.</p>}
+    </article>
+  );
 }
 
 function EvidenceRow({
@@ -174,7 +237,7 @@ export function DispatchDetailView({ detail, project, permissions }: { detail: D
 
       <section className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={ClipboardList} title="Pedido / Control Operación" /><div className="grid gap-5 p-5 sm:grid-cols-2 lg:grid-cols-5 sm:p-6"><div><label className="form-label" htmlFor="dispatch-result">Resultado de la operación *</label><select id="dispatch-result" name="result" value={result} onChange={(event) => { const value = event.target.value as DispatchResult | ""; setResult(value); if (value === "NOT_DISPATCHED") setRealVolume("0"); }} disabled={!editable} className="form-input disabled:bg-muted"><option value="">Seleccionar</option><option value="DISPATCHED">Despachado</option><option value="NOT_DISPATCHED">No despachado</option></select></div><div><label className="form-label" htmlFor="dispatch-order">Número pedido</label><input id="dispatch-order" name="orderNumber" value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} disabled={!editable || result === "NOT_DISPATCHED"} className="form-input disabled:bg-muted" /></div><div><p className="form-label">Volumen programado</p><p className="mt-2 text-lg font-semibold">{formatDispatchQuantity(detail.programmedVolume)} {detail.programmedUnitCode}</p></div><div><p className="form-label">Total según guías</p><p className="mt-2 text-lg font-semibold">{formatDispatchQuantity(total)} {detail.programmedUnitCode}</p></div><div className="rounded-xl border border-brand/25 bg-brand-soft/25 p-4"><label className="form-label text-brand-strong" htmlFor="dispatch-real-volume">Volumen Real *</label><div className="mt-1 flex gap-2"><input id="dispatch-real-volume" name="realVolume" type="number" min="0" step="0.001" value={result === "NOT_DISPATCHED" ? "0" : realVolume} onChange={(event) => setRealVolume(event.target.value)} disabled={!editable || result === "NOT_DISPATCHED"} className="form-input min-w-0 disabled:bg-muted" /><select aria-label="UM real" name="realUnitCode" value={realUnitCode} onChange={(event) => setRealUnitCode(event.target.value)} disabled={!editable} className="form-input w-24 disabled:bg-muted">{detail.units.map((unit) => <option key={unit.code} value={unit.code}>{unit.code}</option>)}</select></div><p className="mt-2 text-xs text-brand-strong">Valor oficial preparado para conciliación.</p></div>{warning && result === "DISPATCHED" && <p className="rounded-lg bg-amber-100 px-4 py-3 text-sm text-amber-900 sm:col-span-2 lg:col-span-5">{warning}</p>}</div></section>
 
-      {detail.reconciliation && <section className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={ClipboardList} title="Facturas y conciliación" /><div className="grid gap-4 p-5 text-sm sm:grid-cols-4 sm:p-6"><div><p className="form-label">Factura Producto</p><p className="font-semibold">{detail.reconciliation.productInvoiceNumber ?? "Pendiente"}</p></div><div><p className="form-label">Factura Servicio</p><p className="font-semibold">{detail.reconciliation.serviceInvoiceNumber ?? "Pendiente"}</p></div><div><p className="form-label">Estado</p><p className="font-semibold">{formatStatusLabel(detail.reconciliation.status)}</p></div><div><p className="form-label">Última diferencia</p><p className="font-semibold">{detail.reconciliation.latestDifference === null ? "—" : formatDispatchQuantity(detail.reconciliation.latestDifference)}</p></div></div>{detail.batches.find((batch) => !batch.removedAt) && <div className="border-t border-border px-5 py-4 sm:px-6"><Link href={`/batches/${detail.batches.find((batch) => !batch.removedAt)!.batchId}`} className="font-semibold text-brand-strong hover:underline">Gestionar facturas en el lote</Link></div>}</section>}
+      {detail.reconciliation && <section className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={ClipboardList} title="Facturas y conciliación" /><div className="grid gap-4 p-5 lg:grid-cols-2 sm:p-6"><InvoiceCard title="Factura de producto" invoice={detail.reconciliation.productInvoice} projectId={project.id} /><InvoiceCard title="Factura de servicio" invoice={detail.reconciliation.serviceInvoice} projectId={project.id} /></div><div className="grid gap-4 border-t border-border px-5 py-4 text-sm sm:grid-cols-2 sm:px-6"><div><p className="form-label">Estado de conciliación</p><p className="font-semibold">{formatStatusLabel(detail.reconciliation.status)}</p></div><div><p className="form-label">Última diferencia</p><p className="font-semibold">{detail.reconciliation.latestDifference === null ? "—" : formatDispatchQuantity(detail.reconciliation.latestDifference)}</p></div></div>{detail.batches.find((batch) => !batch.removedAt) && <div className="border-t border-border px-5 py-4 sm:px-6"><Link href={`/batches/${detail.batches.find((batch) => !batch.removedAt)!.batchId}`} className="font-semibold text-brand-strong hover:underline">Gestionar facturas en el lote</Link></div>}</section>}
 
       <div className="grid gap-6 xl:grid-cols-2"><section className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={AlertTriangle} title="Incidencias" count={detail.incidents.length} />{detail.incidents.length ? <ul className="divide-y divide-border">{detail.incidents.map((incident) => <li key={incident.id} className="px-5 py-4 sm:px-6"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">{incident.typeName}</p><span className="text-xs text-foreground-muted">{formatDispatchDateTime(incident.createdAt, project.timezone)}</span></div><p className="mt-2 text-xs text-foreground-muted">Responsabilidad: {formatStatusLabel(incident.responsibility)} · Aplica cobro: {formatStatusLabel(incident.chargeApplicability)}</p>{incident.notes && <p className="mt-2 text-sm">{incident.notes}</p>}</li>)}</ul> : <div className="p-5"><EmptyState title="Sin incidencias registradas" description="El resultado Despachado puede finalizar sin incidencias; No despachado requiere al menos una." /></div>}{detail.status === "IN_EXECUTION" && permissions.canRegisterIncident && <div className="border-t border-border px-5 py-4 sm:px-6"><button type="button" onClick={() => setIncidentOpen(true)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted"><Plus className="size-4" /> Registrar incidencia</button></div>}</section>
       <section className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={FileText} title="Evidencias" count={detail.documents.length} />{detail.documents.length ? <ul className="divide-y divide-border">{detail.documents.map((document) => <EvidenceRow key={document.id} document={document} project={project} editable={editable} />)}</ul> : <div className="p-5"><EmptyState title="Sin evidencias" description="Debes adjuntar al menos una imagen o archivo PDF antes de finalizar." /></div>}{editable && <div className="border-t border-border px-5 py-4 sm:px-6"><DocumentUploader projectId={project.id} contextId={detail.id} context="dispatch" label="Agregar evidencias" /></div>}</section></div>

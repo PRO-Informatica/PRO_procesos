@@ -85,6 +85,28 @@ export type DispatchBatchRelation = {
   removedAt: string | null;
 };
 
+export type DispatchInvoiceSummary = {
+  id: string;
+  type: "PRODUCT" | "SERVICE";
+  number: string;
+  date: string;
+  status: string;
+  subtotal: number;
+  total: number;
+  currency: string;
+  orderNumber: string | null;
+  pcaOriginal: string | null;
+  invoicedQuantity: number | null;
+  unitCode: string | null;
+  documentId: string | null;
+  fileName: string | null;
+  supplierLegalName: string | null;
+  supplierTaxId: string | null;
+  billingLegalName: string | null;
+  billingTaxId: string | null;
+  extractedLineCount: number;
+};
+
 export type DispatchDetail = {
   id: string;
   projectId: string;
@@ -116,8 +138,8 @@ export type DispatchDetail = {
   batches: DispatchBatchRelation[];
   reconciliation: {
     status: string;
-    productInvoiceNumber: string | null;
-    serviceInvoiceNumber: string | null;
+    productInvoice: DispatchInvoiceSummary | null;
+    serviceInvoice: DispatchInvoiceSummary | null;
     latestDifference: number | null;
   } | null;
   incidentTypes: IncidentTypeOption[];

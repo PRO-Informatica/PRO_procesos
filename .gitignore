@@ -1,32 +1,63 @@
-# dependencies
-/node_modules
+# Dependencies
+/node_modules/
 
-# next.js
+# Next.js and production output
 /.next/
 /out/
+/build/
+/dist/
+/.vercel/
 
-# production
-/build
-/docs
+# Test and tooling output
+/coverage/
+/.nyc_output/
+/.turbo/
+/.cache/
+*.lcov
+playwright-report/
+test-results/
 
-# local environment files
-.env*
+# Local environment files and secrets
+.env
+.env.*
 !.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
 
-# vercel
-.vercel
+# Supabase local runtime files
+/supabase/.branches/
+/supabase/.temp/
+/supabase/.env
+/supabase/.env.*
+!/supabase/.env.example
+!/supabase/.env.*.example
 
-# typescript
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
 
-# operating systems and editors
-.DS_Store
-*.swp
-*.swo
-
-# logs
+# Logs and temporary files
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+/tmp/
+/temp/
+*.tmp
+*.temp
+
+# Operating systems and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Markdown and local documentation
+*.md
+/docs/

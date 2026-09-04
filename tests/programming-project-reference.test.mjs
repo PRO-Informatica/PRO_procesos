@@ -8,7 +8,10 @@ import {
   MIXTO_PROJECT_REFERENCE_MISSING_ERROR,
   mixtoProjectMismatchMessage,
 } from "../src/features/programming/project-reference.ts";
-import { normalizeBusinessIdentity } from "../src/lib/business-identity.ts";
+import {
+  matchesFiscalIdentity,
+  normalizeBusinessIdentity,
+} from "../src/lib/business-identity.ts";
 
 const billingLegalName = "Las Campanales - Sociedad Anónima";
 
@@ -84,4 +87,17 @@ test("el error de proyecto distinto informa el valor esperado y el encontrado", 
   assert.match(message, new RegExp(MIXTO_PROJECT_MISMATCH_ERROR, "i"));
   assert.match(message, /INMOBILIARIA LOS ANTURIOS, S\.A\./);
   assert.match(message, /LAS CAMPANELAS, S\. A\./);
+});
+
+test("la identidad fiscal rechaza una factura de otro proyecto", () => {
+  assert.equal(matchesFiscalIdentity({
+    expectedName: "INMOBILIARIA LOS ANTURIOS, S.A.",
+    actualName: "INMOBILIARIA LOS ANTURIOS, SOCIEDAD ANÓNIMA",
+    expectedTaxId: "111871344",
+    actualTaxId: "1118-71344",
+  }), true);
+  assert.equal(matchesFiscalIdentity({
+    expectedName: "INMOBILIARIA LOS ANTURIOS, S.A.",
+    actualName: "OTRO PROYECTO, S.A.",
+  }), false);
 });

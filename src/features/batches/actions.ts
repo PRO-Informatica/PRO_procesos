@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { normalizeOperationalOrder, processInvoicePdf, type InvoiceProcessingContext } from "@/features/invoices/invoice-processing";
 import { getProjectContext } from "@/features/projects/queries";
+import { matchesFiscalIdentity } from "@/lib/business-identity";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -154,9 +155,12 @@ export async function inspectBatchInvoicePdf(projectId: string, batchId: string,
   try {
     const raw = await extractMixtoListoInvoicePdf(await file.arrayBuffer());
     if (raw.detected_invoice_numbers.length > 1) return { fileName: file.name, dispatchId: null, requestedType: null, status: "REQUIRES_REVIEW", message: "El PDF contiene más de una factura y no puede procesarse automáticamente.", payload: null, duplicate: false };
+    const admin = createAdminClient();
+    const project = await admin.from("projects").select("billing_legal_name, billing_tax_id").eq("id", projectId).maybeSingle();
+    if (!project.data?.billing_legal_name?.trim()) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "El proyecto actual no tiene configurada su Razón Social de facturación.", payload: null, duplicate: false };
+    if (!matchesFiscalIdentity({ expectedName: project.data.billing_legal_name, actualName: raw.billing_legal_name, expectedTaxId: project.data.billing_tax_id, actualTaxId: raw.billing_tax_id })) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "La factura no pertenece al proyecto actual. El receptor fiscal no coincide con los datos fiscales del proyecto.", payload: null, duplicate: false };
     const orderNumber = orderNumberFromMixtoListoPca(raw.pca_original);
     if (!orderNumber) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "No se detectó un PCA válido.", payload: null, duplicate: false };
-    const admin = createAdminClient();
     const relations = await admin.from("batch_dispatches").select("dispatch_id").eq("project_id", projectId).eq("batch_id", batchId).is("removed_at", null);
     const relationIds = (relations.data ?? []).map((row) => row.dispatch_id);
     const dispatches = relationIds.length ? await admin.from("dispatches").select("id, order_number").eq("project_id", projectId).in("id", relationIds) : { data: [], error: null };
