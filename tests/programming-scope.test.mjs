@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -6,6 +7,27 @@ import {
   isActiveProgramming,
   isHistoricalProgramming,
 } from "../src/features/programming/availability.ts";
+
+const programmingCalendar = await readFile(
+  new URL(
+    "../src/features/programming/components/programming-calendar.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
+test("el calendario móvil conserva Mes como primera vista compatible", () => {
+  const viewsSection = programmingCalendar.slice(
+    programmingCalendar.indexOf("views: ["),
+    programmingCalendar.indexOf("defaultView:"),
+  );
+
+  assert.ok(
+    viewsSection.indexOf("createViewMonthAgenda()") <
+      viewsSection.indexOf("createViewDay()"),
+  );
+  assert.match(programmingCalendar, /defaultView: "month-grid"/u);
+});
 
 test("una programación pendiente permanece activa aunque su hora ya haya pasado", () => {
   const programming = {

@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
 import { Workbook, type Worksheet } from "exceljs";
 import JSZip from "jszip";
 import type { NextRequest } from "next/server";
@@ -8,6 +11,12 @@ import { reportArchiveItems, reportArchivePath, sanitizeArchiveSegment } from "@
 import { parseGuideReportFilters } from "@/features/reports/filters";
 import { getGuideReport } from "@/features/reports/queries";
 import type { GuideReportData, ProgrammingReportItem, ReportInvoice } from "@/features/reports/types";
+import {
+  addReportLogo,
+  REPORT_TABLE_HEADER_ROW,
+  setupReportSheet,
+  type ReportWorkbookHeader,
+} from "@/features/reports/workbook-header";
 import { formatStatusLabel } from "@/lib/status-labels";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -86,16 +95,7 @@ function displayDate(value: string) {
   return `${day}/${month}/${year}`;
 }
 
-function setupSheet(sheet: Worksheet, columns: Column[]) {
-  sheet.columns = columns.map(({ header, key, width }) => ({ header, key, width }));
-  sheet.views = [{ state: "frozen", ySplit: 1, showGridLines: false }];
-  const header = sheet.getRow(1);
-  header.height = 34;
-  header.font = { bold: true, size: 10, color: { argb: COLORS.white } };
-  header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.red } };
-  header.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-  header.eachCell((cell) => { cell.border = { right: { style: "thin", color: { argb: "FFFF8791" } } }; });
-  sheet.autoFilter = { from: "A1", to: { row: 1, column: columns.length } };
+function applyColumnFormats(sheet: Worksheet, columns: Column[]) {
   for (const column of columns) {
     if (column.kind === "date") sheet.getColumn(column.key).numFmt = "dd/mm/yyyy";
     if (column.kind === "datetime") sheet.getColumn(column.key).numFmt = "dd/mm/yyyy hh:mm";
@@ -109,7 +109,7 @@ function addStyledRow(sheet: Worksheet, values: Record<string, unknown>) {
   const row = sheet.addRow(values);
   row.height = 31;
   row.alignment = { vertical: "middle", wrapText: true };
-  if (row.number % 2 === 0) row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.surface } };
+  if ((row.number - REPORT_TABLE_HEADER_ROW) % 2 === 0) row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.surface } };
   row.eachCell((cell) => { cell.border = { bottom: { style: "thin", color: { argb: COLORS.border } } }; });
 }
 
@@ -138,20 +138,29 @@ function invoiceRow(programming: ProgrammingReportItem, dispatch: ProgrammingRep
   };
 }
 
-async function buildWorkbook(report: GuideReportData, companyName: string, projectLabel: string, dateFrom: string, dateTo: string) {
+async function buildWorkbook(
+  report: GuideReportData,
+  companyName: string,
+  header: ReportWorkbookHeader,
+) {
   const workbook = new Workbook();
   workbook.creator = "PRO Procesos";
   workbook.company = companyName;
   workbook.created = new Date();
-  workbook.title = `Reporte de programaciones, despachos y facturas · ${projectLabel}`;
-  workbook.subject = `${companyName} · ${displayDate(dateFrom)} a ${displayDate(dateTo)}`;
+  workbook.title = `Reporte de programaciones, despachos y facturas · ${header.projectTitle}`;
+  workbook.subject = `${companyName} · ${header.period}`;
 
   const reportSheet = workbook.addWorksheet("Reporte", { properties: { tabColor: { argb: COLORS.red } } });
   const productSheet = workbook.addWorksheet("Facturas Producto");
   const serviceSheet = workbook.addWorksheet("Facturas Servicio");
-  setupSheet(reportSheet, REPORT_COLUMNS);
-  setupSheet(productSheet, INVOICE_COLUMNS);
-  setupSheet(serviceSheet, INVOICE_COLUMNS);
+  const logo = await readFile(path.join(process.cwd(), "public", "pro-logo.png"));
+  const logoId = addReportLogo(workbook, logo.toString("base64"));
+  setupReportSheet(reportSheet, REPORT_COLUMNS, header, logoId);
+  setupReportSheet(productSheet, INVOICE_COLUMNS, header, logoId);
+  setupReportSheet(serviceSheet, INVOICE_COLUMNS, header, logoId);
+  applyColumnFormats(reportSheet, REPORT_COLUMNS);
+  applyColumnFormats(productSheet, INVOICE_COLUMNS);
+  applyColumnFormats(serviceSheet, INVOICE_COLUMNS);
 
   for (const programming of report.programming) {
     const dispatches = programming.dispatches.length ? programming.dispatches : [null];
@@ -232,7 +241,8 @@ export async function GET(request: NextRequest) {
     const projects = context.isCompanyAdmin ? context.projects.filter((project) => project.companyId === context.activeProject?.companyId) : [context.activeProject];
     const report = await getGuideReport(projects.map(({ id, name, timezone }) => ({ id, name, timezone })), filters);
     const selectedProject = filters.projectId ? projects.find((project) => project.id === filters.projectId) : null;
-    const projectLabel = selectedProject?.name ?? (projects.length === 1 ? projects[0]?.name : `Todos los proyectos (${projects.length})`) ?? context.activeProject.name;
+    const reportProject = selectedProject ?? (projects.length === 1 ? projects[0] : null);
+    const projectLabel = reportProject?.name ?? `Todos los proyectos (${projects.length})`;
     const safeProject = sanitizeArchiveSegment(projectLabel, "Proyectos");
     const format = request.nextUrl.searchParams.get("format") === "zip" ? "zip" : "xlsx";
 
@@ -243,7 +253,18 @@ export async function GET(request: NextRequest) {
       return new Response(buffer, { headers: { "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="Reporte_${safeProject}_${filters.dateFrom}_${filters.dateTo}.zip"`, "Cache-Control": "private, no-store" } });
     }
 
-    const workbook = await buildWorkbook(report, context.activeProject.companyName, projectLabel, filters.dateFrom, filters.dateTo);
+    const workbook = await buildWorkbook(report, context.activeProject.companyName, {
+      projectTitle: reportProject
+        ? `${reportProject.name} · ${reportProject.code}`
+        : projectLabel,
+      billingLegalName:
+        reportProject?.billingLegalName ??
+        (reportProject ? "No configurada" : "Varía según el proyecto"),
+      billingTaxId:
+        reportProject?.billingTaxId ??
+        (reportProject ? "No configurado" : "Varía según el proyecto"),
+      period: `${displayDate(filters.dateFrom)} a ${displayDate(filters.dateTo)}`,
+    });
     const buffer = await workbook.xlsx.writeBuffer();
     return new Response(new Uint8Array(buffer), { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="Reporte_${safeProject}_${filters.dateFrom}_${filters.dateTo}.xlsx"`, "Cache-Control": "private, no-store" } });
   } catch (error) {

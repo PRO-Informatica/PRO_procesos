@@ -19,6 +19,7 @@ type ProjectRow = {
   name: string;
   code: string;
   billing_legal_name: string | null;
+  billing_tax_id: string | null;
   status: ProjectStatus;
   timezone: string | null;
 };
@@ -124,7 +125,7 @@ async function getOperationalProjectRows(userId: string): Promise<ProjectRow[]> 
   }
 
   const projectColumns =
-    "id, company_id, name, code, billing_legal_name, status, timezone";
+    "id, company_id, name, code, billing_legal_name, billing_tax_id, status, timezone";
   const [memberProjectsResult, companyProjectsResult] = await Promise.all([
     directProjectIds.length > 0
       ? supabase.from("projects").select(projectColumns).in("id", directProjectIds)
@@ -292,6 +293,7 @@ export async function getProjectContext(userId: string): Promise<ProjectContextS
         name: project.name,
         code: project.code,
         billingLegalName: project.billing_legal_name,
+        billingTaxId: project.billing_tax_id,
         status: project.status,
         timezone: project.timezone ?? "America/Guatemala",
       }))

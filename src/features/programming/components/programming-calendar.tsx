@@ -84,9 +84,9 @@ export function ProgrammingCalendar({
       return {
       views: [
         createViewMonthGrid(),
+        createViewMonthAgenda(),
         createViewWeek(),
         createViewDay(),
-        createViewMonthAgenda(),
         weekAgenda,
       ],
       defaultView: "month-grid",

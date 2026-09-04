@@ -7,6 +7,7 @@ export type ProjectSummary = {
   name: string;
   code: string;
   billingLegalName: string | null;
+  billingTaxId: string | null;
   status: ProjectStatus;
   timezone: string;
 };

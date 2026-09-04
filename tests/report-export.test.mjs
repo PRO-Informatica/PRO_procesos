@@ -2,14 +2,24 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import ExcelJS from "exceljs";
+
 import {
   reportArchiveItems,
   reportArchivePath,
   sanitizeArchiveSegment,
 } from "../src/features/reports/export-utils.ts";
+import {
+  REPORT_TABLE_HEADER_ROW,
+  addReportLogo,
+  setupReportSheet,
+} from "../src/features/reports/workbook-header.ts";
+
+const { Workbook } = ExcelJS;
 
 const route = await readFile(new URL("../src/app/(dashboard)/reports/export/route.ts", import.meta.url), "utf8");
 const query = await readFile(new URL("../src/features/reports/queries.ts", import.meta.url), "utf8");
+const projectQuery = await readFile(new URL("../src/features/projects/queries.ts", import.meta.url), "utf8");
 
 function invoice(id, type, number = "123") {
   return {
@@ -86,4 +96,52 @@ test("los nombres del ZIP se sanitizan y las colisiones reciben sufijo", () => {
 test("la consulta restringe datos y documentos a proyectos permitidos", () => {
   assert.match(query, /\.in\("project_id", projectIds\)/u);
   assert.match(query, /invoice_documents[\s\S]*\.in\("project_id", projectIds\)/u);
+});
+
+test("el Excel muestra logo, proyecto, razón social y NIT antes de la tabla", async () => {
+  const workbook = new Workbook();
+  const sheet = workbook.addWorksheet("Reporte");
+  const logo = await readFile(new URL("../public/pro-logo.png", import.meta.url));
+  const logoId = addReportLogo(workbook, logo.toString("base64"));
+
+  setupReportSheet(
+    sheet,
+    [
+      { header: "Programación", key: "programmingCode", width: 18 },
+      { header: "Proveedor", key: "supplierName", width: 26 },
+      { header: "Total", key: "total", width: 17 },
+      { header: "Estado", key: "status", width: 18 },
+    ],
+    {
+      projectTitle: "CER · CER",
+      billingLegalName: "INMOBILIARIA LOS ANTURIOS, S.A.",
+      billingTaxId: "111871344",
+      period: "01/09/2026 a 30/09/2026",
+    },
+    logoId,
+  );
+
+  assert.equal(sheet.getCell("C1").value, "CER · CER");
+  assert.equal(
+    sheet.getCell("C2").value,
+    "Razón social de facturación: INMOBILIARIA LOS ANTURIOS, S.A.",
+  );
+  assert.equal(sheet.getCell("C3").value, "NIT receptor: 111871344");
+  assert.equal(
+    sheet.getRow(REPORT_TABLE_HEADER_ROW).getCell(1).value,
+    "Programación",
+  );
+  assert.equal(sheet.getImages().length, 1);
+
+  const serialized = await workbook.xlsx.writeBuffer();
+  const reopened = new Workbook();
+  await reopened.xlsx.load(serialized);
+  assert.equal(reopened.getWorksheet("Reporte")?.getCell("C1").value, "CER · CER");
+  assert.equal(reopened.getWorksheet("Reporte")?.getImages().length, 1);
+});
+
+test("la exportación obtiene el NIT receptor desde el proyecto", () => {
+  assert.match(projectQuery, /billing_legal_name, billing_tax_id/u);
+  assert.match(projectQuery, /billingTaxId: project\.billing_tax_id/u);
+  assert.match(route, /billingTaxId:\s*reportProject\?\.billingTaxId/u);
 });
