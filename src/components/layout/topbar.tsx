@@ -4,7 +4,6 @@ import { Bell, ChevronDown, LogOut, Menu } from "lucide-react";
 
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import Link from "next/link";
-import { signOut } from "@/features/auth/actions";
 import type { SessionProfile } from "@/features/auth/types";
 import { useProjectContext } from "@/features/projects/project-context";
 
@@ -86,15 +85,13 @@ export function Topbar({
               </p>
               <p className="truncate text-xs text-foreground-muted">{profile.email}</p>
             </div>
-            <form action={signOut}>
-              <button
-                type="submit"
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-foreground-muted transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <LogOut aria-hidden="true" className="size-4" />
-                Cerrar sesión
-              </button>
-            </form>
+            <a
+              href="/auth/signout"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-foreground-muted transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <LogOut aria-hidden="true" className="size-4" />
+              Cerrar sesión
+            </a>
           </div>
         </details>
       </div>
