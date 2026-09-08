@@ -20,6 +20,8 @@ const { Workbook } = ExcelJS;
 const route = await readFile(new URL("../src/app/(dashboard)/reports/export/route.ts", import.meta.url), "utf8");
 const query = await readFile(new URL("../src/features/reports/queries.ts", import.meta.url), "utf8");
 const projectQuery = await readFile(new URL("../src/features/projects/queries.ts", import.meta.url), "utf8");
+const reportView = await readFile(new URL("../src/features/reports/components/guide-report.tsx", import.meta.url), "utf8");
+const reportPagination = await readFile(new URL("../src/features/reports/components/report-results-pagination.tsx", import.meta.url), "utf8");
 
 function invoice(id, type, number = "123") {
   return {
@@ -62,6 +64,13 @@ test("Excel y ZIP reutilizan exactamente el mismo reporte filtrado", () => {
   assert.match(route, /const report = await getGuideReport\(/u);
   assert.match(route, /buildWorkbook\(report,/u);
   assert.match(route, /buildZip\(report\)/u);
+});
+
+test("Reportería pagina la vista cada ocho programaciones sin limitar la exportación", () => {
+  assert.match(reportPagination, /const PAGE_SIZE = 8/u);
+  assert.match(reportPagination, /Children\.toArray\(children\)/u);
+  assert.match(reportView, /<ReportResultsPagination[^>]*>\{data\.programming\.map/u);
+  assert.doesNotMatch(route, /PAGE_SIZE/u);
 });
 
 test("el ZIP incluye Producto y Servicio del pedido", () => {
