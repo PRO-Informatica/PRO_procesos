@@ -44,6 +44,7 @@ export type CompanySupplier = {
   id: string;
   code: string;
   name: string;
+  taxId: string | null;
   active: boolean;
 };
 

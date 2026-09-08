@@ -18,7 +18,8 @@ begin
     from public.suppliers supplier
     where supplier.company_id = v_company_id
       and supplier.code = 'MIXTO_LISTO'
-      and supplier.name = 'Mixto Listo'
+      and supplier.name = 'MEZCLADORA, S.A.'
+      and supplier.tax_id = '32709-3'
       and supplier.is_preconfigured
       and supplier.active
   ) then

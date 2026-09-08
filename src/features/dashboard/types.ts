@@ -3,8 +3,17 @@ export type BatchStatus = "OPEN" | "CLOSED";
 export type DashboardWeekDay = { date: string; shortLabel: string; programmingCount: number; programmedM3: number; receivedM3: number; isToday: boolean };
 export type DashboardActivity = { id: string; action: string; entityType: string; entityId: string; createdAt: string; actorName: string };
 export type DashboardBatch = { id: string; code: string; periodStart: string; periodEnd: string; accountingPeriod: string; status: BatchStatus; activeGuideCount: number };
+export type DashboardBatchReconciliation = {
+  batchId: string;
+  batchCode: string;
+  periodStart: string;
+  pendingInvoices: number;
+  pendingReconciliation: number;
+  reinvoicing: number;
+  reconciled: number;
+};
 export type ProjectDashboardData = {
-  today: string; weekStart: string; weekEnd: string; timezone: string; weekDays: DashboardWeekDay[]; currentBatch: DashboardBatch | null; activity: DashboardActivity[];
+  today: string; weekStart: string; weekEnd: string; timezone: string; weekDays: DashboardWeekDay[]; currentBatch: DashboardBatch | null; batchReconciliation: DashboardBatchReconciliation[]; activity: DashboardActivity[];
   metrics: {
     today: { total: number; completed: number; pending: number; programmedM3: number };
     week: { total: number; completed: number; pending: number; compliance: number };

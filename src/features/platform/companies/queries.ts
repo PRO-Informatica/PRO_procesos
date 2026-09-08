@@ -63,6 +63,7 @@ type SupplierRow = {
   id: string;
   code: string;
   name: string;
+  tax_id: string | null;
   active: boolean;
 };
 
@@ -268,7 +269,7 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
       .order("created_at"),
     supabase
       .from("suppliers")
-      .select("id, code, name, active")
+      .select("id, code, name, tax_id, active")
       .eq("company_id", companyId)
       .order("name"),
     supabase
@@ -372,6 +373,7 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
       id: supplier.id,
       code: supplier.code,
       name: supplier.name,
+      taxId: supplier.tax_id,
       active: supplier.active,
     }),
   );

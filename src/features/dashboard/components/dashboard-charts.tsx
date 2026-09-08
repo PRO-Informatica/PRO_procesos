@@ -5,17 +5,16 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import { motion, useReducedMotion } from "motion/react";
+import { useState } from "react";
 import { motionTokens } from "@/lib/motion/tokens";
 import { formatQuantity } from "../formatters";
-import type { DashboardWeekDay } from "../types";
+import type { DashboardBatchReconciliation, DashboardWeekDay } from "../types";
 
 const tooltipStyle = {
   backgroundColor: "var(--surface)",
@@ -88,79 +87,155 @@ export function WeeklyVolumeChart({ days }: { days: DashboardWeekDay[] }) {
   );
 }
 
-type OrderDistribution = {
-  pending: number;
-  completed: number;
-  reinvoicing: number;
-};
+const batchStatusSeries = [
+  { key: "pendingInvoices", label: "Carga de factura", shortLabel: "Por cargar", color: "#d97706" },
+  { key: "pendingReconciliation", label: "Pendiente de conciliación", shortLabel: "Por conciliar", color: "var(--brand)" },
+  { key: "reinvoicing", label: "Refacturación", shortLabel: "Refacturación", color: "var(--destructive)" },
+  { key: "reconciled", label: "Conciliados", shortLabel: "Conciliados", color: "var(--success)" },
+] as const;
 
-export function OrderStatusChart({ orders }: { orders: OrderDistribution }) {
+function BatchStatusStat({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: number;
+  tone?: "default" | "danger" | "success";
+}) {
+  return (
+    <div
+      className={`rounded-lg p-3 ${
+        tone === "danger"
+          ? "bg-destructive-soft text-destructive"
+          : tone === "success"
+            ? "bg-success-soft text-success"
+            : "bg-muted text-foreground"
+      }`}
+    >
+      <p className="text-xl font-semibold">{value}</p>
+      <p className="mt-1 text-[11px] text-foreground-muted">{label}</p>
+    </div>
+  );
+}
+
+export function BatchReconciliationChart({
+  batches,
+}: {
+  batches: DashboardBatchReconciliation[];
+}) {
   const reduceMotion = useReducedMotion();
-  const data = [
-    { name: "Completados", value: orders.completed, color: "var(--success)" },
-    { name: "Pendientes", value: orders.pending, color: "var(--brand)" },
-    { name: "Refacturación", value: orders.reinvoicing, color: "var(--destructive)" },
-  ];
-  const total = data.reduce((sum, item) => sum + item.value, 0);
+  const [selectedBatchId, setSelectedBatchId] = useState(
+    () => batches.at(-1)?.batchId ?? "",
+  );
+  const selectedBatch =
+    batches.find((batch) => batch.batchId === selectedBatchId) ?? batches.at(-1);
+
+  if (!selectedBatch) {
+    return (
+      <div>
+        <h2 className="font-semibold text-foreground">Conciliación por lote</h2>
+        <div className="mt-5 grid min-h-52 place-items-center rounded-lg border border-dashed border-border bg-muted/25 px-4 text-center text-sm text-foreground-muted">
+          Sin lotes disponibles para consultar.
+        </div>
+      </div>
+    );
+  }
+
+  const statusData = batchStatusSeries.map((item) => ({
+    name: item.shortLabel,
+    fullName: item.label,
+    value: selectedBatch[item.key],
+    color: item.color,
+  }));
+  const total = statusData.reduce((sum, item) => sum + item.value, 0);
 
   return (
     <motion.div
-      className="relative mx-auto mt-5 h-44 w-full max-w-64"
+      className="w-full"
       style={{ fontFamily: "var(--font-sans)" }}
-      role="img"
-      aria-label={`${total} pedidos: ${orders.completed} completados, ${orders.pending} pendientes y ${orders.reinvoicing} en refacturación`}
       initial={reduceMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: reduceMotion ? 0 : motionTokens.duration.route }}
     >
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="value"
-            nameKey="name"
-            cx="50%"
-            cy="50%"
-            innerRadius={48}
-            outerRadius={72}
-            paddingAngle={total > 0 ? 2 : 0}
-            stroke="var(--surface)"
-            strokeWidth={2}
-            isAnimationActive={!reduceMotion}
-            animationDuration={motionTokens.duration.progress * 1000}
-            animationEasing="ease-out"
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="font-semibold text-foreground">Conciliación por lote</h2>
+          <p className="mt-1 text-xs text-foreground-muted">
+            Estados del lote seleccionado
+          </p>
+        </div>
+        <label className="block sm:min-w-52">
+          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-foreground-muted">
+            Lote
+          </span>
+          <select
+            value={selectedBatch.batchId}
+            onChange={(event) => setSelectedBatchId(event.target.value)}
+            className="min-h-10 w-full rounded-lg border border-border bg-surface px-3 text-xs font-medium text-foreground outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15"
+            aria-label="Seleccionar lote para la gráfica de conciliación"
           >
-            {data.map((item) => (
-              <Cell key={item.name} fill={item.color} />
+            {[...batches].reverse().map((batch) => (
+              <option key={batch.batchId} value={batch.batchId}>
+                {batch.batchCode}
+              </option>
             ))}
-          </Pie>
-          <Tooltip
-            contentStyle={tooltipStyle}
-            formatter={(value) => [Number(value), "Pedidos"]}
-          />
-          <text
-            x="50%"
-            y="48%"
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fill="var(--foreground)"
-            fontSize="24"
-            fontWeight="600"
+          </select>
+        </label>
+      </div>
+
+      <div
+        className="mt-4 h-56 w-full"
+        role="img"
+        aria-label={`${selectedBatch.batchCode}: ${total} despachos distribuidos por estado de conciliación`}
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={statusData}
+            margin={{ top: 8, right: 4, left: -18, bottom: 0 }}
           >
-            {total}
-          </text>
-          <text
-            x="50%"
-            y="61%"
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fill="var(--foreground-muted)"
-            fontSize="10"
-          >
-            Pedidos
-          </text>
-        </PieChart>
-      </ResponsiveContainer>
+            <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+            <XAxis
+              dataKey="name"
+              axisLine={false}
+              tickLine={false}
+              interval={0}
+              tick={{ fill: "var(--foreground-muted)", fontSize: 9, fontWeight: 600 }}
+            />
+            <YAxis
+              allowDecimals={false}
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: "var(--foreground-muted)", fontSize: 10 }}
+            />
+            <Tooltip
+              cursor={{ fill: "var(--muted)" }}
+              contentStyle={tooltipStyle}
+              labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName ?? "Estado"}
+              formatter={(value) => [Number(value), "Despachos"]}
+            />
+            <Bar
+              dataKey="value"
+              maxBarSize={38}
+              radius={[5, 5, 0, 0]}
+              isAnimationActive={!reduceMotion}
+              animationDuration={motionTokens.duration.progress * 1000}
+              animationEasing="ease-out"
+            >
+              {statusData.map((item) => (
+                <Cell key={item.fullName} fill={item.color} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <BatchStatusStat label="Por cargar factura" value={selectedBatch.pendingInvoices} />
+        <BatchStatusStat label="Por conciliar" value={selectedBatch.pendingReconciliation} />
+        <BatchStatusStat label="Refacturación" value={selectedBatch.reinvoicing} tone="danger" />
+        <BatchStatusStat label="Conciliados" value={selectedBatch.reconciled} tone="success" />
+      </div>
     </motion.div>
   );
 }

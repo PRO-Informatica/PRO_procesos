@@ -1,12 +1,11 @@
 "use client";
 
-import { Pencil, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { Pencil } from "lucide-react";
 import { useActionState, useState } from "react";
 
 import { useActionNotification } from "@/components/feedback/use-action-notification";
 import { LoadingButton } from "@/components/feedback/loading-button";
-import { useDialogAccessibility } from "@/components/ui/dialog";
+import { Dialog, DialogFooter } from "@/components/ui/dialog";
 import { notifications } from "@/lib/notification-messages";
 
 import { updateCompanyProject } from "../actions";
@@ -42,58 +41,18 @@ function EditProjectForm({
   );
   const state = actionState ?? INITIAL_STATE;
   const values = state.fields;
-  const dialogRef = useDialogAccessibility<HTMLElement>({ open: true, onClose, pending });
-
   useActionNotification({ pending, status: state.status, success: notifications.changesSaved, error: notifications.saveFailed });
 
   return (
-    <motion.div
-      className="fixed inset-0 z-[75] grid place-items-center overflow-y-auto bg-black/45 p-2 pb-[max(.5rem,env(safe-area-inset-bottom))] pt-[max(.5rem,env(safe-area-inset-top))] sm:p-6"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !pending) onClose();
-      }}
+    <Dialog
+      title="Editar proyecto"
+      description={`Actualiza la información administrativa de ${project.name}.`}
+      icon={Pencil}
+      onClose={onClose}
+      pending={pending}
+      size="md"
     >
-      <motion.section
-        ref={dialogRef}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={`edit-project-title-${project.id}`}
-        className="my-auto max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-xl border border-border bg-surface shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:rounded-2xl"
-        initial={{ opacity: 0, scale: 0.98, y: 6 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.99, y: 3 }}
-      >
-        <div className="flex items-start gap-4 border-b border-border p-5 sm:p-6">
-          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-strong">
-            <Pencil aria-hidden="true" className="size-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2
-              id={`edit-project-title-${project.id}`}
-              className="text-lg font-semibold text-foreground"
-            >
-              Editar proyecto
-            </h2>
-            <p className="mt-1 text-sm text-foreground-muted">
-              Actualiza la información administrativa de {project.name}.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="grid size-11 shrink-0 place-items-center rounded-lg text-foreground-muted hover:bg-muted disabled:opacity-50"
-            onClick={onClose}
-            disabled={pending}
-            aria-label="Cerrar edición"
-          >
-            <X aria-hidden="true" className="size-5" />
-          </button>
-        </div>
-
-        <form action={action}>
+      <form action={action}>
           <input type="hidden" name="companyId" value={companyId} />
           <input type="hidden" name="projectId" value={project.id} />
           <div className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6">
@@ -218,7 +177,7 @@ function EditProjectForm({
               </p>
             )}
           </div>
-          <div className="flex flex-col-reverse gap-3 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+          <DialogFooter>
             <button
               type="button"
               className="secondary-button"
@@ -230,10 +189,9 @@ function EditProjectForm({
             {state.status !== "success" && (
               <LoadingButton loadingLabel="Guardando…">Guardar cambios</LoadingButton>
             )}
-          </div>
-        </form>
-      </motion.section>
-    </motion.div>
+          </DialogFooter>
+      </form>
+    </Dialog>
   );
 }
 
@@ -256,16 +214,14 @@ export function EditProjectDialog({
         <Pencil aria-hidden="true" className="size-3.5" />
         Editar
       </button>
-      <AnimatePresence>
-        {open && (
-          <EditProjectForm
-            key={`${project.id}-${project.name}-${project.code}-${project.status}`}
-            companyId={companyId}
-            project={project}
-            onClose={() => setOpen(false)}
-          />
-        )}
-      </AnimatePresence>
+      {open && (
+        <EditProjectForm
+          key={`${project.id}-${project.name}-${project.code}-${project.status}`}
+          companyId={companyId}
+          project={project}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </>
   );
 }

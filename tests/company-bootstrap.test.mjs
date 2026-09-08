@@ -9,6 +9,13 @@ const migration = await readFile(
   ),
   "utf8",
 );
+const supplierIdentityMigration = await readFile(
+  new URL(
+    "../supabase/migrations/089_fix_mixto_listo_supplier_fiscal_identity.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
 const qa = await readFile(
   new URL("../supabase/qa/company_bootstrap_20260904.sql", import.meta.url),
   "utf8",
@@ -45,9 +52,21 @@ test("la migración rechaza referencias activas a las tablas legacy", () => {
 test("el QA ejecuta el trigger real y revierte todos los datos de prueba", () => {
   assert.match(qa, /insert into public\.companies/u);
   assert.match(qa, /supplier\.code = 'MIXTO_LISTO'/u);
+  assert.match(qa, /supplier\.name = 'MEZCLADORA, S\.A\.'/u);
+  assert.match(qa, /supplier\.tax_id = '32709-3'/u);
   assert.match(qa, /\) <> 9 then/u);
   assert.match(qa, /COMPANY_BOOTSTRAP_QA_LEGACY_ROUTINES_REMAIN/u);
   assert.match(qa, /rollback;/u);
+});
+
+test("Mixto Listo se crea y actualiza con su identidad fiscal canónica", () => {
+  assert.match(supplierIdentityMigration, /update public\.suppliers/u);
+  assert.match(supplierIdentityMigration, /'MEZCLADORA, S\.A\.'/u);
+  assert.match(supplierIdentityMigration, /'32709-3'/u);
+  assert.match(
+    supplierIdentityMigration,
+    /create or replace function public\.bootstrap_company_defaults/u,
+  );
 });
 
 test("la creación registra el error técnico sin exponerlo al usuario", () => {

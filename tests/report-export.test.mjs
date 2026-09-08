@@ -145,3 +145,10 @@ test("la exportación obtiene el NIT receptor desde el proyecto", () => {
   assert.match(projectQuery, /billingTaxId: project\.billing_tax_id/u);
   assert.match(route, /billingTaxId:\s*reportProject\?\.billingTaxId/u);
 });
+
+test("los totales monetarios se conservan numéricos y muestran quetzales", () => {
+  assert.match(route, /column\.kind === "money"/u);
+  assert.ok(route.includes(`numFmt = '"Q" #,##0.00'`));
+  assert.match(route, /key: "productTotal"[^\n]+kind: "money"/u);
+  assert.match(route, /key: "serviceTotal"[^\n]+kind: "money"/u);
+});

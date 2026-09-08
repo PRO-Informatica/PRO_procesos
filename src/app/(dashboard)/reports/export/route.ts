@@ -100,7 +100,7 @@ function applyColumnFormats(sheet: Worksheet, columns: Column[]) {
     if (column.kind === "date") sheet.getColumn(column.key).numFmt = "dd/mm/yyyy";
     if (column.kind === "datetime") sheet.getColumn(column.key).numFmt = "dd/mm/yyyy hh:mm";
     if (column.kind === "quantity") sheet.getColumn(column.key).numFmt = "#,##0.000";
-    if (column.kind === "money") sheet.getColumn(column.key).numFmt = "#,##0.00";
+    if (column.kind === "money") sheet.getColumn(column.key).numFmt = '"Q" #,##0.00';
     if (column.kind === "integer") sheet.getColumn(column.key).numFmt = "0";
   }
 }

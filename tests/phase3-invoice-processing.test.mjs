@@ -12,12 +12,15 @@ const reconciliationMigration = await readFile(new URL("../supabase/migrations/0
 const cleanupMigration = await readFile(new URL("../supabase/migrations/085_phase3_legacy_cleanup.sql", import.meta.url), "utf8");
 const reconciliationStatusFix = await readFile(new URL("../supabase/migrations/086_fix_dispatch_reconciliation_status_cast.sql", import.meta.url), "utf8");
 const purchasingInvoiceReviewGrant = await readFile(new URL("../supabase/migrations/087_grant_invoice_review_to_purchasing.sql", import.meta.url), "utf8");
+const supplierFiscalIdentityFix = await readFile(new URL("../supabase/migrations/089_fix_mixto_listo_supplier_fiscal_identity.sql", import.meta.url), "utf8");
 const actions = await readFile(new URL("../src/features/batches/actions.ts", import.meta.url), "utf8");
 const processor = await readFile(new URL("../src/features/invoices/invoice-processing.ts", import.meta.url), "utf8");
 const dispatchQueries = await readFile(new URL("../src/features/dispatches/queries.ts", import.meta.url), "utf8");
 const dispatchDetail = await readFile(new URL("../src/features/dispatches/components/dispatch-detail-view.tsx", import.meta.url), "utf8");
 const invoiceDialogs = await readFile(new URL("../src/features/batches/components/invoice-dialogs.tsx", import.meta.url), "utf8");
 const dashboardQueries = await readFile(new URL("../src/features/dashboard/queries.ts", import.meta.url), "utf8");
+const dashboardCharts = await readFile(new URL("../src/features/dashboard/components/dashboard-charts.tsx", import.meta.url), "utf8");
+const projectDashboard = await readFile(new URL("../src/features/dashboard/components/project-dashboard.tsx", import.meta.url), "utf8");
 
 const productInvoice = `
 MEZCLADORA S.A.
@@ -90,6 +93,24 @@ test("Dashboard desambigua la pertenencia del despacho al lote", () => {
   assert.doesNotMatch(dashboardQueries, /status, batch_dispatches\(id, removed_at\)/u);
 });
 
+test("Dashboard agrupa los cuatro estados de conciliación por lote", () => {
+  assert.match(dashboardQueries, /id, dispatch_id, status/u);
+  assert.match(
+    dashboardQueries,
+    /members:batch_dispatches!batch_dispatches_batch_project_fk\(dispatch_id, removed_at\)/u,
+  );
+  assert.match(dashboardQueries, /pendingInvoices:/u);
+  assert.match(dashboardQueries, /pendingReconciliation:/u);
+  assert.match(dashboardQueries, /reinvoicing:/u);
+  assert.match(dashboardQueries, /reconciled:/u);
+  assert.match(dashboardCharts, /BatchReconciliationChart/u);
+  assert.match(dashboardCharts, /Conciliación por lote/u);
+  assert.match(dashboardCharts, /Seleccionar lote para la gráfica de conciliación/u);
+  assert.match(dashboardCharts, /Por cargar factura/u);
+  assert.match(dashboardCharts, /Por conciliar/u);
+  assert.match(projectDashboard, /BatchReconciliationChart/u);
+});
+
 test("conciliación usa Volumen Real y conserva intentos/refacturación", () => {
   assert.match(reconciliationMigration, /create table public\.dispatch_reconciliations/u);
   assert.match(reconciliationMigration, /create table public\.dispatch_reconciliation_attempts/u);
@@ -136,6 +157,14 @@ test("la carga masiva explica cuando el despacho ya tiene una factura de ese tip
   assert.match(actions, /Ya existe una factura de.*cargada para este despacho/u);
   assert.match(invoiceDialogs, /alreadyRegistered \? result\?\.message/u);
   assert.match(invoiceDialogs, /!result\.duplicate/u);
+});
+
+test("Mixto Listo usa la identidad fiscal legal del emisor en empresas existentes y nuevas", () => {
+  assert.match(supplierFiscalIdentityFix, /update public\.suppliers/u);
+  assert.match(supplierFiscalIdentityFix, /create or replace function public\.bootstrap_company_defaults/u);
+  assert.match(supplierFiscalIdentityFix, /'MEZCLADORA, S\.A\.'/u);
+  assert.match(supplierFiscalIdentityFix, /'32709-3'/u);
+  assert.match(supplierFiscalIdentityFix, /on conflict\(company_id, code\) do update/u);
 });
 
 test("ambos pipelines persisten el total y el despacho muestra dos tarjetas con datos extraídos", () => {

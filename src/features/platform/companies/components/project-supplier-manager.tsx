@@ -93,8 +93,10 @@ function ProjectSupplierForm({
               <span className="block truncate text-sm font-semibold text-foreground">
                 {supplier.name}
               </span>
-              <span className="block font-mono text-[11px] text-foreground-muted">
-                {supplier.code}
+              <span className="block truncate text-[11px] text-foreground-muted">
+                <span className="font-mono">{supplier.code}</span>
+                <span aria-hidden="true"> · </span>
+                NIT {supplier.taxId ?? "sin registrar"}
               </span>
             </span>
             {!supplier.active && (
