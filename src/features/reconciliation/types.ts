@@ -9,6 +9,8 @@ export type GlobalReconciliationItem = {
   realVolume: number;
   unitCode: string;
   invoiceCount: number;
+  hasProductInvoice: boolean;
+  hasServiceInvoice: boolean;
   reconciliationStatus: string;
   difference: number | null;
 };

@@ -7,6 +7,7 @@ import { useMemo, useState, useTransition } from "react";
 import {
   inspectBatchInvoicePdf,
   inspectDispatchInvoicePdf,
+  reconcileDispatchAction,
   saveDispatchInvoice,
 } from "../actions";
 import { formatBatchQuantity } from "../formatters";
@@ -309,6 +310,8 @@ export function BulkInvoiceDialog({
     setOperation("save");
     startTransition(async () => {
       let saved = 0;
+      let reconciled = 0;
+      const productDispatches = new Set<string>();
       const next = [...rows];
       for (let index = 0; index < next.length; index += 1) {
         const row = next[index];
@@ -321,12 +324,17 @@ export function BulkInvoiceDialog({
         if (response.status === "success") {
           next[index] = { ...row, saved: true, saveError: null };
           saved += 1;
+          if (result.requestedType === "PRODUCT") productDispatches.add(result.dispatchId);
         } else {
           next[index] = { ...row, saveError: response.message };
         }
       }
+      for (const dispatchId of productDispatches) {
+        const reconciliation = await reconcileDispatchAction(projectId, batchId, dispatchId);
+        if (reconciliation.status === "success") reconciled += 1;
+      }
       setRows(next);
-      setMessage(`${saved} factura(s) guardada(s). Los casos con error o duplicidad no fueron persistidos.`);
+      setMessage(`${saved} factura(s) guardada(s). ${reconciled} conciliación(es) ejecutada(s). Los casos con error o duplicidad no fueron persistidos.`);
       if (saved > 0) {
         notify.success(notifications.invoicesSaved, `${saved} ${saved === 1 ? "archivo procesado" : "archivos procesados"}.`);
       } else {
@@ -412,7 +420,7 @@ export function BulkInvoiceDialog({
       <DialogFooter>
         <Button variant="secondary" onClick={onClose} disabled={pending}>Cerrar</Button>
         <LoadingButton type="button" variant="secondary" onClick={inspectAll} disabled={!rows.length || pending} loading={pending && operation === "inspect"} loadingLabel="Clasificando…">Clasificar facturas</LoadingButton>
-        <LoadingButton type="button" onClick={saveAll} disabled={!readyCount || pending} loading={pending && operation === "save"} loadingLabel="Guardando…">Guardar cambios ({readyCount})</LoadingButton>
+        <LoadingButton type="button" onClick={saveAll} disabled={!readyCount || pending} loading={pending && operation === "save"} loadingLabel="Conciliando…">Conciliar ({readyCount})</LoadingButton>
       </DialogFooter>
     </Modal>
   );

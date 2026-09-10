@@ -2,7 +2,7 @@
 
 import { AlertTriangle, CalendarRange, CheckCircle2, Plus, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 
 import { LoadingButton } from "@/components/feedback/loading-button";
 import { useActionNotification } from "@/components/feedback/use-action-notification";
@@ -40,10 +40,67 @@ export function CreateBatchDialog({ project, onClose }: { project: ProjectSummar
 }
 
 export function AddDispatchDialog({ projectId, batchId, dispatches, onClose }: { projectId: string; batchId: string; dispatches: EligibleBatchDispatch[]; onClose: () => void }) {
-  const router = useRouter(); const [state, action, pending] = useActionState(addDispatchToBatchAction, initialBatchMutationState);
+  const router = useRouter();
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [state, action, pending] = useActionState(addDispatchToBatchAction, initialBatchMutationState);
   useActionNotification({ pending, status: state.status, success: notifications.dispatchAdded });
-  useEffect(() => { if (state.status === "success") router.refresh(); }, [router, state.status]);
-  return <Modal title="Agregar despacho" description="Despachos en ejecución o completados disponibles en el proyecto." icon={Plus} onClose={onClose} pending={pending}><form action={action}><input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="batchId" value={batchId} /><div className="p-5 sm:p-6"><label className="form-label" htmlFor="eligible-dispatch">Despacho *</label><select id="eligible-dispatch" name="dispatchId" required className="form-input" disabled={!dispatches.length}><option value="">{dispatches.length ? "Selecciona un despacho" : "No hay despachos elegibles"}</option>{dispatches.map((item) => <option key={item.dispatchId} value={item.dispatchId}>{item.programmingCode} · Pedido {item.orderNumber ?? "pendiente"} · {item.supplierName} · {item.operationalStatus === "COMPLETED" ? "Completado" : "En ejecución"}{item.realVolume === null ? "" : ` · ${formatBatchQuantity(item.realVolume)} ${item.realUnitCode}`}</option>)}</select><Message state={state} /></div><Footer onClose={onClose} pending={pending} disabled={!dispatches.length} label="Agregar despacho" loading="Agregando…" /></form></Modal>;
+  useEffect(() => {
+    if (state.status === "success") {
+      router.refresh();
+      onClose();
+    }
+  }, [onClose, router, state.status]);
+
+  const allSelected = dispatches.length > 0 && selectedIds.length === dispatches.length;
+  function toggle(dispatchId: string) {
+    setSelectedIds((current) => current.includes(dispatchId) ? current.filter((id) => id !== dispatchId) : [...current, dispatchId]);
+  }
+
+  return (
+    <Modal title="Agregar despachos" description="Selecciona uno o varios despachos disponibles para agregarlos al lote en una sola operación." icon={Plus} onClose={onClose} pending={pending}>
+      <form action={action}>
+        <input type="hidden" name="projectId" value={projectId} />
+        <input type="hidden" name="batchId" value={batchId} />
+        <div className="p-4 sm:p-6">
+          <div className="flex min-h-11 items-center justify-between gap-3">
+            <div>
+              <p className="form-label mb-0">Despachos disponibles *</p>
+              <p className="mt-1 text-xs text-foreground-muted" aria-live="polite">{selectedIds.length} de {dispatches.length} seleccionados</p>
+            </div>
+            {dispatches.length > 0 && (
+              <button type="button" onClick={() => setSelectedIds(allSelected ? [] : dispatches.map((item) => item.dispatchId))} disabled={pending} className="min-h-11 rounded-lg px-3 text-xs font-semibold text-brand-strong transition-colors hover:bg-brand-soft active:bg-brand-soft disabled:opacity-50">
+                {allSelected ? "Quitar selección" : "Seleccionar todos"}
+              </button>
+            )}
+          </div>
+
+          {dispatches.length ? (
+            <div className={`mt-3 space-y-2 ${dispatches.length > 3 ? "max-h-[13rem] overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]" : ""}`}>
+              {dispatches.map((item) => {
+                const selected = selectedIds.includes(item.dispatchId);
+                return (
+                  <label key={item.dispatchId} className={`flex min-h-16 cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors active:bg-brand-soft/50 ${selected ? "border-brand bg-brand-soft/35" : "border-border bg-surface hover:border-brand/35 hover:bg-muted/35"}`}>
+                    <input type="checkbox" name="dispatchIds" value={item.dispatchId} checked={selected} onChange={() => toggle(item.dispatchId)} disabled={pending} className="mt-1 size-5 shrink-0 accent-[var(--brand)]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <strong className="text-sm text-foreground">{item.programmingCode}</strong>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-foreground-muted">{item.operationalStatus === "COMPLETED" ? "Completado" : "En ejecución"}</span>
+                      </span>
+                      <span className="mt-1 block break-words text-xs text-foreground-muted">Pedido {item.orderNumber ?? "pendiente"} · {item.supplierName}{item.realVolume === null ? "" : ` · ${formatBatchQuantity(item.realVolume)} ${item.realUnitCode ?? ""}`}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-3 rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-foreground-muted">No hay despachos elegibles para agregar.</div>
+          )}
+          <Message state={state} />
+        </div>
+        <Footer onClose={onClose} pending={pending} disabled={!selectedIds.length} label={selectedIds.length === 1 ? "Agregar 1 despacho" : `Agregar ${selectedIds.length} despachos`} loading="Agregando…" />
+      </form>
+    </Modal>
+  );
 }
 
 export function RemoveDispatchDialog({ projectId, batchId, relation, onClose }: { projectId: string; batchId: string; relation: BatchDispatchRelation; onClose: () => void }) {

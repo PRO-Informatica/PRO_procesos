@@ -1,5 +1,5 @@
 import type { BatchStatus, ProgrammingStatus } from "./types";
-import { formatStatusLabel, humanizeInternalCode } from "@/lib/status-labels";
+import { formatStatusLabel, humanizeInternalCode } from "../../lib/status-labels.ts";
 
 const activityLabels: Record<string, string> = {
   DISPATCH_REGISTERED: "Despacho registrado",
@@ -14,6 +14,12 @@ const activityLabels: Record<string, string> = {
   WEEKLY_BATCH_CLOSED_AFTER_ROLLOVER: "Lote semanal cerrado",
 };
 
+function normalizeIntlOutput(value: string) {
+  return value
+    .replace(/[\u00a0\u202f]/gu, " ")
+    .replace(/[\u200e\u200f]/gu, "");
+}
+
 export function formatProgrammingStatus(status: ProgrammingStatus) {
   return formatStatusLabel(status);
 }
@@ -27,27 +33,33 @@ export function formatDashboardActivity(action: string) {
 }
 
 export function formatQuantity(value: number) {
-  return new Intl.NumberFormat("es-GT", {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  }).format(value);
+  return normalizeIntlOutput(
+    new Intl.NumberFormat("es-GT", {
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3,
+    }).format(value),
+  );
 }
 
 export function formatDashboardTime(value: string, timezone: string) {
-  return new Intl.DateTimeFormat("es-GT", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: timezone,
-  }).format(new Date(value));
+  return normalizeIntlOutput(
+    new Intl.DateTimeFormat("es-GT", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: timezone,
+    }).format(new Date(value)),
+  );
 }
 
 export function formatDashboardDateTime(value: string, timezone: string) {
-  return new Intl.DateTimeFormat("es-GT", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: timezone,
-  }).format(new Date(value));
+  return normalizeIntlOutput(
+    new Intl.DateTimeFormat("es-GT", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: timezone,
+    }).format(new Date(value)),
+  );
 }
 
 export function formatDateRange(start: string, end: string, timezone: string) {
@@ -56,15 +68,19 @@ export function formatDateRange(start: string, end: string, timezone: string) {
     month: "short",
     timeZone: timezone,
   });
-  return `${formatter.format(new Date(`${start}T12:00:00Z`))} – ${formatter.format(
-    new Date(`${end}T12:00:00Z`),
-  )}`;
+  return normalizeIntlOutput(
+    `${formatter.format(new Date(`${start}T12:00:00Z`))} – ${formatter.format(
+      new Date(`${end}T12:00:00Z`),
+    )}`,
+  );
 }
 
 export function formatAccountingPeriod(value: string, timezone: string) {
-  return new Intl.DateTimeFormat("es-GT", {
-    month: "long",
-    year: "numeric",
-    timeZone: timezone,
-  }).format(new Date(`${value}T12:00:00Z`));
+  return normalizeIntlOutput(
+    new Intl.DateTimeFormat("es-GT", {
+      month: "long",
+      year: "numeric",
+      timeZone: timezone,
+    }).format(new Date(`${value}T12:00:00Z`)),
+  );
 }

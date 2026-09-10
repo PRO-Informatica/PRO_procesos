@@ -128,7 +128,7 @@ export async function getGuideReport(projects: ProjectInput[], filters: GuideRep
         documentedQuantity: dispatchGuides.reduce((sum, guide) => sum + numeric(guide.quantity), 0), unitCode: String(dispatch.real_unit_code ?? program.unit_code ?? ""), receivedQuantity: numeric(dispatch.real_volume),
         physicalResult: String(dispatch.result ?? "PENDING"), dispatchStatus: String(dispatch.status), registeredById: String(dispatch.created_by), registeredByName: profileMap.get(String(dispatch.created_by)) ?? "Usuario no disponible", createdAt: String(dispatch.created_at),
         incidentCount: incidentList.length, documentCount: dispatchGuides.reduce((sum, guide) => sum + (guideDocCount.get(String(guide.id)) ?? 0), 0) + incidentList.reduce((sum, incidentId) => sum + (incidentDocCount.get(incidentId) ?? 0), 0),
-        orderStatus: reconciliation?.status ?? "PENDING_INVOICES", reinvoicingRequired: reconciliation?.status === "PENDING_REINVOICING", reconciliationStatus: reconciliation?.status ?? "PENDING_INVOICES",
+        orderStatus: reconciliation?.status ?? "NOT_STARTED", reinvoicingRequired: reconciliation?.status === "PENDING_REINVOICING", reconciliationStatus: reconciliation?.status ?? "NOT_STARTED",
         productInvoicedQuantity: productInvoice?.invoicedQuantity ?? 0, difference: numeric(latestAttemptByDispatch.get(id)?.difference), invoiceCount: [productInvoice, serviceInvoice].filter(Boolean).length, productInvoice, serviceInvoice,
       };
     });

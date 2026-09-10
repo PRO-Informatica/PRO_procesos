@@ -20,6 +20,6 @@ export type ProjectDashboardData = {
     month: { programmedM3: number; receivedM3: number; execution: number };
     orders: { pending: number; completed: number; reinvoicing: number };
     reconciliation: { matched: number; differences: number; withoutInvoice: number };
-    attention: { reinvoicing: number; overdueProgramming: number; pendingInvoice: number; differences: number };
+    attention: { reinvoicing: number; overdueProgramming: number; pendingInvoice: number };
   };
 };

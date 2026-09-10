@@ -165,6 +165,7 @@ export type ExtractProgrammingWorkbookState = {
   message?: string;
   fileName?: string;
   rows?: BulkProgrammingPreviewRow[];
+  warnings?: string[];
 };
 
 export type CreateProgrammingBatchState = {

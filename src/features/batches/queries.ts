@@ -174,7 +174,7 @@ export async function getBatchDetail(projectId: string, batchId: string, timezon
       realVolume: dispatch.real_volume === null ? null : numeric(dispatch.real_volume),
       realUnitCode: dispatch.real_unit_code, guideCount: guideCount.get(dispatch.id) ?? 0,
       reconciliationId: reconciliation?.id ?? null,
-      reconciliationStatus: reconciliation?.status ?? "PENDING_INVOICES",
+      reconciliationStatus: reconciliation?.status ?? "NOT_STARTED",
       productInvoice: reconciliation?.current_product_invoice_id ? invoiceViewById.get(reconciliation.current_product_invoice_id) ?? null : null,
       serviceInvoice: reconciliation?.current_service_invoice_id ? invoiceViewById.get(reconciliation.current_service_invoice_id) ?? null : null,
       latestAttempt: latestAttemptByDispatch.get(dispatch.id) ?? null,

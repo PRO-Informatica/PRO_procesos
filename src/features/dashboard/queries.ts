@@ -4,7 +4,7 @@ import type { BatchStatus, DashboardActivity, DashboardBatch, DashboardWeekDay, 
 
 const DEFAULT_TIMEZONE = "America/Guatemala";
 type ProgrammingRow = { id: string; scheduled_at: string; requested_quantity: number | string; confirmed_quantity: number | string | null; unit_code: string; status: ProgrammingStatus };
-type ReconciliationStatus = "PENDING_INVOICES" | "PENDING_RECONCILIATION" | "WITH_DIFFERENCES" | "PENDING_REINVOICING" | "RECONCILED";
+type ReconciliationStatus = "NOT_STARTED" | "PENDING_RECONCILIATION" | "WITH_DIFFERENCES" | "PENDING_REINVOICING" | "RECONCILED";
 type ReconciliationRow = { id: string; dispatch_id: string; status: ReconciliationStatus };
 type BatchReconciliationRow = { id: string; code: string; period_start: string; members: Array<{ dispatch_id: string; removed_at: string | null }> | null };
 function numeric(value: unknown) { const parsed = Number(value ?? 0); return Number.isFinite(parsed) ? parsed : 0; }
@@ -35,7 +35,7 @@ export async function getProjectDashboard(projectId: string, projectTimezone: st
   const programmedMonth = programming.filter((row) => row.unit_code === "M3" && row.status !== "CANCELLED").reduce((sum, row) => sum + quantity(row), 0);
   const receivedMonth = guides.filter((row) => row.unit_code === "M3").reduce((sum, row) => sum + numeric(row.quantity), 0);
   const weekDays: DashboardWeekDay[] = Array.from({ length: 7 }, (_, index) => { const date = add(start, index); const dayPrograms = weekProgramming.filter((row) => zonedDate(row.scheduled_at, timezone) === date); const dayGuides = guides.filter((row) => row.guide_date === date && row.unit_code === "M3"); const shortLabel = new Intl.DateTimeFormat("es-GT", { weekday: "short", timeZone: timezone }).format(new Date(`${date}T12:00:00Z`)).replace(".", "").slice(0, 3); return { date, shortLabel, programmingCount: dayPrograms.length, programmedM3: dayPrograms.filter((row) => row.unit_code === "M3").reduce((sum, row) => sum + quantity(row), 0), receivedM3: dayGuides.reduce((sum, row) => sum + numeric(row.quantity), 0), isToday: date === today }; });
-  const matched = orders.filter((row) => row.status === "RECONCILED").length; const noInvoice = orders.filter((row) => row.status === "PENDING_INVOICES").length; const differences = orders.filter((row) => ["WITH_DIFFERENCES", "PENDING_REINVOICING"].includes(row.status)).length;
+  const matched = orders.filter((row) => row.status === "RECONCILED").length; const noInvoice = orders.filter((row) => row.status === "NOT_STARTED").length; const differences = orders.filter((row) => ["WITH_DIFFERENCES", "PENDING_REINVOICING"].includes(row.status)).length;
   const activity: DashboardActivity[] = (activityResult.data ?? []).map((row) => { const relation = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles; return { id: row.id, action: row.action, entityType: row.entity_type, entityId: row.entity_id, createdAt: row.created_at, actorName: relation?.full_name?.trim() || (row.actor_user_id ? "Usuario no disponible" : "Sistema") }; });
   const current = batchResult.data as null | { id: string; code: string; period_start: string; period_end: string; accounting_period: string; status: BatchStatus; members: Array<{ removed_at: string | null }> | null };
   const currentBatch: DashboardBatch | null = current ? { id: current.id, code: current.code, periodStart: current.period_start, periodEnd: current.period_end, accountingPeriod: current.accounting_period, status: current.status, activeGuideCount: (current.members ?? []).filter((row) => row.removed_at === null).length } : null;
@@ -49,12 +49,12 @@ export async function getProjectDashboard(projectId: string, projectTimezone: st
       batchId: batch.id,
       batchCode: batch.code,
       periodStart: batch.period_start,
-      pendingInvoices: statuses.filter((status) => status === "PENDING_INVOICES").length,
+      pendingInvoices: statuses.filter((status) => status === "NOT_STARTED").length,
       pendingReconciliation: statuses.filter((status) => status === "PENDING_RECONCILIATION").length,
       reinvoicing: statuses.filter((status) => ["WITH_DIFFERENCES", "PENDING_REINVOICING"].includes(status)).length,
       reconciled: statuses.filter((status) => status === "RECONCILED").length,
     };
   });
   const overdueProgramming = programming.filter((row) => zonedDate(row.scheduled_at, timezone) < today && !["COMPLETED", "CANCELLED"].includes(row.status)).length;
-  return { today, weekStart: start, weekEnd: end, timezone, weekDays, currentBatch, batchReconciliation, activity, metrics: { today: { total: todayProgramming.length, completed: todayProgramming.filter((row) => row.status === "COMPLETED").length, pending: todayProgramming.filter((row) => !["COMPLETED", "CANCELLED"].includes(row.status)).length, programmedM3: todayProgramming.filter((row) => row.unit_code === "M3").reduce((sum, row) => sum + quantity(row), 0) }, week: { total: weekProgramming.length, completed: completedWeek, pending: weekProgramming.length - completedWeek, compliance: percent(completedWeek, weekProgramming.length) }, month: { programmedM3: programmedMonth, receivedM3: receivedMonth, execution: percent(receivedMonth, programmedMonth) }, orders: { pending: orders.length - matched - differences, completed: matched, reinvoicing: differences }, reconciliation: { matched, differences, withoutInvoice: noInvoice }, attention: { reinvoicing: differences, overdueProgramming, pendingInvoice: noInvoice, differences } } };
+  return { today, weekStart: start, weekEnd: end, timezone, weekDays, currentBatch, batchReconciliation, activity, metrics: { today: { total: todayProgramming.length, completed: todayProgramming.filter((row) => row.status === "COMPLETED").length, pending: todayProgramming.filter((row) => !["COMPLETED", "CANCELLED"].includes(row.status)).length, programmedM3: todayProgramming.filter((row) => row.unit_code === "M3").reduce((sum, row) => sum + quantity(row), 0) }, week: { total: weekProgramming.length, completed: completedWeek, pending: weekProgramming.length - completedWeek, compliance: percent(completedWeek, weekProgramming.length) }, month: { programmedM3: programmedMonth, receivedM3: receivedMonth, execution: percent(receivedMonth, programmedMonth) }, orders: { pending: orders.length - matched - differences, completed: matched, reinvoicing: differences }, reconciliation: { matched, differences, withoutInvoice: noInvoice }, attention: { reinvoicing: differences, overdueProgramming, pendingInvoice: noInvoice } } };
 }

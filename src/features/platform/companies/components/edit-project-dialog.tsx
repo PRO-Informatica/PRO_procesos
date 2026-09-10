@@ -86,15 +86,17 @@ function EditProjectForm({
             </div>
             <div className="sm:col-span-2">
               <label className="form-label" htmlFor={`edit-project-address-${project.id}`}>
-                Dirección
+                Dirección exacta de Obra *
               </label>
               <input
                 id={`edit-project-address-${project.id}`}
                 name="address"
+                required
+                minLength={5}
                 maxLength={300}
                 defaultValue={values?.address ?? project.address ?? ""}
                 className="form-input"
-                placeholder="Ubicación o dirección del proyecto"
+                placeholder="Dirección que aparece como Dirección de Envío"
               />
             </div>
             <div>

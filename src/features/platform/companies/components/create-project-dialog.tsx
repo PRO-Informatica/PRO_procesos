@@ -146,15 +146,17 @@ export function CreateProjectDialog({
                   </div>
                   <div className="sm:col-span-2">
                     <label className="form-label" htmlFor="project-address">
-                      Dirección
+                      Dirección exacta de Obra *
                     </label>
                     <input
                       id="project-address"
                       name="address"
+                      required
+                      minLength={5}
                       maxLength={300}
                       defaultValue={state.fields?.address}
                       className="form-input"
-                      placeholder="Ubicación o dirección del proyecto"
+                      placeholder="Dirección que aparece como Dirección de Envío"
                     />
                   </div>
                   <div>

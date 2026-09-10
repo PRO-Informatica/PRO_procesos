@@ -519,10 +519,23 @@ export async function extractProgrammingWorkbookAction(
     return { status: "error", message: "No tienes permiso para cargar programaciones." };
   }
   try {
-    const billingLegalName =
-      context.activeProject?.billingLegalName?.trim() ?? "";
-    const [rows, catalogs] = await Promise.all([
-      extractMixtoProgrammingWorkbook(file, billingLegalName),
+    const [workbook, catalogs] = await Promise.all([
+      extractMixtoProgrammingWorkbook(file, {
+        id: context.activeProject?.id,
+        label: context.activeProject
+          ? `${context.activeProject.code} · ${context.activeProject.name}`
+          : undefined,
+        billingLegalName: context.activeProject?.billingLegalName?.trim() ?? "",
+        address: context.activeProject?.address?.trim() ?? "",
+        candidateProjects: context.projects
+          .filter((project) => project.status === "ACTIVE")
+          .map((project) => ({
+            id: project.id,
+            label: `${project.code} · ${project.name}`,
+            address: project.address,
+            billingLegalName: project.billingLegalName,
+          })),
+      }),
       getProgrammingCatalogs(projectId),
     ]);
     const defaultSupplier =
@@ -536,7 +549,8 @@ export async function extractProgrammingWorkbookAction(
     return {
       status: "success",
       fileName: file.name,
-      rows: rows.map((row) => ({
+      warnings: workbook.warnings,
+      rows: workbook.rows.map((row) => ({
         ...row,
         supplierId: defaultSupplier?.id ?? "",
         unitCode: m3Unit?.code ?? "",

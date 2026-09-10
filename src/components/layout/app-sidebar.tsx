@@ -42,6 +42,8 @@ type NavigationItem = {
   permission?: string;
   anyPermission?: string[];
   companyAdminOnly?: boolean;
+  universalInvoicesOnly?: boolean;
+  exact?: boolean;
 };
 
 const navigation: Array<{ label: string; items: NavigationItem[] }> = [
@@ -66,7 +68,13 @@ const navigation: Array<{ label: string; items: NavigationItem[] }> = [
     items: [
       { label: "Reportería", icon: BarChart3, href: "/reports", permission: "dispatch.view" },
       { label: "Lotes", icon: FolderKanban, href: "/batches", permission: "batch.view" },
-      { label: "Facturas", icon: ReceiptText, href: "/invoices", permission: "invoice.view" },
+      { label: "Facturas", icon: ReceiptText, href: "/invoices", permission: "invoice.view", exact: true },
+      {
+        label: "Facturas Universal",
+        icon: Globe2,
+        href: "/invoices/universal",
+        universalInvoicesOnly: true,
+      },
       {
         label: "Conciliación",
         icon: Scale,
@@ -106,6 +114,7 @@ export function AppSidebar({
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => {
+        if (item.universalInvoicesOnly) return projectContext.hasUniversalInvoiceAccess;
         if (item.enabled || (!item.permission && !item.anyPermission && !item.companyAdminOnly)) {
           return true;
         }
@@ -176,8 +185,8 @@ export function AppSidebar({
                   {section.items.map((item) => {
                     const Icon = item.icon;
                     const active =
-                      item.href === "/"
-                        ? pathname === "/"
+                      item.href === "/" || item.exact
+                        ? pathname === item.href
                         : Boolean(item.href && pathname.startsWith(item.href));
                     const sharedClass = `flex min-h-11 w-full items-center rounded-lg text-sm transition-colors ${
                       collapsed ? "gap-3 px-3 lg:justify-center lg:px-2" : "gap-3 px-3"

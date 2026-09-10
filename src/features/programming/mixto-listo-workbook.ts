@@ -4,7 +4,7 @@ import { Workbook, type CellValue, type Worksheet } from "exceljs";
 
 import type { BulkProgrammingPreviewRow } from "./types";
 import {
-  assertMixtoProjectReference,
+  validateMixtoProjectReference,
   MIXTO_PROJECT_REFERENCE_MISSING_ERROR,
 } from "./project-reference";
 
@@ -146,9 +146,35 @@ function extractInvoiceRecipient(sheet: Worksheet) {
   throw new Error(MIXTO_PROJECT_REFERENCE_MISSING_ERROR);
 }
 
+function extractProjectAddress(sheet: Worksheet) {
+  for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
+    const row = sheet.getRow(rowNumber);
+    for (let column = 1; column <= Math.max(row.cellCount, 1); column += 1) {
+      const label = cellText(row.getCell(column).value);
+      if (!normalized(label).includes("direccion exacta de obra")) continue;
+      for (let candidateColumn = column + 1; candidateColumn <= row.cellCount; candidateColumn += 1) {
+        const candidate = cellText(row.getCell(candidateColumn).value);
+        if (candidate && normalized(candidate) !== normalized(label)) return candidate.trim();
+      }
+    }
+  }
+  return "";
+}
+
 export async function extractMixtoProgrammingWorkbook(
   file: File,
-  billingLegalName: string,
+  project: {
+    id?: string;
+    label?: string;
+    billingLegalName: string;
+    address: string;
+    candidateProjects?: Array<{
+      id: string;
+      label: string;
+      address: string;
+      billingLegalName: string | null;
+    }>;
+  },
 ) {
   if (
     file.size <= 0 ||
@@ -177,7 +203,16 @@ export async function extractMixtoProgrammingWorkbook(
   ) throw new Error(MIXTO_WORKBOOK_ERROR);
 
   const invoiceRecipient = extractInvoiceRecipient(sheet);
-  assertMixtoProjectReference(billingLegalName, invoiceRecipient);
+  const workbookAddress = extractProjectAddress(sheet);
+  const reference = validateMixtoProjectReference({
+    projectId: project.id,
+    projectLabel: project.label,
+    projectAddress: project.address,
+    workbookAddress,
+    billingLegalName: project.billingLegalName,
+    invoiceRecipient,
+    candidateProjects: project.candidateProjects,
+  });
 
   const headerRow = findHeaderRow(sheet);
   if (!headerRow) throw new Error(MIXTO_WORKBOOK_ERROR);
@@ -236,5 +271,5 @@ export async function extractMixtoProgrammingWorkbook(
     });
   }
   if (!rows.length) throw new Error(MIXTO_WORKBOOK_ERROR);
-  return rows;
+  return { rows, warnings: reference.warnings };
 }

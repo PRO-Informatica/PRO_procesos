@@ -7,6 +7,7 @@ import {
   MIXTO_PROJECT_MISMATCH_ERROR,
   MIXTO_PROJECT_REFERENCE_MISSING_ERROR,
   mixtoProjectMismatchMessage,
+  validateMixtoProjectReference,
 } from "../src/features/programming/project-reference.ts";
 import {
   matchesFiscalIdentity,
@@ -33,6 +34,72 @@ test("normaliza únicamente formato y abreviaciones conocidas", () => {
       assertMixtoProjectReference(billingLegalName, value),
     );
   }
+});
+
+test("Excel identifica el proyecto por dirección exacta y usa razón social como warning", () => {
+  const reference = validateMixtoProjectReference({
+    projectAddress: "9 CALLE 5A-62, ZONA 9, QUETZALTENANGO",
+    workbookAddress: "9 calle 5a 62 zona 9 quetzaltenango",
+    billingLegalName: "INMOBILIARIA LOS ANTURIOS, S.A.",
+    invoiceRecipient: "OTRA RAZÓN SOCIAL, S.A.",
+  });
+  assert.match(reference.warning, /razón social receptora|destinatario de factura/i);
+});
+
+test("Excel acepta ADO con diferencias de escritura y explica la coincidencia", () => {
+  const reference = validateMixtoProjectReference({
+    projectId: "ado",
+    projectLabel: "ADO · ADO-PRO",
+    projectAddress: "1RA CALLE BOULBEARD PRINCIPAL LABOR XELA ZONA 1 LA ESPERANZA QUETZALTENANGO",
+    workbookAddress: "1ra. Calle Boulebart Principal Labor Xela, Zona 1 del Municipio de la Ezperanza, Quetzaltenango",
+    billingLegalName: "ADO, S.A.",
+    invoiceRecipient: "ADO, S.A.",
+    candidateProjects: [{
+      id: "ado",
+      label: "ADO · ADO-PRO",
+      address: "1RA CALLE BOULBEARD PRINCIPAL LABOR XELA ZONA 1 LA ESPERANZA QUETZALTENANGO",
+      billingLegalName: "ADO, S.A.",
+    }],
+  });
+
+  assert.equal(reference.comparison.result, "MATCH");
+  assert.match(reference.warnings.join(" "), /pequeñas diferencias de escritura/u);
+  assert.match(reference.warnings.join(" "), /Dirección configurada/u);
+  assert.match(reference.warnings.join(" "), /Dirección detectada/u);
+});
+
+test("Excel no elige el primer proyecto cuando hay candidatos ambiguos", () => {
+  assert.throws(() => validateMixtoProjectReference({
+    projectId: "project-a",
+    projectLabel: "Proyecto A",
+    projectAddress: "9 CALLE 5A-62 ZONA 9",
+    workbookAddress: "9 CALLE 5A 62 ZONA 9",
+    billingLegalName: "MISMA EMPRESA, S.A.",
+    invoiceRecipient: "MISMA EMPRESA, S.A.",
+    candidateProjects: [
+      {
+        id: "project-a",
+        label: "Proyecto A",
+        address: "9 CALLE 5A-62 ZONA 9",
+        billingLegalName: "MISMA EMPRESA, S.A.",
+      },
+      {
+        id: "project-b",
+        label: "Proyecto B",
+        address: "9 CALLE 5A 62 ZONA 9",
+        billingLegalName: "MISMA EMPRESA, S.A.",
+      },
+    ],
+  }), /más de un proyecto autorizado/u);
+});
+
+test("Excel rechaza una dirección diferente aunque la razón social coincida", () => {
+  assert.throws(() => validateMixtoProjectReference({
+    projectAddress: "9 CALLE 5A-62 ZONA 9",
+    workbookAddress: "9 CALLE 5A-63 ZONA 9",
+    billingLegalName: "INMOBILIARIA LOS ANTURIOS, S.A.",
+    invoiceRecipient: "INMOBILIARIA LOS ANTURIOS, S.A.",
+  }), /Dirección exacta de Obra/u);
 });
 
 test("rechaza nombres de proyectos distintos sin fuzzy matching", () => {

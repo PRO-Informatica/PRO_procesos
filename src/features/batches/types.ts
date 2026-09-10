@@ -4,7 +4,7 @@ export const BATCH_STATUSES = ["OPEN", "CLOSED"] as const;
 export type BatchStatus = (typeof BATCH_STATUSES)[number];
 export type BatchSource = "USER" | "SYSTEM";
 export type InvoiceType = "PRODUCT" | "SERVICE";
-export type ReconciliationStatus = "PENDING_INVOICES" | "PENDING_RECONCILIATION" | "WITH_DIFFERENCES" | "PENDING_REINVOICING" | "RECONCILED";
+export type ReconciliationStatus = "NOT_STARTED" | "PENDING_RECONCILIATION" | "WITH_DIFFERENCES" | "PENDING_REINVOICING" | "RECONCILED";
 
 export type BatchSummary = {
   id: string; code: string; periodStart: string; periodEnd: string;

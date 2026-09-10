@@ -41,6 +41,8 @@ export async function getGlobalReconciliation(projectId: string): Promise<Global
         supplierName: suppliers.get(dispatch.supplier_id) ?? "Proveedor no disponible",
         realVolume: numeric(dispatch.real_volume), unitCode: dispatch.real_unit_code ?? "—",
         invoiceCount: Number(Boolean(row.current_product_invoice_id)) + Number(Boolean(row.current_service_invoice_id)),
+        hasProductInvoice: Boolean(row.current_product_invoice_id),
+        hasServiceInvoice: Boolean(row.current_service_invoice_id),
         reconciliationStatus: row.status,
         difference: latestDifference.get(dispatch.id) ?? null,
       }];

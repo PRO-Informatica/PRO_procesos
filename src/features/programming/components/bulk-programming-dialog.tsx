@@ -107,12 +107,24 @@ export function BulkProgrammingDialog({
                     Se validarán la hoja <strong>Solicitud de Concreto</strong>, el correo de Mixto Listo, la sección Datos para la Fundición y sus encabezados. No se usa OCR.
                   </div>
                   {extractState.status === "error" && <p className="mt-4 rounded-lg bg-destructive-soft px-4 py-3 text-sm text-destructive" role="alert">{extractState.message}</p>}
+                  {extractState.status === "success" && extractState.warnings?.map((warning) => (
+                    <p key={warning} className="mt-4 rounded-lg bg-warning-soft px-4 py-3 text-sm text-warning" role="status">{warning}</p>
+                  ))}
                   <div className="mt-5 flex justify-end"><LoadingButton loadingLabel="Extrayendo datos…">Vista previa</LoadingButton></div>
                 </form>
               ) : (
                 <form action={batchAction}>
                   <input type="hidden" name="projectId" value={projectId} />
                   <input type="hidden" name="rows" value={JSON.stringify(validatedRows)} />
+                  {extractState.warnings?.map((warning) => (
+                    <p
+                      key={warning}
+                      className="mb-4 rounded-lg bg-warning-soft px-4 py-3 text-sm leading-6 text-warning"
+                      role="status"
+                    >
+                      {warning}
+                    </p>
+                  ))}
                   <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h3 className="text-sm font-semibold text-foreground">Vista previa obligatoria</h3>

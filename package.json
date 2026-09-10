@@ -12,7 +12,8 @@
     "test:programming-scope": "node --no-warnings --experimental-strip-types --test tests/programming-scope.test.mjs",
     "test:phase2-dispatch": "node --no-warnings --experimental-strip-types --test tests/phase2-dispatch.test.mjs",
     "test:phase3-invoices": "node --no-warnings --experimental-strip-types --test tests/phase3-invoice-processing.test.mjs",
-    "test:reports": "node --no-warnings --experimental-strip-types --test tests/report-export.test.mjs"
+    "test:reports": "node --no-warnings --experimental-strip-types --test tests/report-export.test.mjs",
+    "test:universal-invoices": "node --no-warnings --experimental-strip-types --test tests/universal-invoice-pipeline.test.mjs"
   },
   "dependencies": {
     "@schedule-x/calendar": "^4.7.0",

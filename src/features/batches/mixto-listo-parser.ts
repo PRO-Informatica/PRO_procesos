@@ -17,6 +17,9 @@ export type MixtoListoParsedInvoice = {
   billing_tax_id: string | null;
   supplier_legal_name: string | null;
   supplier_tax_id: string | null;
+  shipping_address: string | null;
+  authorization_number: string | null;
+  series: string | null;
   detected_invoice_numbers: string[];
   lines: MixtoListoParsedLine[];
 };
@@ -73,8 +76,21 @@ export function orderNumberFromMixtoListoPca(value: string | null) {
   return match[1].replace(/^0+(?=\d)/, "");
 }
 
-function cleanIdentity(value: string | undefined) {
+function cleanIdentity(value: string | null | undefined) {
   return value?.replace(/\s+/g, " ").trim() || null;
+}
+
+function fiscalAuthorizationAfterLabel(lines: string[]) {
+  const labelIndex = lines.findIndex((line) =>
+    /^N[ÚU]MERO\s+AUTORIZACI[ÓO]N\s*:/i.test(line),
+  );
+  if (labelIndex < 0) return null;
+  const authorizationPattern = /\b[A-Z0-9]{8}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{12}\b/i;
+  for (const line of lines.slice(labelIndex, labelIndex + 4)) {
+    const match = line.match(authorizationPattern);
+    if (match) return match[0];
+  }
+  return null;
 }
 
 export function parseMixtoListoInvoiceText(
@@ -91,6 +107,11 @@ export function parseMixtoListoInvoiceText(
     normalizedText.match(/(?:^|\n)N[ÚU]MERO:\s*([A-Z0-9-]+)/im)?.[1] ??
     normalizedText.match(/(?:^|\n)FACTURA:\s*([A-Z0-9_-]+)/im)?.[1] ??
     null;
+  const authorizationNumber = fiscalAuthorizationAfterLabel(sourceLines);
+  const series = normalizedText.match(/(?:^|\n)SERIE:\s*([A-Z0-9-]+)/im)?.[1] ?? null;
+  const shippingAddress = normalizedText.match(
+    /DIRECCI[ÓO]N\s+DE\s+ENV[IÍ]O:\s*([^\n]+)/i,
+  )?.[1];
   const detectedInvoiceNumbers = [
     ...normalizedText.matchAll(/(?:^|\n)N[ÚU]MERO:\s*([A-Z0-9-]+)/gim),
   ].map((match) => match[1].toUpperCase());
@@ -201,6 +222,9 @@ export function parseMixtoListoInvoiceText(
     billing_tax_id: cleanIdentity(billingTaxId),
     supplier_legal_name: cleanIdentity(supplierMatch?.[1]),
     supplier_tax_id: cleanIdentity(supplierMatch?.[2]),
+    shipping_address: cleanIdentity(shippingAddress),
+    authorization_number: cleanIdentity(authorizationNumber),
+    series: cleanIdentity(series),
     detected_invoice_numbers: [...new Set(detectedInvoiceNumbers)],
     lines,
   };

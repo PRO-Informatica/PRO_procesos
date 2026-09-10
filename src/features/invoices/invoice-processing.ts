@@ -1,12 +1,15 @@
 import "server-only";
 
 import { extractMixtoListoInvoicePdf } from "@/features/batches/mixto-listo-extractor";
-import { orderNumberFromMixtoListoPca } from "@/features/batches/mixto-listo-parser";
+import { orderNumberFromMixtoListoPca, type MixtoListoParsedInvoice } from "@/features/batches/mixto-listo-parser";
 import {
-  matchesFiscalIdentity,
   normalizeBusinessIdentity,
   normalizeTaxIdentity,
 } from "@/lib/business-identity";
+import { compareAddresses, normalizeAddressIdentity } from "@/lib/address-identity";
+
+import { classifyInvoiceLine, classifyInvoiceLines } from "./invoice-classification";
+import { buildFiscalDocumentKey } from "./invoice-identity";
 
 export type ProcessedInvoiceType = "PRODUCT" | "SERVICE" | "UNKNOWN";
 
@@ -17,6 +20,7 @@ export type InvoiceProcessingContext = {
   supplierTaxId: string | null;
   billingLegalName: string | null;
   billingTaxId: string | null;
+  projectAddress: string | null;
   accountingPeriod: string;
   realVolume: number | null;
   realUnitCode: string | null;
@@ -35,6 +39,14 @@ export type InvoiceProcessingPayload = {
   supplier_legal_name: string | null;
   supplier_legal_name_normalized: string | null;
   supplier_tax_id: string | null;
+  shipping_address: string | null;
+  shipping_address_normalized: string | null;
+  project_match_method: "EXACT_ADDRESS" | "CANONICAL_ADDRESS" | "TOLERANT_ADDRESS";
+  authorization_number: string | null;
+  series: string | null;
+  issuer_tax_id_normalized: string;
+  fiscal_document_key: string;
+  file_sha256?: string;
   pca_original: string | null;
   detected_order_number: string | null;
   lines: Array<{
@@ -50,7 +62,7 @@ export type InvoiceProcessingPayload = {
   difference: number | null;
   validations: Record<string, boolean>;
   warnings: string[];
-  engine_version: "MIXTO_LISTO_PDF_TEXT_V2";
+  engine_version: "MIXTO_LISTO_PDF_TEXT_V3";
 };
 
 export type InvoiceProcessingResult =
@@ -76,23 +88,6 @@ export function normalizeOperationalOrder(value: string | null | undefined) {
     : compact.toUpperCase().replace(/\s+/g, "");
 }
 
-function normalizedDescription(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toUpperCase();
-}
-
-function classifyLine(code: string, description: string) {
-  const normalizedCode = code.trim().toUpperCase();
-  const normalizedText = normalizedDescription(description);
-  const product = /^\d+$/.test(normalizedCode) && normalizedText.startsWith("CON");
-  const service = /^SERV\d+/i.test(normalizedCode) ||
-    /^(BOMBEO|DOSIS|KM\.? EXTRA|SERVICIO|TRANSPORTE)/.test(normalizedText);
-  return { product, service };
-}
-
 function sameMonth(date: string, accountingPeriod: string) {
   return date.slice(0, 7) === accountingPeriod.slice(0, 7);
 }
@@ -102,6 +97,13 @@ export async function processInvoicePdf(
   context: InvoiceProcessingContext,
 ): Promise<InvoiceProcessingResult> {
   const extracted = await extractMixtoListoInvoicePdf(buffer);
+  return processExtractedInvoice(extracted, context);
+}
+
+export function processExtractedInvoice(
+  extracted: MixtoListoParsedInvoice,
+  context: InvoiceProcessingContext,
+): InvoiceProcessingResult {
   const required = [
     extracted.invoice_number,
     extracted.invoice_date,
@@ -125,7 +127,7 @@ export async function processInvoicePdf(
   }
 
   const lines = extracted.lines.map((line) => {
-    const classification = classifyLine(line.code, line.description);
+    const classification = classifyInvoiceLine(line);
     return {
       ...line,
       unit_code: normalizeInvoiceUnit(line.unit_code) ?? line.unit_code,
@@ -134,12 +136,7 @@ export async function processInvoicePdf(
     };
   });
   const productLines = lines.filter((line) => line.conciliable);
-  const hasService = lines.some((line) => line.service);
-  const detectedType: ProcessedInvoiceType = productLines.length
-    ? "PRODUCT"
-    : hasService
-      ? "SERVICE"
-      : "UNKNOWN";
+  const detectedType = classifyInvoiceLines(extracted.lines);
   const units = [...new Set(productLines.map((line) => line.unit_code))];
   const invoiceUnit = units.length === 1 ? units[0] : null;
   const invoicedQuantity = productLines.reduce((sum, line) => sum + line.quantity, 0);
@@ -150,22 +147,38 @@ export async function processInvoicePdf(
   const expectedSupplierName = normalizeBusinessIdentity(context.supplierName);
   const supplierTax = normalizeTaxId(extracted.supplier_tax_id);
   const expectedSupplierTax = normalizeTaxId(context.supplierTaxId);
-  const projectValid = matchesFiscalIdentity({
-    expectedName: context.billingLegalName,
-    actualName: extracted.billing_legal_name,
-    expectedTaxId: context.billingTaxId,
-    actualTaxId: extracted.billing_tax_id,
-  });
-  const supplierValid = expectedSupplierTax
+  const addressComparison = compareAddresses(
+    context.projectAddress,
+    extracted.shipping_address,
+  );
+  const projectValid = addressComparison.result === "MATCH";
+  const billingNameValid = Boolean(
+    normalizeBusinessIdentity(context.billingLegalName) &&
+      normalizeBusinessIdentity(context.billingLegalName) === billingName,
+  );
+  const supplierValid = supplierTax && expectedSupplierTax
     ? supplierTax === expectedSupplierTax
     : Boolean(expectedSupplierName && supplierName === expectedSupplierName);
+  const fiscalDocumentKey = buildFiscalDocumentKey({
+    issuerTaxId: extracted.supplier_tax_id,
+    authorizationNumber: extracted.authorization_number,
+    series: extracted.series,
+    invoiceNumber: extracted.invoice_number,
+  });
   const expectedUnit = normalizeInvoiceUnit(context.realUnitCode);
   const difference = context.realVolume === null || detectedType !== "PRODUCT"
     ? null
     : Number((invoicedQuantity - context.realVolume).toFixed(3));
   const warnings: string[] = [];
+  if (projectValid && addressComparison.matchMethod !== "EXACT") {
+    warnings.push(
+      `${addressComparison.warnings[0]} Dirección configurada: "${context.projectAddress?.trim() ?? ""}". Dirección detectada: "${extracted.shipping_address?.trim() ?? ""}".${addressComparison.differences.length ? ` ${addressComparison.differences.join(" ")}` : ""}`,
+    );
+  }
   const periodValid = sameMonth(extracted.invoice_date!, context.accountingPeriod);
   if (!periodValid) warnings.push("La fecha de la factura está fuera del período contable del lote.");
+  if (!billingNameValid)
+    warnings.push("La dirección corresponde al proyecto, pero la razón social receptora es diferente.");
   if (detectedType === "PRODUCT" && invoiceUnit !== expectedUnit)
     warnings.push("La unidad facturada no coincide con la unidad del Volumen Real.");
   if (difference !== null && Math.abs(difference) >= 0.001)
@@ -175,17 +188,20 @@ export async function processInvoicePdf(
     document_valid: true,
     type_valid: context.expectedType ? detectedType === context.expectedType : detectedType !== "UNKNOWN",
     project_valid: projectValid,
+    billing_name_valid: billingNameValid,
     supplier_valid: supplierValid,
     order_valid: detectedOrder !== null && detectedOrder === expectedOrder,
     period_valid: periodValid,
     unit_valid: detectedType === "SERVICE" || invoiceUnit === expectedUnit,
     quantity_valid: detectedType === "SERVICE" || difference === 0,
+    fiscal_identity_valid: Boolean(fiscalDocumentKey),
   };
   const criticalErrors = [
     !validations.type_valid && "El tipo detectado no coincide con el espacio seleccionado.",
-    !validations.project_valid && "La factura no corresponde al receptor fiscal del proyecto.",
+    !validations.project_valid && "La Dirección de Envío no corresponde a la Dirección exacta de Obra del proyecto.",
     !validations.supplier_valid && "El emisor no corresponde al proveedor del despacho.",
     !validations.order_valid && `El pedido detectado (${detectedOrder ?? "no detectado"}) no corresponde al pedido ${expectedOrder}.`,
+    !validations.fiscal_identity_valid && "La factura no contiene una identidad fiscal estable (NIT emisor y autorización, o serie/número).",
   ].filter((value): value is string => Boolean(value));
   if (criticalErrors.length) {
     return {
@@ -210,6 +226,17 @@ export async function processInvoicePdf(
       supplier_legal_name: extracted.supplier_legal_name,
       supplier_legal_name_normalized: supplierName,
       supplier_tax_id: extracted.supplier_tax_id,
+      shipping_address: extracted.shipping_address,
+      shipping_address_normalized: normalizeAddressIdentity(extracted.shipping_address) || null,
+      project_match_method: addressComparison.matchMethod === "EXACT"
+        ? "EXACT_ADDRESS"
+        : addressComparison.matchMethod === "CANONICAL"
+          ? "CANONICAL_ADDRESS"
+          : "TOLERANT_ADDRESS",
+      authorization_number: extracted.authorization_number,
+      series: extracted.series,
+      issuer_tax_id_normalized: supplierTax!,
+      fiscal_document_key: fiscalDocumentKey!,
       pca_original: extracted.pca_original,
       detected_order_number: detectedOrder,
       lines: lines.map((line) => ({
@@ -225,7 +252,7 @@ export async function processInvoicePdf(
       difference,
       validations,
       warnings,
-      engine_version: "MIXTO_LISTO_PDF_TEXT_V2",
+      engine_version: "MIXTO_LISTO_PDF_TEXT_V3",
     },
   };
 }

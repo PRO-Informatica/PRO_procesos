@@ -114,10 +114,10 @@ export async function createCompanyProject(
       fields,
     };
   }
-  if (address.length > 300) {
+  if (address.length < 5 || address.length > 300) {
     return {
       status: "error",
-      message: "La dirección no puede exceder 300 caracteres.",
+      message: "La Dirección exacta de Obra es obligatoria y debe tener entre 5 y 300 caracteres.",
       fields,
     };
   }
@@ -158,7 +158,7 @@ export async function createCompanyProject(
       p_company_id: companyId,
       p_name: name,
       p_code: code,
-      p_address: address || null,
+      p_address: address,
       p_timezone: timezone,
       p_start_date: startDate || null,
       p_estimated_end_date: estimatedEndDate || null,
@@ -282,10 +282,10 @@ export async function updateCompanyProject(
       fields,
     };
   }
-  if (address.length > 300) {
+  if (address.length < 5 || address.length > 300) {
     return {
       status: "error",
-      message: "La dirección no puede exceder 300 caracteres.",
+      message: "La Dirección exacta de Obra es obligatoria y debe tener entre 5 y 300 caracteres.",
       fields,
     };
   }
@@ -323,7 +323,7 @@ export async function updateCompanyProject(
     p_project_id: projectId,
     p_name: name,
     p_code: code,
-    p_address: address || null,
+    p_address: address,
     p_timezone: timezone,
     p_status: status,
     p_start_date: startDate || null,

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 
 import type {
   ProjectContextState,
+  ProjectAccessScope,
   ProjectStatus,
   ProjectSummary,
 } from "./types";
@@ -20,6 +21,7 @@ type ProjectRow = {
   code: string;
   billing_legal_name: string | null;
   billing_tax_id: string | null;
+  address: string;
   status: ProjectStatus;
   timezone: string | null;
 };
@@ -43,7 +45,7 @@ type CompanyRoleAssignmentRow = {
   role_id: string;
 };
 
-async function getOperationalProjectRows(userId: string): Promise<ProjectRow[]> {
+export async function getOperationalProjectRows(userId: string): Promise<ProjectRow[]> {
   const supabase = await createClient();
   const [projectMembershipsResult, companyMembershipsResult] = await Promise.all([
     supabase
@@ -125,7 +127,7 @@ async function getOperationalProjectRows(userId: string): Promise<ProjectRow[]> 
   }
 
   const projectColumns =
-    "id, company_id, name, code, billing_legal_name, billing_tax_id, status, timezone";
+    "id, company_id, name, code, address, billing_legal_name, billing_tax_id, status, timezone";
   const [memberProjectsResult, companyProjectsResult] = await Promise.all([
     directProjectIds.length > 0
       ? supabase.from("projects").select(projectColumns).in("id", directProjectIds)
@@ -161,7 +163,7 @@ export async function canAccessOperationalProject(
   return projects.some((project) => project.id === projectId);
 }
 
-async function resolveRolesAndPermissions(
+export async function resolveRolesAndPermissions(
   userId: string,
   project: ProjectSummary,
 ) {
@@ -262,6 +264,41 @@ async function resolveRolesAndPermissions(
   };
 }
 
+export async function getOperationalProjectAccess(
+  userId: string,
+): Promise<ProjectAccessScope[]> {
+  const rows = await getOperationalProjectRows(userId);
+  if (!rows.length) return [];
+  const supabase = await createClient();
+  const companyIds = [...new Set(rows.map((project) => project.company_id))];
+  const { data: companyRows, error } = await supabase
+    .from("companies")
+    .select("id, name")
+    .in("id", companyIds);
+  if (error) throw new Error("No fue posible consultar las empresas de los proyectos.");
+  const companyNames = new Map(
+    ((companyRows ?? []) as CompanyRow[]).map((company) => [company.id, company.name]),
+  );
+  const projects = rows.map((project): ProjectSummary => ({
+    id: project.id,
+    companyId: project.company_id,
+    companyName: companyNames.get(project.company_id) ?? "Empresa",
+    name: project.name,
+    code: project.code,
+    address: project.address,
+    billingLegalName: project.billing_legal_name,
+    billingTaxId: project.billing_tax_id,
+    status: project.status,
+    timezone: project.timezone ?? "America/Guatemala",
+  }));
+  return Promise.all(
+    projects.map(async (project) => {
+      const access = await resolveRolesAndPermissions(userId, project);
+      return { project, roleCodes: access.roleCodes, permissions: access.permissions };
+    }),
+  );
+}
+
 export async function getProjectContext(userId: string): Promise<ProjectContextState> {
   try {
     const supabase = await createClient();
@@ -294,6 +331,7 @@ export async function getProjectContext(userId: string): Promise<ProjectContextS
         code: project.code,
         billingLegalName: project.billing_legal_name,
         billingTaxId: project.billing_tax_id,
+        address: project.address,
         status: project.status,
         timezone: project.timezone ?? "America/Guatemala",
       }))
@@ -311,13 +349,22 @@ export async function getProjectContext(userId: string): Promise<ProjectContextS
     const storedProjectId = cookieStore.get(ACTIVE_PROJECT_COOKIE)?.value;
     const activeProject =
       projects.find((project) => project.id === storedProjectId) ?? projects[0];
-    const access = await resolveRolesAndPermissions(userId, activeProject);
+    const accessByProject = await Promise.all(
+      projects.map(async (project) => ({
+        project,
+        access: await resolveRolesAndPermissions(userId, project),
+      })),
+    );
+    const access = accessByProject.find(({ project }) => project.id === activeProject.id)!.access;
 
     return {
       status: "ready",
       projects,
       activeProject,
       ...access,
+      hasUniversalInvoiceAccess: accessByProject.some(({ access: item }) =>
+        item.permissions.includes("invoice.universal"),
+      ),
     };
   } catch (error) {
     return {

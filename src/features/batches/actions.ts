@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 
 import { requireActiveProfile } from "@/features/auth/queries";
+import { classifyInvoiceLines } from "@/features/invoices/invoice-classification";
 import { normalizeOperationalOrder, processInvoicePdf, type InvoiceProcessingContext } from "@/features/invoices/invoice-processing";
 import { getProjectContext } from "@/features/projects/queries";
-import { matchesFiscalIdentity } from "@/lib/business-identity";
+import { addressesMatch } from "@/lib/address-identity";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -39,6 +40,8 @@ function refresh(batchId?: string, dispatchId?: string) {
 function batchError(message: string) {
   const error = message.toUpperCase();
   if (error.includes("DISPATCH_ALREADY_IN_ACTIVE_BATCH")) return "El despacho ya pertenece a un lote activo.";
+  if (error.includes("DISPATCH_SELECTION_INVALID") || error.includes("DISPATCH_SELECTION_DUPLICATED")) return "Selecciona uno o más despachos válidos sin repetirlos.";
+  if (error.includes("DISPATCH_BATCH_CONTEXT_INVALID")) return "Uno de los despachos ya no pertenece al proyecto de este lote.";
   if (error.includes("DISPATCH_NOT_ELIGIBLE")) return "El despacho no es elegible para este lote.";
   if (error.includes("BATCH_NOT_EDITABLE")) return "El lote está cerrado y ya no permite cambios.";
   if (error.includes("REMOVAL_REASON")) return "Indica un motivo válido para remover el despacho.";
@@ -54,7 +57,8 @@ function invoiceError(message: string) {
   if (error.includes("ACTIVE_DISPATCH_INVOICE")) return "Ya existe una factura activa de ese tipo para el despacho.";
   if (error.includes("TYPE_MISMATCH")) return "El tipo detectado no coincide con el tipo de factura seleccionado.";
   if (error.includes("CRITICAL_VALIDATION")) return "El PDF no corresponde al proyecto, proveedor o pedido del despacho.";
-  if (error.includes("BOTH_DISPATCH_INVOICES")) return "Carga la factura de producto y la factura de servicio antes de conciliar.";
+  if (error.includes("PRODUCT_INVOICE_REQUIRED")) return "Carga la factura de producto antes de conciliar.";
+  if (error.includes("FISCAL_DOCUMENT_ALREADY_EXISTS")) return "Esta factura fiscal ya fue procesada anteriormente.";
   if (error.includes("PERMISSION_DENIED")) return "No tienes permiso para gestionar facturas.";
   return "No fue posible completar el proceso de factura.";
 }
@@ -70,7 +74,7 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
   const [dispatchResult, batchResult, projectResult, reconciliationResult] = await Promise.all([
     admin.from("dispatches").select("id, project_id, supplier_id, order_number, real_volume, real_unit_code, status").eq("id", dispatchId).eq("project_id", projectId).maybeSingle(),
     admin.from("batches").select("id, project_id, accounting_period").eq("id", batchId).eq("project_id", projectId).maybeSingle(),
-    admin.from("projects").select("id, billing_legal_name, billing_tax_id").eq("id", projectId).maybeSingle(),
+    admin.from("projects").select("id, address, billing_legal_name, billing_tax_id").eq("id", projectId).maybeSingle(),
     admin.from("dispatch_reconciliations").select("status, current_product_invoice_id, current_service_invoice_id").eq("dispatch_id", dispatchId).eq("project_id", projectId).maybeSingle(),
   ]);
   if (!dispatchResult.data || !batchResult.data || !projectResult.data) return null;
@@ -86,12 +90,13 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
     supplierTaxId: supplierResult.data.tax_id,
     billingLegalName: projectResult.data.billing_legal_name,
     billingTaxId: projectResult.data.billing_tax_id,
+    projectAddress: projectResult.data.address,
     accountingPeriod: batchResult.data.accounting_period,
     realVolume: dispatchResult.data.real_volume === null ? null : Number(dispatchResult.data.real_volume),
     realUnitCode: dispatchResult.data.real_unit_code,
     productInvoiceId: reconciliationResult.data?.current_product_invoice_id ?? null,
     serviceInvoiceId: reconciliationResult.data?.current_service_invoice_id ?? null,
-    reconciliationStatus: reconciliationResult.data?.status ?? "PENDING_INVOICES",
+    reconciliationStatus: reconciliationResult.data?.status ?? "NOT_STARTED",
   };
 }
 
@@ -105,12 +110,19 @@ export async function createBatchAction(_previous: BatchMutationState, formData:
 }
 
 export async function addDispatchToBatchAction(_previous: BatchMutationState, formData: FormData): Promise<BatchMutationState> {
-  const projectId = value(formData, "projectId"), batchId = value(formData, "batchId"), dispatchId = value(formData, "dispatchId");
-  if (![projectId, batchId, dispatchId].every((id) => UUID.test(id)) || !(await authorize(projectId, "batch.modify"))) return { status: "error", message: "No tienes permiso para modificar el lote." };
-  const { error } = await (await createClient()).rpc("add_dispatch_to_batch", { p_batch_id: batchId, p_dispatch_id: dispatchId });
+  const projectId = value(formData, "projectId"), batchId = value(formData, "batchId");
+  const dispatchIds = [...new Set([
+    ...formData.getAll("dispatchIds").filter((entry): entry is string => typeof entry === "string").map((entry) => entry.trim()),
+    value(formData, "dispatchId"),
+  ].filter(Boolean))];
+  if (![projectId, batchId].every((id) => UUID.test(id)) || !dispatchIds.length || dispatchIds.length > 200 || !dispatchIds.every((id) => UUID.test(id))) return { status: "error", message: "Selecciona al menos un despacho válido para modificar el lote." };
+  if (!(await authorize(projectId, "batch.modify"))) return { status: "error", message: "No tienes permiso para modificar el lote." };
+  const { data, error } = await (await createClient()).rpc("add_dispatches_to_batch", { p_batch_id: batchId, p_dispatch_ids: dispatchIds });
   if (error) return { status: "error", message: batchError(error.message) };
-  refresh(batchId, dispatchId);
-  return { status: "success", message: "Despacho agregado al lote." };
+  refresh(batchId);
+  dispatchIds.forEach((dispatchId) => revalidatePath(`/dispatches/${dispatchId}`));
+  const added = Number(data ?? dispatchIds.length);
+  return { status: "success", message: `${added} ${added === 1 ? "despacho agregado" : "despachos agregados"} al lote.` };
 }
 
 export async function removeDispatchFromBatchAction(_previous: BatchMutationState, formData: FormData): Promise<BatchMutationState> {
@@ -166,9 +178,9 @@ export async function inspectBatchInvoicePdf(projectId: string, batchId: string,
     const raw = await extractMixtoListoInvoicePdf(await file.arrayBuffer());
     if (raw.detected_invoice_numbers.length > 1) return { fileName: file.name, dispatchId: null, requestedType: null, status: "REQUIRES_REVIEW", message: "El PDF contiene más de una factura y no puede procesarse automáticamente.", payload: null, duplicate: false };
     const admin = createAdminClient();
-    const project = await admin.from("projects").select("billing_legal_name, billing_tax_id").eq("id", projectId).maybeSingle();
-    if (!project.data?.billing_legal_name?.trim()) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "El proyecto actual no tiene configurada su Razón Social de facturación.", payload: null, duplicate: false };
-    if (!matchesFiscalIdentity({ expectedName: project.data.billing_legal_name, actualName: raw.billing_legal_name, expectedTaxId: project.data.billing_tax_id, actualTaxId: raw.billing_tax_id })) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "La factura no pertenece al proyecto actual. El receptor fiscal no coincide con los datos fiscales del proyecto.", payload: null, duplicate: false };
+    const project = await admin.from("projects").select("address, billing_legal_name, billing_tax_id").eq("id", projectId).maybeSingle();
+    if (!project.data?.address?.trim()) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "El proyecto actual no tiene configurada su Dirección exacta de Obra.", payload: null, duplicate: false };
+    if (!addressesMatch(project.data.address, raw.shipping_address)) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "La Dirección de Envío de la factura no corresponde a la Dirección exacta de Obra del proyecto.", payload: null, duplicate: false };
     const orderNumber = orderNumberFromMixtoListoPca(raw.pca_original);
     if (!orderNumber) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "No se detectó un PCA válido.", payload: null, duplicate: false };
     const relations = await admin.from("batch_dispatches").select("dispatch_id").eq("project_id", projectId).eq("batch_id", batchId).is("removed_at", null);
@@ -177,7 +189,8 @@ export async function inspectBatchInvoicePdf(projectId: string, batchId: string,
     const matches = (dispatches.data ?? []).filter((row) => normalizeOperationalOrder(row.order_number) === orderNumber);
     if (matches.length !== 1) return { fileName: file.name, dispatchId: null, requestedType: null, status: matches.length > 1 ? "REQUIRES_REVIEW" : "DISPATCH_NOT_FOUND", message: matches.length > 1 ? "Más de un despacho coincide con el pedido; selecciona manualmente." : "No existe un despacho del lote para el pedido detectado.", payload: null, duplicate: false };
     const dispatchId = matches[0].id;
-    const candidateType: InvoiceType = raw.lines.some((line) => /^\d+$/.test(line.code) && line.description.trim().toUpperCase().startsWith("CON")) ? "PRODUCT" : "SERVICE";
+    const candidateType = classifyInvoiceLines(raw.lines);
+    if (candidateType === "UNKNOWN") return { fileName: file.name, dispatchId, requestedType: null, status: "REQUIRES_REVIEW", message: "No fue posible clasificar la factura como Producto o Servicio.", payload: null, duplicate: false };
     const next = new FormData(); next.set("file", file);
     return inspectDispatchInvoicePdf(projectId, batchId, dispatchId, candidateType, next);
   } catch {
@@ -196,7 +209,8 @@ export async function saveDispatchInvoice(projectId: string, batchId: string, di
   catch { return { status: "error" as const, message: "No fue posible leer el PDF digital." }; }
   if (processed.status === "error") return { status: "error" as const, message: [processed.message, ...processed.details].join(" ") };
   const supabase = await createClient();
-  const prepared = await supabase.rpc("prepare_dispatch_invoice_upload", { p_batch_id: batchId, p_dispatch_id: dispatchId, p_invoice_type: requestedType, p_payload: processed.payload, p_file_name: file.name, p_file_size: file.size, p_replaces_invoice_id: replacesInvoiceId });
+  const payload = { ...processed.payload, file_sha256: Buffer.from(await crypto.subtle.digest("SHA-256", await file.arrayBuffer())).toString("hex") };
+  const prepared = await supabase.rpc("prepare_dispatch_invoice_upload_v2", { p_batch_id: batchId, p_dispatch_id: dispatchId, p_invoice_type: requestedType, p_payload: payload, p_file_name: file.name, p_file_size: file.size, p_replaces_invoice_id: replacesInvoiceId });
   const row = prepared.data?.[0];
   if (prepared.error || !row) return { status: "error" as const, message: invoiceError(prepared.error?.message ?? "INVOICE_PREPARE_FAILED") };
   const admin = createAdminClient();
@@ -212,7 +226,7 @@ export async function saveDispatchInvoice(projectId: string, batchId: string, di
     await supabase.rpc("fail_dispatch_invoice_processing", { p_invoice_id: row.invoice_id, p_reason: finalized.error.message.slice(0, 500) });
     return { status: "error" as const, message: invoiceError(finalized.error.message) };
   }
-  const completed = await supabase.rpc("complete_dispatch_invoice_processing", { p_invoice_id: row.invoice_id, p_document_version_id: row.version_id, p_payload: processed.payload });
+  const completed = await supabase.rpc("complete_dispatch_invoice_processing", { p_invoice_id: row.invoice_id, p_document_version_id: row.version_id, p_payload: payload });
   if (completed.error) {
     await supabase.rpc("fail_dispatch_invoice_processing", { p_invoice_id: row.invoice_id, p_reason: completed.error.message.slice(0, 500) });
     return { status: "error" as const, message: invoiceError(completed.error.message) };
@@ -227,15 +241,6 @@ export async function reconcileDispatchAction(projectId: string, batchId: string
   if (error) return { status: "error" as const, message: invoiceError(error.message) };
   refresh(batchId, dispatchId);
   return { status: "success" as const, reconciliationStatus: String(data) };
-}
-
-export async function requestDispatchReinvoicingAction(_previous: BatchMutationState, formData: FormData): Promise<BatchMutationState> {
-  const projectId = value(formData, "projectId"), batchId = value(formData, "batchId"), dispatchId = value(formData, "dispatchId");
-  if (![projectId, batchId, dispatchId].every((id) => UUID.test(id)) || !(await authorize(projectId, "invoice.review"))) return { status: "error", message: "No tienes permiso para solicitar refacturación." };
-  const { error } = await (await createClient()).rpc("request_dispatch_reinvoicing", { p_dispatch_id: dispatchId, p_reason: value(formData, "reason") });
-  if (error) return { status: "error", message: invoiceError(error.message) };
-  refresh(batchId, dispatchId);
-  return { status: "success", message: "Refacturación solicitada; la factura anterior se conserva." };
 }
 
 export async function getInvoiceDownloadUrl(projectId: string, documentId: string) {

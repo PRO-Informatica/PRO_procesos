@@ -8,6 +8,7 @@ export type ProjectSummary = {
   code: string;
   billingLegalName: string | null;
   billingTaxId: string | null;
+  address: string;
   status: ProjectStatus;
   timezone: string;
 };
@@ -18,12 +19,19 @@ export type ProjectContextData = {
   roleCodes: string[];
   permissions: string[];
   isCompanyAdmin: boolean;
+  hasUniversalInvoiceAccess: boolean;
 };
 
 export type ProjectContextState =
   | ({ status: "ready" } & ProjectContextData)
   | ({ status: "empty" } & ProjectContextData)
   | ({ status: "error"; message: string } & ProjectContextData);
+
+export type ProjectAccessScope = {
+  project: ProjectSummary;
+  roleCodes: string[];
+  permissions: string[];
+};
 
 export type SwitchProjectState = {
   status: "idle" | "error" | "success";
@@ -36,4 +44,5 @@ export const emptyProjectContext: ProjectContextData = {
   roleCodes: [],
   permissions: [],
   isCompanyAdmin: false,
+  hasUniversalInvoiceAccess: false,
 };
