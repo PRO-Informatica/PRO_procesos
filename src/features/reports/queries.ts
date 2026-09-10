@@ -7,6 +7,7 @@ import type { GuideReportData, GuideReportFilters, GuideReportRow, ProgrammingRe
 
 type ProjectInput = { id: string; name: string; timezone: string };
 type Row = Record<string, unknown>;
+type ActorLabelRow = { profile_id: string; display_label: string };
 const empty = <T,>() => Promise.resolve({ data: [] as T[], error: null });
 
 function numeric(value: unknown) { const parsed = Number(value ?? 0); return Number.isFinite(parsed) ? parsed : 0; }
@@ -57,14 +58,19 @@ export async function getGuideReport(projects: ProjectInput[], filters: GuideRep
   const incidentIds = (incidentsResult.data ?? []).map((incident) => incident.id);
   const batchIds = [...new Set((relationsResult.data ?? []).map((relation) => relation.batch_id))];
   const supplierIds = [...new Set([...programs.map((program) => String(program.supplier_id)), ...dispatches.map((dispatch) => String(dispatch.supplier_id))])];
-  const creatorIds = [...new Set([...programs.map((program) => String(program.created_by)), ...dispatches.map((dispatch) => String(dispatch.created_by))])];
+  const creatorIds = [...new Set(
+    [
+      ...programs.map((program) => optionalText(program.created_by)),
+      ...dispatches.map((dispatch) => optionalText(dispatch.created_by)),
+    ].filter((id): id is string => Boolean(id)),
+  )];
   const invoiceIds = (invoicesResult.data ?? []).map((invoice) => String(invoice.id));
 
   const [guideDocs, incidentDocs, suppliers, profiles, batches, invoiceDocuments, invoiceExtractions] = await Promise.all([
     guideIds.length ? supabase.from("guide_documents").select("guide_id, document_id").in("guide_id", guideIds) : empty<{ guide_id: string; document_id: string }>(),
     incidentIds.length ? supabase.from("incident_documents").select("incident_id, document_id").in("incident_id", incidentIds) : empty<{ incident_id: string; document_id: string }>(),
     supplierIds.length ? supabase.from("suppliers").select("id, name").in("id", supplierIds) : empty<{ id: string; name: string }>(),
-    creatorIds.length ? supabase.from("profiles").select("id, full_name").in("id", creatorIds) : empty<{ id: string; full_name: string | null }>(),
+    creatorIds.length ? supabase.rpc("get_report_actor_labels", { p_project_ids: projectIds }) : empty<ActorLabelRow>(),
     batchIds.length ? supabase.from("batches").select("id, code").in("id", batchIds) : empty<{ id: string; code: string }>(),
     invoiceIds.length ? admin.from("invoice_documents").select("invoice_id, document_id").in("invoice_id", invoiceIds).in("project_id", projectIds) : empty<{ invoice_id: string; document_id: string }>(),
     invoiceIds.length ? admin.from("invoice_extractions").select("invoice_id, verification_status, normalized_payload, corrected_payload, created_at").in("invoice_id", invoiceIds).order("created_at", { ascending: false }) : empty<Row>(),
@@ -76,7 +82,11 @@ export async function getGuideReport(projects: ProjectInput[], filters: GuideRep
   if (invoiceVersions.error) throw new Error("No fue posible resolver los documentos de factura.");
 
   const supplierMap = new Map((suppliers.data ?? []).map((row) => [row.id, row.name]));
-  const profileMap = new Map((profiles.data ?? []).map((row) => [row.id, row.full_name?.trim() || "Usuario no disponible"]));
+  const profileMap = new Map(
+    ((profiles.data ?? []) as ActorLabelRow[])
+      .filter((row) => creatorIds.includes(row.profile_id))
+      .map((row) => [row.profile_id, row.display_label]),
+  );
   const batchMap = new Map((batches.data ?? []).map((row) => [row.id, row.code]));
   const batchByDispatch = new Map((relationsResult.data ?? []).map((row) => [row.dispatch_id, row.batch_id]));
   const reconciliationByDispatch = new Map((reconciliationsResult.data ?? []).map((row) => [row.dispatch_id, row]));

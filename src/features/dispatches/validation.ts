@@ -1,5 +1,12 @@
 import type { DispatchResult } from "./types";
 
+export type DispatchGuideLineInput = {
+  quantity: number;
+  unit_code: string;
+  product_code: string | null;
+  product_description: string | null;
+};
+
 export function totalGuideVolume(guides: Array<{ quantity: number }>) {
   return guides.reduce((total, guide) => total + guide.quantity, 0);
 }
@@ -33,4 +40,30 @@ export function canCompleteDispatch(input: {
       input.realVolume > 0 &&
       input.realUnitCode,
   );
+}
+
+export function validateDispatchGuideLines(lines: DispatchGuideLineInput[]) {
+  if (
+    !lines.length ||
+    lines.some(
+      (line) =>
+        !Number.isFinite(line.quantity) ||
+        line.quantity <= 0 ||
+        !line.unit_code,
+    )
+  ) {
+    return "Cada producto necesita una cantidad mayor que cero y una UM.";
+  }
+
+  if (
+    lines.some(
+      (line) =>
+        (line.product_code?.length ?? 0) > 120 ||
+        (line.product_description?.length ?? 0) > 500,
+    )
+  ) {
+    return "Revisa la longitud del código o la descripción del producto.";
+  }
+
+  return null;
 }

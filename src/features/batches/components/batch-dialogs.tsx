@@ -2,7 +2,7 @@
 
 import { AlertTriangle, CalendarRange, CheckCircle2, Plus, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 
 import { LoadingButton } from "@/components/feedback/loading-button";
 import { useActionNotification } from "@/components/feedback/use-action-notification";
@@ -39,17 +39,21 @@ export function CreateBatchDialog({ project, onClose }: { project: ProjectSummar
   return <Modal title="Crear lote semanal" description="La semana canónica inicia lunes y termina domingo." icon={CalendarRange} onClose={onClose} pending={pending}><form action={action}><input type="hidden" name="projectId" value={project.id} /><div className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6"><div className="sm:col-span-2"><label className="form-label" htmlFor="batch-code">Código *</label><input id="batch-code" name="code" required maxLength={80} defaultValue={`LOT-${week.start}`} className="form-input" /></div><div><label className="form-label" htmlFor="batch-start">Lunes *</label><input id="batch-start" name="periodStart" type="date" required defaultValue={week.start} className="form-input" /></div><div><label className="form-label" htmlFor="batch-end">Domingo *</label><input id="batch-end" name="periodEnd" type="date" required defaultValue={week.end} className="form-input" /></div><Message state={state} /></div><Footer onClose={onClose} pending={pending} label="Crear lote semanal" loading="Creando…" /></form></Modal>;
 }
 
-export function AddDispatchDialog({ projectId, batchId, dispatches, onClose }: { projectId: string; batchId: string; dispatches: EligibleBatchDispatch[]; onClose: () => void }) {
+export function AddDispatchDialog({ projectId, batchId, dispatches, onClose, onSuccess }: { projectId: string; batchId: string; dispatches: EligibleBatchDispatch[]; onClose: () => void; onSuccess?: () => void | Promise<void> }) {
   const router = useRouter();
+  const successHandled = useRef(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [state, action, pending] = useActionState(addDispatchToBatchAction, initialBatchMutationState);
   useActionNotification({ pending, status: state.status, success: notifications.dispatchAdded });
   useEffect(() => {
-    if (state.status === "success") {
-      router.refresh();
-      onClose();
+    if (state.status === "success" && !successHandled.current) {
+      successHandled.current = true;
+      void (async () => {
+        try { if (onSuccess) await onSuccess(); else router.refresh(); }
+        finally { onClose(); }
+      })();
     }
-  }, [onClose, router, state.status]);
+  }, [onClose, onSuccess, router, state.status]);
 
   const allSelected = dispatches.length > 0 && selectedIds.length === dispatches.length;
   function toggle(dispatchId: string) {
@@ -62,13 +66,13 @@ export function AddDispatchDialog({ projectId, batchId, dispatches, onClose }: {
         <input type="hidden" name="projectId" value={projectId} />
         <input type="hidden" name="batchId" value={batchId} />
         <div className="p-4 sm:p-6">
-          <div className="flex min-h-11 items-center justify-between gap-3">
+          <div className="flex min-h-11 flex-col items-stretch gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
             <div>
               <p className="form-label mb-0">Despachos disponibles *</p>
               <p className="mt-1 text-xs text-foreground-muted" aria-live="polite">{selectedIds.length} de {dispatches.length} seleccionados</p>
             </div>
             {dispatches.length > 0 && (
-              <button type="button" onClick={() => setSelectedIds(allSelected ? [] : dispatches.map((item) => item.dispatchId))} disabled={pending} className="min-h-11 rounded-lg px-3 text-xs font-semibold text-brand-strong transition-colors hover:bg-brand-soft active:bg-brand-soft disabled:opacity-50">
+              <button type="button" onClick={() => setSelectedIds(allSelected ? [] : dispatches.map((item) => item.dispatchId))} disabled={pending} className="min-h-11 self-start rounded-lg border border-brand/25 px-3 text-xs font-semibold text-brand-strong transition-colors hover:bg-brand-soft active:bg-brand-soft disabled:opacity-50 min-[420px]:self-auto">
                 {allSelected ? "Quitar selección" : "Seleccionar todos"}
               </button>
             )}
@@ -103,17 +107,17 @@ export function AddDispatchDialog({ projectId, batchId, dispatches, onClose }: {
   );
 }
 
-export function RemoveDispatchDialog({ projectId, batchId, relation, onClose }: { projectId: string; batchId: string; relation: BatchDispatchRelation; onClose: () => void }) {
-  const router = useRouter(); const [state, action, pending] = useActionState(removeDispatchFromBatchAction, initialBatchMutationState);
+export function RemoveDispatchDialog({ projectId, batchId, relation, onClose, onSuccess }: { projectId: string; batchId: string; relation: BatchDispatchRelation; onClose: () => void; onSuccess?: () => void | Promise<void> }) {
+  const router = useRouter(); const successHandled = useRef(false); const [state, action, pending] = useActionState(removeDispatchFromBatchAction, initialBatchMutationState);
   useActionNotification({ pending, status: state.status, success: notifications.dispatchRemoved });
-  useEffect(() => { if (state.status === "success") router.refresh(); }, [router, state.status]);
+  useEffect(() => { if (state.status === "success" && !successHandled.current) { successHandled.current = true; void (async () => { try { if (onSuccess) await onSuccess(); else router.refresh(); } finally { onClose(); } })(); } }, [onClose, onSuccess, router, state.status]);
   return <Modal title="Remover despacho" description={`${relation.programmingCode} se retirará del lote sin borrar su historial.`} icon={AlertTriangle} onClose={onClose} pending={pending}><form action={action}><input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="batchId" value={batchId} /><input type="hidden" name="dispatchId" value={relation.dispatchId} /><div className="p-5 sm:p-6"><label className="form-label" htmlFor="remove-reason">Motivo *</label><textarea id="remove-reason" name="reason" required maxLength={1000} rows={4} className="form-input resize-y" /><Message state={state} /></div><Footer onClose={onClose} pending={pending} label="Remover despacho" loading="Removiendo…" /></form></Modal>;
 }
 
-export function RolloverDialog({ projectId, batchId, preview, onClose }: { projectId: string; batchId: string; preview: BatchRolloverPreview[]; onClose: () => void }) {
-  const router = useRouter(); const [state, action, pending] = useActionState(rolloverBatchAction, initialBatchMutationState);
+export function RolloverDialog({ projectId, batchId, preview, onClose, onSuccess }: { projectId: string; batchId: string; preview: BatchRolloverPreview[]; onClose: () => void; onSuccess?: () => void | Promise<void> }) {
+  const router = useRouter(); const successHandled = useRef(false); const [state, action, pending] = useActionState(rolloverBatchAction, initialBatchMutationState);
   useActionNotification({ pending, status: state.status, success: notifications.batchClosed });
-  useEffect(() => { if (state.status === "success") router.refresh(); }, [router, state.status]);
+  useEffect(() => { if (state.status === "success" && !successHandled.current) { successHandled.current = true; void (async () => { try { if (onSuccess) await onSuccess(); else router.refresh(); } finally { onClose(); } })(); } }, [onClose, onSuccess, router, state.status]);
   const stay = preview.filter((row) => row.action === "STAY"), move = preview.filter((row) => row.action === "MOVE"), next = preview[0];
   return <Modal title="Cerrar semana y preparar siguiente" description="Los conciliados permanecen; cualquier proceso pendiente continúa en la siguiente semana." icon={RotateCcw} onClose={onClose} pending={pending}><form action={action}><input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="batchId" value={batchId} /><div className="space-y-4 p-5 sm:p-6">{next && <div className="rounded-xl border border-border bg-muted/25 p-4 text-sm"><p className="font-semibold">Siguiente semana</p><p className="mt-1 text-foreground-muted">{formatBatchDate(next.destinationPeriodStart)} – {formatBatchDate(next.destinationPeriodEnd)}</p></div>}<div className="grid gap-3 sm:grid-cols-2"><Summary label="Permanecen conciliados" value={stay.length} tone="success" /><Summary label="Continúan siguiente semana" value={move.length} tone="warning" /></div><Message state={state} /></div><Footer onClose={onClose} pending={pending} label="Confirmar cierre" loading="Cerrando…" icon /></form></Modal>;
 }

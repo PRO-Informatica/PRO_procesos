@@ -8,6 +8,7 @@ import { StatusBadge, type BadgeTone } from "@/components/ui/badge";
 import { formatStatusLabel } from "@/lib/status-labels";
 
 import { reportSearchParams } from "../filters";
+import { reportDispatchProcessStatus } from "../presentation";
 import type { GuideReportData, GuideReportFilters, GuideReportRow, ReportInvoice, ReportOption } from "../types";
 import { ReportExportActions } from "./report-export-actions";
 import { ReportResultsPagination } from "./report-results-pagination";
@@ -21,7 +22,8 @@ function money(value: number, currency: string) { return new Intl.NumberFormat("
 function dateTime(value: string, timezone: string) { return new Intl.DateTimeFormat("es-GT", { dateStyle: "medium", timeStyle: "short", timeZone: timezone }).format(new Date(value)); }
 
 function statusTone(status: string): BadgeTone {
-  if (["RECONCILED", "COMPLETED", "CONFIRMED", "REGISTERED"].includes(status)) return "success";
+  if (status === "COMPLETED") return "completed";
+  if (["RECONCILED", "CONFIRMED", "REGISTERED"].includes(status)) return "success";
   if (["WITH_DIFFERENCES", "PENDING_REINVOICING"].includes(status)) return "warning";
   if (["CANCELLED", "NON_PROCEEDING"].includes(status)) return "danger";
   if (["IN_EXECUTION", "PENDING_RECONCILIATION"].includes(status)) return "info";
@@ -33,7 +35,12 @@ function InvoiceLine({ label, invoice }: { label: string; invoice: ReportInvoice
 }
 
 function DispatchBlock({ dispatch }: { dispatch: GuideReportRow }) {
-  return <section className="rounded-xl border border-border bg-background/40 p-4 sm:p-5"><div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1.2fr)_minmax(240px,.8fr)_minmax(300px,1fr)_auto] xl:items-center"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Link href={`/dispatches/${dispatch.dispatchId}`} className="font-mono text-sm font-semibold text-brand-strong hover:underline">{dispatch.dispatchCode}</Link><StatusBadge label={formatStatusLabel(dispatch.dispatchStatus)} tone={statusTone(dispatch.dispatchStatus)} /></div><div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-3 text-xs sm:grid-cols-3"><div><p className="text-foreground-muted">Pedido</p><p className="mt-0.5 font-semibold text-foreground">{dispatch.orderNumber ?? "Sin pedido"}</p></div><div><p className="text-foreground-muted">Lote</p><p className="mt-0.5 font-semibold text-foreground">{dispatch.batchCode ?? "Sin lote"}</p></div><div><p className="text-foreground-muted">Volumen real</p><p className="mt-0.5 font-semibold text-foreground">{quantity(dispatch.receivedQuantity)} {dispatch.unitCode}</p></div><div><p className="text-foreground-muted">Guías</p><p className="mt-0.5 font-semibold text-foreground">{dispatch.guideCount}</p></div><div><p className="text-foreground-muted">Incidencias</p><p className="mt-0.5 font-semibold text-foreground">{dispatch.incidentCount}</p></div></div></div><div><p className="text-[11px] font-semibold uppercase tracking-[.1em] text-foreground-muted">Conciliación</p><div className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge label={formatStatusLabel(dispatch.reconciliationStatus)} tone={statusTone(dispatch.reconciliationStatus)} dot /><span className="text-xs text-foreground-muted">Diferencia: <strong className={dispatch.difference === 0 ? "text-success" : "text-destructive"}>{quantity(dispatch.difference)} {dispatch.unitCode}</strong></span></div></div><div className="grid gap-2"><InvoiceLine label="Factura de producto" invoice={dispatch.productInvoice} /><InvoiceLine label="Factura de servicio" invoice={dispatch.serviceInvoice} /></div><Link href={`/dispatches/${dispatch.dispatchId}`} className="secondary-button w-full text-xs xl:w-auto">Ver despacho</Link></div></section>;
+  const processStatus = reportDispatchProcessStatus(
+    dispatch.dispatchStatus,
+    dispatch.reconciliationStatus,
+  );
+
+  return <section className="rounded-xl border border-border bg-background/40 p-4 sm:p-5"><div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1.2fr)_minmax(240px,.8fr)_minmax(300px,1fr)_auto] xl:items-center"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Link href={`/dispatches/${dispatch.dispatchId}`} className="font-mono text-sm font-semibold text-brand-strong hover:underline">{dispatch.dispatchCode}</Link><StatusBadge label={formatStatusLabel(processStatus)} tone={statusTone(processStatus)} /></div><div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-3 text-xs sm:grid-cols-3"><div><p className="text-foreground-muted">Pedido</p><p className="mt-0.5 font-semibold text-foreground">{dispatch.orderNumber ?? "Sin pedido"}</p></div><div><p className="text-foreground-muted">Lote</p><p className="mt-0.5 font-semibold text-foreground">{dispatch.batchCode ?? "Sin lote"}</p></div><div><p className="text-foreground-muted">Volumen real</p><p className="mt-0.5 font-semibold text-foreground">{quantity(dispatch.receivedQuantity)} {dispatch.unitCode}</p></div><div><p className="text-foreground-muted">Guías</p><p className="mt-0.5 font-semibold text-foreground">{dispatch.guideCount}</p></div><div><p className="text-foreground-muted">Incidencias</p><p className="mt-0.5 font-semibold text-foreground">{dispatch.incidentCount}</p></div></div></div><div><p className="text-[11px] font-semibold uppercase tracking-[.1em] text-foreground-muted">Conciliación</p><div className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge label={formatStatusLabel(dispatch.reconciliationStatus)} tone={statusTone(dispatch.reconciliationStatus)} dot /><span className="text-xs text-foreground-muted">Diferencia: <strong className={dispatch.difference === 0 ? "text-success" : "text-destructive"}>{quantity(dispatch.difference)} {dispatch.unitCode}</strong></span></div></div><div className="grid gap-2"><InvoiceLine label="Factura de producto" invoice={dispatch.productInvoice} /><InvoiceLine label="Factura de servicio" invoice={dispatch.serviceInvoice} /></div><Link href={`/dispatches/${dispatch.dispatchId}`} className="secondary-button w-full text-xs xl:w-auto">Ver despacho</Link></div></section>;
 }
 
 function Kpi({ icon: Icon, label, value, tone = "brand" }: { icon: typeof CalendarRange; label: string; value: number; tone?: "brand" | "success" | "warning" }) {

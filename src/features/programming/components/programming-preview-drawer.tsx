@@ -100,7 +100,7 @@ export function ProgrammingPreviewDrawer({
                   <p className="font-mono text-[10px] text-foreground-muted">
                     PRG-{item.id.slice(0, 8).toUpperCase()}
                   </p>
-                  <h2 id="programming-preview-title" className="mt-1 truncate font-semibold text-foreground">
+                  <h2 id="programming-preview-title" className="mt-1 break-words font-semibold text-foreground [overflow-wrap:anywhere]">
                     {item.placementGroup || item.supplierName}
                   </h2>
                 </div>
@@ -125,7 +125,7 @@ export function ProgrammingPreviewDrawer({
                 </span>
               </div>
 
-              <dl className="mt-6 grid grid-cols-2 gap-x-5 gap-y-6 rounded-xl border border-border bg-muted/30 p-4">
+              <dl className="mt-6 grid gap-4 rounded-xl border border-border bg-muted/30 p-4 min-[400px]:grid-cols-2 min-[400px]:gap-x-5 min-[400px]:gap-y-6">
                 <Detail label="Proveedor" value={item.supplierName} />
                 {item.requiresPumping && <Detail label="Bombeo" value="Sí" />}
                 {item.placementGroup && <Detail label="Grupo" value={item.placementGroup} />}
@@ -166,7 +166,7 @@ export function ProgrammingPreviewDrawer({
                       {item.lines.map((line) => (
                         <li
                           key={line.id}
-                          className="grid grid-cols-[3rem_minmax(0,1fr)_5rem] items-center gap-3 px-4 py-3 text-sm"
+                          className="grid grid-cols-[2rem_minmax(0,1fr)_3.5rem] items-center gap-2 px-4 py-3 text-sm min-[400px]:grid-cols-[3rem_minmax(0,1fr)_5rem] min-[400px]:gap-3"
                         >
                           <span className="font-mono text-xs font-semibold text-foreground-muted">
                             {line.position}
@@ -188,7 +188,7 @@ export function ProgrammingPreviewDrawer({
                         </li>
                       ))}
                     </ol>
-                    <div className="grid grid-cols-[minmax(0,1fr)_5rem_5rem] items-center gap-3 border-t border-border bg-muted/30 px-4 py-3 text-sm">
+                    <div className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem] items-center gap-2 border-t border-border bg-muted/30 px-4 py-3 text-sm min-[400px]:grid-cols-[minmax(0,1fr)_5rem_5rem] min-[400px]:gap-3">
                       <span className="font-medium text-foreground-muted">Total solicitado</span>
                       <span className="font-semibold text-foreground">
                         {formatProgrammingQuantity(item.requestedQuantity)}
@@ -225,9 +225,9 @@ export function ProgrammingPreviewDrawer({
                 {item.dispatches.length ? (
                   <ul className="divide-y divide-border">
                     {item.dispatches.map((dispatch) => (
-                      <li key={dispatch.id} className="flex items-center justify-between gap-3 px-4 py-3 text-xs">
-                        <span className="font-mono text-foreground">#{dispatch.id.slice(0, 8)}</span>
-                        <span className="text-foreground-muted">{formatStatusLabel(dispatch.status)}</span>
+                      <li key={dispatch.id} className="flex flex-col gap-1.5 px-4 py-3 text-xs min-[400px]:flex-row min-[400px]:items-center min-[400px]:justify-between min-[400px]:gap-3">
+                        <span className="break-all font-mono text-foreground">#{dispatch.id.slice(0, 8)}</span>
+                        <span className="font-medium text-foreground-muted">{formatStatusLabel(dispatch.status)}</span>
                       </li>
                     ))}
                   </ul>

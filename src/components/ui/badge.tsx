@@ -1,6 +1,6 @@
 import { cn } from "@/lib/class-names";
 
-export type BadgeTone = "neutral" | "brand" | "success" | "warning" | "danger" | "info";
+export type BadgeTone = "neutral" | "brand" | "success" | "warning" | "danger" | "info" | "completed";
 
 const toneClasses: Record<BadgeTone, string> = {
   neutral: "bg-muted text-foreground-muted",
@@ -9,6 +9,7 @@ const toneClasses: Record<BadgeTone, string> = {
   warning: "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200",
   danger: "bg-destructive-soft text-destructive",
   info: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200",
+  completed: "bg-violet-100 text-violet-800 dark:bg-violet-950/55 dark:text-violet-300",
 };
 
 export function Badge({

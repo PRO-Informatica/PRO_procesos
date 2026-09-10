@@ -59,8 +59,8 @@ type LineRow = {
   id: string;
   guide_id: string;
   position: number;
-  product_code: string;
-  product_description: string;
+  product_code: string | null;
+  product_description: string | null;
   quantity: number | string;
   unit_code: string;
 };

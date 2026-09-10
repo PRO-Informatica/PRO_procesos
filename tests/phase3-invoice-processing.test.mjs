@@ -13,7 +13,7 @@ const cleanupMigration = await readFile(new URL("../supabase/migrations/085_phas
 const reconciliationStatusFix = await readFile(new URL("../supabase/migrations/086_fix_dispatch_reconciliation_status_cast.sql", import.meta.url), "utf8");
 const supplierFiscalIdentityFix = await readFile(new URL("../supabase/migrations/089_fix_mixto_listo_supplier_fiscal_identity.sql", import.meta.url), "utf8");
 const universalMigration = await readFile(new URL("../supabase/migrations/090_universal_invoice_pipeline.sql", import.meta.url), "utf8");
-const automaticReinvoicingMigration = await readFile(new URL("../supabase/migrations/092_automatic_reinvoicing_on_difference.sql", import.meta.url), "utf8");
+const productReinvoicingMigration = await readFile(new URL("../supabase/migrations/095_product_invoice_reinvoicing.sql", import.meta.url), "utf8");
 const multipleBatchDispatchesMigration = await readFile(new URL("../supabase/migrations/093_add_multiple_dispatches_to_batch.sql", import.meta.url), "utf8");
 const actions = await readFile(new URL("../src/features/batches/actions.ts", import.meta.url), "utf8");
 const processor = await readFile(new URL("../src/features/invoices/invoice-processing.ts", import.meta.url), "utf8");
@@ -137,13 +137,14 @@ test("conciliación usa Volumen Real y conserva intentos/refacturación", () => 
   assert.match(reconciliationStatusFix, /end\)::public\.dispatch_reconciliation_status/u);
 });
 
-test("una diferencia pasa automáticamente a refacturación y conserva el resultado técnico", () => {
-  assert.match(automaticReinvoicingMigration, /else 'PENDING_REINVOICING'/u);
-  assert.match(automaticReinvoicingMigration, /then 'MATCHED' else 'WITH_DIFFERENCES'/u);
-  assert.match(automaticReinvoicingMigration, /where status = 'WITH_DIFFERENCES'/u);
-  assert.match(automaticReinvoicingMigration, /drop function if exists public\.request_dispatch_reinvoicing/u);
-  assert.doesNotMatch(batchDetailView, /Solicitar refacturación|requestDispatchReinvoicingAction/u);
-  assert.doesNotMatch(automaticReinvoicingMigration, /role_permissions|project_role_permissions/u);
+test("una diferencia requiere solicitud humana antes de habilitar refacturación", () => {
+  assert.match(productReinvoicingMigration, /else 'WITH_DIFFERENCES'/u);
+  assert.match(productReinvoicingMigration, /create or replace function public\.request_dispatch_reinvoicing/u);
+  assert.match(productReinvoicingMigration, /v_reconciliation\.status <> 'WITH_DIFFERENCES'/u);
+  assert.match(productReinvoicingMigration, /set status = 'PENDING_REINVOICING'/u);
+  assert.match(batchDetailView, /Solicitar refacturación/u);
+  assert.match(batchDetailView, /requestDispatchReinvoicingAction/u);
+  assert.doesNotMatch(productReinvoicingMigration, /role_permissions|project_role_permissions/u);
 });
 
 test("pipeline individual y masivo consumen el mismo motor y preview no persiste", () => {
@@ -206,8 +207,8 @@ test("el modelo final separa conciliación de completitud documental", () => {
   );
   assert.match(reconciliationFunction, /current_product_invoice_id is null/u);
   assert.doesNotMatch(reconciliationFunction, /current_service_invoice_id is null/u);
-  assert.match(automaticReinvoicingMigration, /current_product_invoice_id is null/u);
-  assert.doesNotMatch(automaticReinvoicingMigration, /current_service_invoice_id is null/u);
+  assert.match(productReinvoicingMigration, /current_product_invoice_id is null/u);
+  assert.doesNotMatch(productReinvoicingMigration, /current_service_invoice_id is null/u);
 });
 
 test("la migración protege identidad fiscal global y autorización universal", () => {

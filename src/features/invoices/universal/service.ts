@@ -17,6 +17,7 @@ import {
   processExtractedInvoice,
   type InvoiceProcessingPayload,
 } from "../invoice-processing";
+import { resolveInvoiceUploadSlot } from "../reinvoicing";
 import type { UniversalCommitResult, UniversalInvoiceResult } from "./types";
 
 const MAX_PDF_SIZE = 10 * 1024 * 1024;
@@ -44,6 +45,7 @@ function result(
     fileSize: file.size,
     detectedType: input.detectedType ?? "UNKNOWN",
     invoiceNumber: input.invoiceNumber ?? null,
+    detectedBillingLegalName: input.detectedBillingLegalName ?? null,
     orderNumber: input.orderNumber ?? null,
     projectId: input.projectId ?? null,
     projectLabel: input.projectLabel ?? null,
@@ -54,6 +56,9 @@ function result(
     candidateProjects: input.candidateProjects ?? [],
     candidateDispatches: input.candidateDispatches ?? [],
     warnings: input.warnings ?? [],
+    operation: input.operation ?? "NEW",
+    replacesInvoiceId: input.replacesInvoiceId ?? null,
+    replacesInvoiceNumber: input.replacesInvoiceNumber ?? null,
     payload: input.payload ?? null,
     fileSha256: input.fileSha256 ?? null,
   };
@@ -67,6 +72,7 @@ function publicResult(value: InternalClassification): UniversalInvoiceResult {
     fileSize: value.fileSize,
     detectedType: value.detectedType,
     invoiceNumber: value.invoiceNumber,
+    detectedBillingLegalName: value.detectedBillingLegalName,
     orderNumber: value.orderNumber,
     projectId: value.projectId,
     projectLabel: value.projectLabel,
@@ -77,6 +83,9 @@ function publicResult(value: InternalClassification): UniversalInvoiceResult {
     candidateProjects: value.candidateProjects,
     candidateDispatches: value.candidateDispatches,
     warnings: value.warnings,
+    operation: value.operation,
+    replacesInvoiceId: value.replacesInvoiceId,
+    replacesInvoiceNumber: value.replacesInvoiceNumber,
   };
 }
 
@@ -119,6 +128,7 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
   const base = {
     detectedType,
     invoiceNumber: raw.invoice_number,
+    detectedBillingLegalName: raw.billing_legal_name,
     orderNumber: normalizeOperationalOrder(raw.pca_original),
     fileSha256,
   };
@@ -273,10 +283,53 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
     });
   }
   const batch = openBatches[0];
+  const reconciliation = await admin
+    .from("dispatch_reconciliations")
+    .select("status, current_product_invoice_id, current_service_invoice_id")
+    .eq("project_id", project.id)
+    .eq("dispatch_id", selectedDispatch.id)
+    .maybeSingle();
+  if (reconciliation.error) throw new Error("No fue posible consultar la conciliación del despacho.");
+
+  const invoiceSlot = resolveInvoiceUploadSlot({
+    invoiceType: detectedType,
+    reconciliationStatus: reconciliation.data?.status,
+    currentProductInvoiceId: reconciliation.data?.current_product_invoice_id,
+    currentServiceInvoiceId: reconciliation.data?.current_service_invoice_id,
+  });
+  const { currentInvoiceId } = invoiceSlot;
+  const isReinvoicing = invoiceSlot.operation === "REINVOICE";
+  let replacesInvoiceNumber: string | null = null;
+  if (isReinvoicing && currentInvoiceId) {
+    const previousInvoice = await admin
+      .from("invoices")
+      .select("invoice_number")
+      .eq("id", currentInvoiceId)
+      .eq("dispatch_id", selectedDispatch.id)
+      .eq("invoice_type", "PRODUCT")
+      .maybeSingle();
+    if (!previousInvoice.data) throw new Error("No fue posible recuperar la Factura de Producto vigente.");
+    replacesInvoiceNumber = previousInvoice.data.invoice_number;
+  }
+
+  if (invoiceSlot.occupied) {
+    return result(file, {
+      ...base,
+      projectId: project.id,
+      projectLabel,
+      dispatchId: selectedDispatch.id,
+      dispatchLabel: `Pedido ${selectedDispatch.order_number}`,
+      batchId: batch.id,
+      batchLabel: batch.code,
+      status: "ERROR",
+      message: `Ya existe una Factura de ${detectedType === "PRODUCT" ? "Producto" : "Servicio"} vigente para este despacho.`,
+    });
+  }
   const supplier = await admin.from("suppliers").select("name, tax_id").eq("id", selectedDispatch.supplier_id).maybeSingle();
   if (!supplier.data) throw new Error("No se encontró el proveedor del despacho.");
   const processed = processExtractedInvoice(raw, {
     expectedType: detectedType,
+    companyCode: project.companyCode,
     orderNumber: selectedDispatch.order_number ?? "",
     supplierName: supplier.data.name,
     supplierTaxId: supplier.data.tax_id,
@@ -308,9 +361,18 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
     dispatchLabel: `Pedido ${selectedDispatch.order_number}`,
     batchId: batch.id,
     batchLabel: batch.code,
-    status: processed.payload.warnings.length ? "READY_WITH_DIFFERENCES" : "READY",
-    message: processed.payload.warnings.length ? "Lista con observaciones." : "Lista para conciliar.",
+    status: processed.payload.requires_reinvoicing
+      ? "REQUIRES_REINVOICING"
+      : processed.payload.warnings.length ? "READY_WITH_DIFFERENCES" : "READY",
+    message: processed.payload.requires_reinvoicing
+      ? "Refacturación requerida: la factura fue identificada para este proyecto y pedido, pero C14 no es una sociedad de facturación permitida."
+      : isReinvoicing
+      ? "Lista para reemplazar la Factura de Producto anterior."
+      : processed.payload.warnings.length ? "Lista con observaciones." : "Lista para conciliar.",
     warnings: processed.payload.warnings,
+    operation: isReinvoicing ? "REINVOICE" : "NEW",
+    replacesInvoiceId: invoiceSlot.replacesInvoiceId,
+    replacesInvoiceNumber,
     payload: { ...processed.payload, file_sha256: fileSha256 } as InvoiceProcessingPayload,
   });
 }
@@ -322,7 +384,7 @@ export async function classifyUniversalInvoice(file: File, selection?: Selection
 export async function commitUniversalInvoice(file: File, selection?: Selection): Promise<UniversalCommitResult> {
   const classified = await classifyInternal(file, selection);
   if (!classified.payload || !classified.projectId || !classified.dispatchId || !classified.batchId ||
-      !["READY", "READY_WITH_DIFFERENCES"].includes(classified.status)) {
+      !["READY", "READY_WITH_DIFFERENCES", "REQUIRES_REINVOICING"].includes(classified.status)) {
     return { ...publicResult(classified), saved: false };
   }
   const supabase = await createClient();
@@ -333,7 +395,7 @@ export async function commitUniversalInvoice(file: File, selection?: Selection):
     p_payload: classified.payload,
     p_file_name: file.name,
     p_file_size: file.size,
-    p_replaces_invoice_id: null,
+    p_replaces_invoice_id: classified.replacesInvoiceId,
   });
   const row = prepared.data?.[0];
   if (prepared.error || !row) {
@@ -371,10 +433,16 @@ export async function commitUniversalInvoice(file: File, selection?: Selection):
   }
   return {
     ...publicResult(classified),
-    message: classified.detectedType === "PRODUCT"
-      ? reconciliationStatus === "PENDING_REINVOICING"
-        ? "Factura guardada; se detectaron diferencias y pasó automáticamente a refacturación."
-        : "Factura guardada y conciliación ejecutada."
+    message: classified.payload.requires_reinvoicing
+      ? classified.detectedType === "PRODUCT"
+        ? "Factura registrada y marcada automáticamente como pendiente de refacturación por sociedad no permitida."
+        : "Factura de Servicio conservada como no procedente; requiere sustitución por sociedad no permitida."
+      : classified.detectedType === "PRODUCT"
+      ? reconciliationStatus === "WITH_DIFFERENCES"
+        ? "Factura guardada; la conciliación detectó diferencias."
+        : classified.operation === "REINVOICE"
+          ? "Factura refacturada guardada y conciliación ejecutada."
+          : "Factura guardada y conciliación ejecutada."
       : "Factura de Servicio guardada.",
     warnings,
     saved: true,

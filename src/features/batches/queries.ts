@@ -6,14 +6,17 @@ import { createClient } from "@/lib/supabase/server";
 import { formatProgrammingCode } from "./formatters";
 import type {
   BatchDetail, BatchDispatchRelation, BatchInvoice, BatchPageData,
-  BatchRolloverPreview, BatchSource, BatchStatus, BatchSummary,
+  BatchRolloverPreview, BatchSecondaryData, BatchSource, BatchStatus, BatchSummary,
   EligibleBatchDispatch, ReconciliationAttempt, ReconciliationStatus,
+  UniversalBatchProject,
 } from "./types";
+import type { ProjectAccessScope } from "@/features/projects/types";
+import { getOperationalProjectAccess, getOperationalProjectAccessForProject } from "@/features/projects/queries";
 
 type BatchRow = { id: string; project_id: string; code: string; period_start: string; period_end: string; accounting_period: string; status: BatchStatus; creation_source: BatchSource; created_at: string };
 type RelationRow = { id: string; project_id: string; batch_id: string; dispatch_id: string; assignment_source: BatchSource; added_at: string; removed_at: string | null; removed_by: string | null; removal_reason: string | null; rolled_to_batch_id: string | null; removal_metadata: Record<string, unknown> | null };
 type DispatchRow = { id: string; programming_id: string; supplier_id: string; order_number: string | null; status: "IN_EXECUTION" | "COMPLETED"; real_volume: number | string | null; real_unit_code: string | null };
-type ReconciliationRow = { id: string; dispatch_id: string; status: ReconciliationStatus; current_product_invoice_id: string | null; current_service_invoice_id: string | null };
+type ReconciliationRow = { id: string; project_id?: string; dispatch_id: string; status: ReconciliationStatus; current_product_invoice_id: string | null; current_service_invoice_id: string | null };
 type InvoiceRow = { id: string; dispatch_id: string; invoice_type: "PRODUCT" | "SERVICE"; invoice_number: string; invoice_date: string; status: string; total: number | string; currency: string; order_number: string | null; pca_original: string | null; replaces_invoice_id: string | null; created_at: string };
 
 function numeric(value: unknown) {
@@ -46,6 +49,21 @@ function summarize(batch: BatchRow, relations: RelationRow[], reconciliations: R
   };
 }
 
+export async function getUniversalBatchScopes(userId: string) {
+  return (await getOperationalProjectAccess(userId)).filter(({ project, roleCodes, permissions }) =>
+    project.status === "ACTIVE" &&
+    permissions.includes("batch.view") &&
+    roleCodes.some((role) => ["PURCHASING", "COMPANY_ADMIN"].includes(role)),
+  );
+}
+
+export async function getUniversalBatchScope(userId: string, projectId: string) {
+  const scope = await getOperationalProjectAccessForProject(userId, projectId);
+  if (!scope || scope.project.status !== "ACTIVE" || !scope.permissions.includes("batch.view") ||
+    !scope.roleCodes.some((role) => ["PURCHASING", "COMPANY_ADMIN"].includes(role))) return null;
+  return scope;
+}
+
 export async function getBatchPageData(projectId: string, timezone: string): Promise<BatchPageData> {
   const supabase = await createClient();
   const [batchesResult, relationsResult, reconciliationsResult] = await Promise.all([
@@ -62,16 +80,77 @@ export async function getBatchPageData(projectId: string, timezone: string): Pro
   return { current: summaries.find((row) => row.isCurrent) ?? null, history: summaries };
 }
 
-export async function getBatchDetail(projectId: string, batchId: string, timezone: string): Promise<BatchDetail | null> {
+export async function getUniversalBatchOverview(
+  scopes: ProjectAccessScope[],
+): Promise<UniversalBatchProject[]> {
+  if (!scopes.length) return [];
+  const supabase = await createClient();
+  const projectIds = scopes.map(({ project }) => project.id);
+  const [batchesResult, relationsResult, reconciliationsResult] = await Promise.all([
+    supabase.from("batches").select("id, project_id, code, period_start, period_end, accounting_period, status, creation_source, created_at").in("project_id", projectIds).order("period_start", { ascending: false }).limit(1000),
+    supabase.from("batch_dispatches").select("id, project_id, batch_id, dispatch_id, assignment_source, added_at, removed_at, removed_by, removal_reason, rolled_to_batch_id, removal_metadata").in("project_id", projectIds).order("added_at", { ascending: false }).limit(10000),
+    supabase.from("dispatch_reconciliations").select("id, project_id, dispatch_id, status, current_product_invoice_id, current_service_invoice_id").in("project_id", projectIds).limit(10000),
+  ]);
+  const error = batchesResult.error ?? relationsResult.error ?? reconciliationsResult.error;
+  if (error) throw new Error(`No fue posible cargar Lotes Universal. ${error.message}`);
+
+  const batches = (batchesResult.data ?? []) as BatchRow[];
+  const relations = (relationsResult.data ?? []) as RelationRow[];
+  const reconciliations = (reconciliationsResult.data ?? []) as ReconciliationRow[];
+  const batchesByProject = new Map<string, BatchRow[]>();
+  const relationsByBatch = new Map<string, RelationRow[]>();
+  const reconciliationsByProject = new Map<string, ReconciliationRow[]>();
+  for (const batch of batches) {
+    const rows = batchesByProject.get(batch.project_id) ?? [];
+    rows.push(batch);
+    batchesByProject.set(batch.project_id, rows);
+  }
+  for (const relation of relations) {
+    const rows = relationsByBatch.get(relation.batch_id) ?? [];
+    rows.push(relation);
+    relationsByBatch.set(relation.batch_id, rows);
+  }
+  for (const reconciliation of reconciliations) {
+    if (!reconciliation.project_id) continue;
+    const rows = reconciliationsByProject.get(reconciliation.project_id) ?? [];
+    rows.push(reconciliation);
+    reconciliationsByProject.set(reconciliation.project_id, rows);
+  }
+
+  return scopes
+    .map(({ project, roleCodes, permissions }) => ({
+      project,
+      roleCodes,
+      permissions,
+      batches: (batchesByProject.get(project.id) ?? [])
+        .map((batch) => summarize(
+          batch,
+          relationsByBatch.get(batch.id) ?? [],
+          reconciliationsByProject.get(project.id) ?? [],
+          localDate(project.timezone),
+        )),
+    }))
+    .sort((left, right) => left.project.name.localeCompare(right.project.name));
+}
+
+export async function getBatchDetail(
+  projectId: string,
+  batchId: string,
+  timezone: string,
+  { includeSecondary = true }: { includeSecondary?: boolean } = {},
+): Promise<BatchDetail | null> {
+  const startedAt = performance.now();
   const supabase = await createClient();
   const admin = createAdminClient();
-  const [batchResult, relationsResult, activeProjectRelationsResult, dispatchesResult] = await Promise.all([
+  const relationsQuery = supabase.from("batch_dispatches").select("id, project_id, batch_id, dispatch_id, assignment_source, added_at, removed_at, removed_by, removal_reason, rolled_to_batch_id, removal_metadata").eq("project_id", projectId).eq("batch_id", batchId).order("added_at", { ascending: false });
+  const [batchResult, relationsResult, activeProjectRelationsResult, dispatchesResult, previewResult] = await Promise.all([
     supabase.from("batches").select("id, project_id, code, period_start, period_end, accounting_period, status, creation_source, created_at").eq("project_id", projectId).eq("id", batchId).maybeSingle(),
-    supabase.from("batch_dispatches").select("id, project_id, batch_id, dispatch_id, assignment_source, added_at, removed_at, removed_by, removal_reason, rolled_to_batch_id, removal_metadata").eq("project_id", projectId).eq("batch_id", batchId).order("added_at", { ascending: false }),
+    includeSecondary ? relationsQuery : relationsQuery.is("removed_at", null),
     supabase.from("batch_dispatches").select("dispatch_id").eq("project_id", projectId).is("removed_at", null),
     supabase.from("dispatches").select("id, programming_id, supplier_id, order_number, status, real_volume, real_unit_code").eq("project_id", projectId).in("status", ["IN_EXECUTION", "COMPLETED"]),
+    includeSecondary ? supabase.rpc("preview_weekly_batch_rollover", { p_batch_id: batchId }) : Promise.resolve({ data: [], error: null }),
   ]);
-  const rootError = batchResult.error ?? relationsResult.error ?? activeProjectRelationsResult.error ?? dispatchesResult.error;
+  const rootError = batchResult.error ?? relationsResult.error ?? activeProjectRelationsResult.error ?? dispatchesResult.error ?? previewResult.error;
   if (rootError) throw new Error(`No fue posible cargar el detalle del lote. ${rootError.message}`);
   if (!batchResult.data) return null;
   const batch = batchResult.data as BatchRow;
@@ -81,49 +160,27 @@ export async function getBatchDetail(projectId: string, batchId: string, timezon
   const programmingIds = [...new Set(dispatches.map((row) => row.programming_id))];
   const supplierIds = [...new Set(dispatches.map((row) => row.supplier_id))];
 
-  const [programmingResult, suppliersResult, guidesResult, reconciliationsResult, invoicesResult, profilesResult] = await Promise.all([
+  const [programmingResult, suppliersResult, guidesResult, reconciliationsResult, invoicesResult, attemptsResult, profilesResult] = await Promise.all([
     programmingIds.length ? supabase.from("programming").select("id, scheduled_at").eq("project_id", projectId).in("id", programmingIds) : Promise.resolve({ data: [], error: null }),
     supplierIds.length ? supabase.from("suppliers").select("id, name").in("id", supplierIds) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("dispatch_guides").select("id, dispatch_id").eq("project_id", projectId).in("dispatch_id", dispatchIds) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("dispatch_reconciliations").select("id, dispatch_id, status, current_product_invoice_id, current_service_invoice_id").eq("project_id", projectId).in("dispatch_id", dispatchIds) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("invoices").select("id, dispatch_id, invoice_type, invoice_number, invoice_date, status, total, currency, order_number, pca_original, replaces_invoice_id, created_at").eq("project_id", projectId).in("dispatch_id", dispatchIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
-    relations.some((row) => row.removed_by) ? admin.from("profiles").select("id, full_name").in("id", relations.flatMap((row) => row.removed_by ? [row.removed_by] : [])) : Promise.resolve({ data: [], error: null }),
+    dispatchIds.length ? supabase.from("dispatch_reconciliation_attempts").select("id, dispatch_id, product_invoice_id, attempt_number, expected_order_number, detected_order_number, expected_real_volume, expected_unit_code, invoiced_quantity, invoice_unit_code, difference, validations, result, executed_by, executed_at").eq("project_id", projectId).in("dispatch_id", dispatchIds).order("executed_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    includeSecondary && relations.some((row) => row.removed_by) ? admin.from("profiles").select("id, full_name").in("id", relations.flatMap((row) => row.removed_by ? [row.removed_by] : [])) : Promise.resolve({ data: [], error: null }),
   ]);
-  const relatedError = programmingResult.error ?? suppliersResult.error ?? guidesResult.error ?? reconciliationsResult.error ?? invoicesResult.error ?? profilesResult.error;
+  const relatedError = programmingResult.error ?? suppliersResult.error ?? guidesResult.error ?? reconciliationsResult.error ?? invoicesResult.error ?? attemptsResult.error ?? profilesResult.error;
   if (relatedError) throw new Error(`No fue posible resolver los datos del lote. ${relatedError.message}`);
   const reconciliations = (reconciliationsResult.data ?? []) as ReconciliationRow[];
   const invoices = (invoicesResult.data ?? []) as InvoiceRow[];
-  const invoiceIds = invoices.map((row) => row.id);
-  const [invoiceDocumentsResult, attemptsResult] = await Promise.all([
-    invoiceIds.length ? admin.from("invoice_documents").select("invoice_id, document_id").eq("project_id", projectId).in("invoice_id", invoiceIds) : Promise.resolve({ data: [], error: null }),
-    dispatchIds.length ? supabase.from("dispatch_reconciliation_attempts").select("id, dispatch_id, product_invoice_id, attempt_number, expected_order_number, detected_order_number, expected_real_volume, expected_unit_code, invoiced_quantity, invoice_unit_code, difference, validations, result, executed_by, executed_at").eq("project_id", projectId).in("dispatch_id", dispatchIds).order("executed_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (invoiceDocumentsResult.error ?? attemptsResult.error) throw new Error("No fue posible cargar documentos o intentos de conciliación.");
-  const documentLinks = invoiceDocumentsResult.data ?? [];
-  const documentIds = documentLinks.map((row) => row.document_id);
-  const versionsResult = documentIds.length ? await admin.from("document_versions").select("id, document_id, file_name").in("document_id", documentIds).eq("upload_status", "UPLOADED").eq("is_current", true) : { data: [], error: null };
-  if (versionsResult.error) throw new Error("No fue posible cargar los PDFs de factura.");
-  const versionIds = (versionsResult.data ?? []).map((row) => row.id);
-  const jobsResult = versionIds.length ? await admin.from("document_processing_jobs").select("id, document_version_id").in("document_version_id", versionIds).eq("status", "COMPLETED").order("created_at", { ascending: false }) : { data: [], error: null };
-  if (jobsResult.error) throw new Error("No fue posible cargar el procesamiento documental.");
-  const jobIds = (jobsResult.data ?? []).map((row) => row.id);
-  const extractionsResult = jobIds.length ? await admin.from("invoice_extractions").select("id, invoice_id, processing_job_id, normalized_payload, corrected_payload").in("processing_job_id", jobIds).order("created_at", { ascending: false }) : { data: [], error: null };
-  if (extractionsResult.error) throw new Error("No fue posible cargar las extracciones de factura.");
 
   const programmingById = new Map((programmingResult.data ?? []).map((row) => [row.id, row]));
   const supplierNames = new Map((suppliersResult.data ?? []).map((row) => [row.id, row.name]));
   const profileNames = new Map((profilesResult.data ?? []).map((row) => [row.id, row.full_name]));
   const guideCount = new Map<string, number>();
   for (const guide of guidesResult.data ?? []) guideCount.set(guide.dispatch_id, (guideCount.get(guide.dispatch_id) ?? 0) + 1);
-  const documentByInvoice = new Map(documentLinks.map((row) => [row.invoice_id, row.document_id]));
-  const versionByDocument = new Map((versionsResult.data ?? []).map((row) => [row.document_id, row]));
-  const extractionByInvoice = new Map<string, { id: string; normalized_payload: unknown; corrected_payload: unknown }>();
-  for (const row of extractionsResult.data ?? []) if (row.invoice_id && !extractionByInvoice.has(row.invoice_id)) extractionByInvoice.set(row.invoice_id, row);
   const invoiceViewById = new Map<string, BatchInvoice>();
   for (const invoice of invoices) {
-    const documentId = documentByInvoice.get(invoice.id) ?? null;
-    const version = documentId ? versionByDocument.get(documentId) : undefined;
-    const extraction = extractionByInvoice.get(invoice.id);
     invoiceViewById.set(invoice.id, {
       id: invoice.id, dispatchId: invoice.dispatch_id, type: invoice.invoice_type,
       number: invoice.invoice_number, date: invoice.invoice_date,
@@ -131,17 +188,12 @@ export async function getBatchDetail(projectId: string, batchId: string, timezon
       orderNumber: invoice.order_number, pcaOriginal: invoice.pca_original,
       replacesInvoiceId: invoice.replaces_invoice_id,
       replacedByInvoiceId: invoices.find((row) => row.replaces_invoice_id === invoice.id)?.id ?? null,
-      documentId, fileName: version?.file_name ?? null,
-      extractionId: extraction?.id ?? null,
-      extractionPayload: (extraction?.corrected_payload ?? extraction?.normalized_payload ?? null) as BatchInvoice["extractionPayload"],
+      documentId: null, fileName: null,
+      extractionId: null, extractionPayload: null,
       createdAt: invoice.created_at,
     });
   }
   const attempts = attemptsResult.data ?? [];
-  const attemptUserIds = [...new Set(attempts.map((row) => row.executed_by))];
-  const attemptProfilesResult = attemptUserIds.length ? await admin.from("profiles").select("id, full_name").in("id", attemptUserIds) : { data: [], error: null };
-  if (attemptProfilesResult.error) throw new Error("No fue posible resolver autores de conciliación.");
-  const attemptNames = new Map((attemptProfilesResult.data ?? []).map((row) => [row.id, row.full_name]));
   const latestAttemptByDispatch = new Map<string, ReconciliationAttempt>();
   for (const attempt of attempts) if (!latestAttemptByDispatch.has(attempt.dispatch_id)) latestAttemptByDispatch.set(attempt.dispatch_id, {
     id: attempt.id, attemptNumber: attempt.attempt_number, productInvoiceId: attempt.product_invoice_id,
@@ -150,7 +202,7 @@ export async function getBatchDetail(projectId: string, batchId: string, timezon
     invoicedQuantity: numeric(attempt.invoiced_quantity), invoiceUnitCode: attempt.invoice_unit_code,
     difference: attempt.difference === null ? null : numeric(attempt.difference),
     validations: attempt.validations as Record<string, boolean>, result: attempt.result,
-    executedAt: attempt.executed_at, executedByName: attemptNames.get(attempt.executed_by) ?? "Usuario",
+    executedAt: attempt.executed_at, executedByName: "Usuario",
   });
   const reconciliationByDispatch = new Map(reconciliations.map((row) => [row.dispatch_id, row]));
   const dispatchById = new Map(dispatches.map((row) => [row.id, row]));
@@ -190,8 +242,6 @@ export async function getBatchDetail(projectId: string, batchId: string, timezon
     realVolume: dispatch.real_volume === null ? null : numeric(dispatch.real_volume),
     realUnitCode: dispatch.real_unit_code,
   }));
-  const previewResult = await supabase.rpc("preview_weekly_batch_rollover", { p_batch_id: batchId });
-  if (previewResult.error) throw new Error(`No fue posible calcular el cierre semanal. ${previewResult.error.message}`);
   const preview: BatchRolloverPreview[] = (previewResult.data ?? []).map((row: Record<string, unknown>) => ({
     batchDispatchId: String(row.batch_dispatch_id), dispatchId: String(row.dispatch_id),
     programmingCode: formatProgrammingCode(String(row.dispatch_id)),
@@ -201,5 +251,93 @@ export async function getBatchDetail(projectId: string, batchId: string, timezon
     destinationAccountingPeriod: String(row.destination_accounting_period),
   }));
   const summary = summarize(batch, relations, reconciliations, localDate(timezone));
-  return { ...summary, projectId, activeRelations: relationView.filter((row) => row.active), removedRelations: relationView.filter((row) => !row.active), eligibleDispatches, preview };
+  const queryCount = 4 + (includeSecondary ? 1 : 0) +
+    Number(programmingIds.length > 0) + Number(supplierIds.length > 0) +
+    (dispatchIds.length > 0 ? 4 : 0) +
+    Number(includeSecondary && relations.some((row) => row.removed_by));
+  return {
+    ...summary,
+    projectId,
+    activeRelations: relationView.filter((row) => row.active),
+    removedRelations: relationView.filter((row) => !row.active),
+    eligibleDispatches,
+    preview,
+    secondaryLoaded: includeSecondary,
+    loadMetrics: {
+      queryCount,
+      stageCount: 2,
+      durationMs: Math.round((performance.now() - startedAt) * 10) / 10,
+    },
+  };
+}
+
+export async function getBatchSecondaryData(
+  projectId: string,
+  batchId: string,
+): Promise<BatchSecondaryData | null> {
+  const startedAt = performance.now();
+  const supabase = await createClient();
+  const admin = createAdminClient();
+  const [batchResult, relationsResult, previewResult] = await Promise.all([
+    supabase.from("batches").select("id").eq("project_id", projectId).eq("id", batchId).maybeSingle(),
+    supabase.from("batch_dispatches").select("id, project_id, batch_id, dispatch_id, assignment_source, added_at, removed_at, removed_by, removal_reason, rolled_to_batch_id, removal_metadata").eq("project_id", projectId).eq("batch_id", batchId).not("removed_at", "is", null).order("removed_at", { ascending: false }),
+    supabase.rpc("preview_weekly_batch_rollover", { p_batch_id: batchId }),
+  ]);
+  const rootError = batchResult.error ?? relationsResult.error ?? previewResult.error;
+  if (rootError) throw new Error(`No fue posible cargar los datos secundarios del lote. ${rootError.message}`);
+  if (!batchResult.data) return null;
+  const relations = (relationsResult.data ?? []) as RelationRow[];
+  const dispatchIds = [...new Set(relations.map((row) => row.dispatch_id))];
+  const removedByIds = [...new Set(relations.flatMap((row) => row.removed_by ? [row.removed_by] : []))];
+  const [dispatchesResult, profilesResult] = await Promise.all([
+    dispatchIds.length ? supabase.from("dispatches").select("id, programming_id, supplier_id, order_number, status, real_volume, real_unit_code").eq("project_id", projectId).in("id", dispatchIds) : Promise.resolve({ data: [], error: null }),
+    removedByIds.length ? admin.from("profiles").select("id, full_name").in("id", removedByIds) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (dispatchesResult.error ?? profilesResult.error) throw new Error("No fue posible resolver el historial removido.");
+  const dispatches = (dispatchesResult.data ?? []) as DispatchRow[];
+  const programmingIds = [...new Set(dispatches.map((row) => row.programming_id))];
+  const supplierIds = [...new Set(dispatches.map((row) => row.supplier_id))];
+  const [programmingResult, suppliersResult] = await Promise.all([
+    programmingIds.length ? supabase.from("programming").select("id, scheduled_at").eq("project_id", projectId).in("id", programmingIds) : Promise.resolve({ data: [], error: null }),
+    supplierIds.length ? supabase.from("suppliers").select("id, name").in("id", supplierIds) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (programmingResult.error ?? suppliersResult.error) throw new Error("No fue posible completar el historial removido.");
+  const dispatchById = new Map(dispatches.map((row) => [row.id, row]));
+  const programmingById = new Map((programmingResult.data ?? []).map((row) => [row.id, row]));
+  const supplierNames = new Map((suppliersResult.data ?? []).map((row) => [row.id, row.name]));
+  const profileNames = new Map((profilesResult.data ?? []).map((row) => [row.id, row.full_name]));
+  const removedRelations: BatchDispatchRelation[] = relations.flatMap((relation) => {
+    const dispatch = dispatchById.get(relation.dispatch_id);
+    if (!dispatch) return [];
+    return [{
+      relationId: relation.id, active: false, assignmentSource: relation.assignment_source,
+      addedAt: relation.added_at, removedAt: relation.removed_at,
+      removedByName: relation.removed_by ? profileNames.get(relation.removed_by) ?? "Usuario" : null,
+      removalReason: relation.removal_reason,
+      removalSource: typeof relation.removal_metadata?.source === "string" ? relation.removal_metadata.source : null,
+      rolledToBatchId: relation.rolled_to_batch_id, dispatchId: dispatch.id,
+      programmingId: dispatch.programming_id, programmingCode: formatProgrammingCode(dispatch.programming_id),
+      orderNumber: dispatch.order_number,
+      supplierName: supplierNames.get(dispatch.supplier_id) ?? "Proveedor no disponible",
+      scheduledAt: programmingById.get(dispatch.programming_id)?.scheduled_at ?? relation.added_at,
+      operationalStatus: dispatch.status, realVolume: dispatch.real_volume === null ? null : numeric(dispatch.real_volume),
+      realUnitCode: dispatch.real_unit_code, guideCount: 0, reconciliationId: null,
+      reconciliationStatus: "NOT_STARTED", productInvoice: null, serviceInvoice: null, latestAttempt: null,
+    }];
+  });
+  const preview: BatchRolloverPreview[] = (previewResult.data ?? []).map((row: Record<string, unknown>) => ({
+    batchDispatchId: String(row.batch_dispatch_id), dispatchId: String(row.dispatch_id),
+    programmingCode: formatProgrammingCode(String(row.dispatch_id)), reconciled: Boolean(row.reconciled),
+    action: row.rollover_action as "STAY" | "MOVE", reason: String(row.rollover_reason),
+    destinationBatchId: row.destination_batch_id ? String(row.destination_batch_id) : null,
+    destinationPeriodStart: String(row.destination_period_start), destinationPeriodEnd: String(row.destination_period_end),
+    destinationAccountingPeriod: String(row.destination_accounting_period),
+  }));
+  const queryCount = 3 + Number(dispatchIds.length > 0) + Number(removedByIds.length > 0) +
+    Number(programmingIds.length > 0) + Number(supplierIds.length > 0);
+  return {
+    removedRelations,
+    preview,
+    loadMetrics: { queryCount, stageCount: 3, durationMs: Math.round((performance.now() - startedAt) * 10) / 10 },
+  };
 }

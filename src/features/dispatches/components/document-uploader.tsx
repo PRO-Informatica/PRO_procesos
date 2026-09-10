@@ -110,11 +110,11 @@ export function DocumentUploader({ projectId, contextId, context, label, existin
     <div className="space-y-3">
       <input ref={fileInput} type="file" accept={ACCEPT} multiple className="sr-only" onChange={(event) => selectFiles(event.target.files)} />
       <input ref={cameraInput} type="file" accept={IMAGE_ACCEPT} capture="environment" className="sr-only" onChange={(event) => selectFiles(event.target.files, true)} />
-      <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" disabled={busy} onClick={() => fileInput.current?.click()} className="min-h-10 px-3 text-xs">
+      <div className="grid gap-2 min-[420px]:grid-cols-2 sm:flex sm:flex-wrap">
+        <Button variant="secondary" disabled={busy} onClick={() => fileInput.current?.click()} className="min-h-11 w-full px-3 text-xs sm:min-h-10 sm:w-auto">
           {busy ? <LoaderCircle className="size-4 animate-spin" /> : <FileUp className="size-4" />}{label}
         </Button>
-        <Button variant="secondary" disabled={busy} onClick={() => cameraInput.current?.click()} className="min-h-10 px-3 text-xs"><Camera className="size-4" /> Tomar foto</Button>
+        <Button variant="secondary" disabled={busy} onClick={() => cameraInput.current?.click()} className="min-h-11 w-full px-3 text-xs sm:min-h-10 sm:w-auto"><Camera className="size-4" /> Tomar foto</Button>
       </div>
       {items.length > 0 && <ul className="space-y-2" aria-live="polite">
         {items.map((item) => <li key={item.id} className="overflow-hidden rounded-lg border border-border bg-muted/15">

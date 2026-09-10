@@ -14,6 +14,7 @@ import {
   addReportLogo,
   setupReportSheet,
 } from "../src/features/reports/workbook-header.ts";
+import { reportDispatchProcessStatus } from "../src/features/reports/presentation.ts";
 
 const { Workbook } = ExcelJS;
 
@@ -22,6 +23,13 @@ const query = await readFile(new URL("../src/features/reports/queries.ts", impor
 const projectQuery = await readFile(new URL("../src/features/projects/queries.ts", import.meta.url), "utf8");
 const reportView = await readFile(new URL("../src/features/reports/components/guide-report.tsx", import.meta.url), "utf8");
 const reportPagination = await readFile(new URL("../src/features/reports/components/report-results-pagination.tsx", import.meta.url), "utf8");
+const actorMigration = await readFile(
+  new URL(
+    "../supabase/migrations/094_programming_completion_and_optional_guide_labels.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 function invoice(id, type, number = "123") {
   return {
@@ -73,6 +81,29 @@ test("Reportería pagina la vista cada ocho programaciones sin limitar la export
   assert.doesNotMatch(route, /PAGE_SIZE/u);
 });
 
+test("el estado global del despacho solo muestra Completado cuando está conciliado", () => {
+  assert.equal(
+    reportDispatchProcessStatus("COMPLETED", "PENDING_REINVOICING"),
+    "PENDING_REINVOICING",
+  );
+  assert.equal(
+    reportDispatchProcessStatus("COMPLETED", "WITH_DIFFERENCES"),
+    "WITH_DIFFERENCES",
+  );
+  assert.equal(
+    reportDispatchProcessStatus("COMPLETED", "PENDING_RECONCILIATION"),
+    "PENDING_RECONCILIATION",
+  );
+  assert.equal(
+    reportDispatchProcessStatus("COMPLETED", "RECONCILED"),
+    "COMPLETED",
+  );
+  assert.equal(
+    reportDispatchProcessStatus("IN_EXECUTION", "RECONCILED"),
+    "IN_EXECUTION",
+  );
+});
+
 test("el ZIP incluye Producto y Servicio del pedido", () => {
   const items = reportArchiveItems(report(invoice("product", "PRODUCT"), invoice("service", "SERVICE")));
   assert.deepEqual(items.map((item) => item.invoice.type), ["PRODUCT", "SERVICE"]);
@@ -105,6 +136,17 @@ test("los nombres del ZIP se sanitizan y las colisiones reciben sufijo", () => {
 test("la consulta restringe datos y documentos a proyectos permitidos", () => {
   assert.match(query, /\.in\("project_id", projectIds\)/u);
   assert.match(query, /invoice_documents[\s\S]*\.in\("project_id", projectIds\)/u);
+});
+
+test("los actores reales de Programación y Despacho se resuelven con el RPC autorizado", () => {
+  assert.match(query, /supabase\.rpc\("get_report_actor_labels"/u);
+  assert.match(query, /row\.profile_id/u);
+  assert.match(query, /row\.display_label/u);
+  assert.match(query, /createdByName: profileMap\.get\(String\(program\.created_by\)\)/u);
+  assert.match(query, /registeredByName: profileMap\.get\(String\(dispatch\.created_by\)\)/u);
+  assert.match(actorMigration, /select programming\.created_by profile_id/u);
+  assert.match(actorMigration, /select dispatch\.created_by profile_id/u);
+  assert.match(actorMigration, /nullif\(btrim\(auth_user\.email\), ''\)/u);
 });
 
 test("el Excel muestra logo, proyecto, razón social y NIT antes de la tabla", async () => {

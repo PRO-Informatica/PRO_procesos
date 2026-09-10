@@ -28,6 +28,7 @@ type ProjectRow = {
 
 type CompanyRow = {
   id: string;
+  code: string;
   name: string;
 };
 
@@ -273,16 +274,17 @@ export async function getOperationalProjectAccess(
   const companyIds = [...new Set(rows.map((project) => project.company_id))];
   const { data: companyRows, error } = await supabase
     .from("companies")
-    .select("id, name")
+    .select("id, code, name")
     .in("id", companyIds);
   if (error) throw new Error("No fue posible consultar las empresas de los proyectos.");
-  const companyNames = new Map(
-    ((companyRows ?? []) as CompanyRow[]).map((company) => [company.id, company.name]),
+  const companies = new Map(
+    ((companyRows ?? []) as CompanyRow[]).map((company) => [company.id, company]),
   );
   const projects = rows.map((project): ProjectSummary => ({
     id: project.id,
     companyId: project.company_id,
-    companyName: companyNames.get(project.company_id) ?? "Empresa",
+    companyCode: companies.get(project.company_id)?.code ?? "",
+    companyName: companies.get(project.company_id)?.name ?? "Empresa",
     name: project.name,
     code: project.code,
     address: project.address,
@@ -299,6 +301,36 @@ export async function getOperationalProjectAccess(
   );
 }
 
+export async function getOperationalProjectAccessForProject(
+  userId: string,
+  projectId: string,
+): Promise<ProjectAccessScope | null> {
+  const row = (await getOperationalProjectRows(userId)).find((project) => project.id === projectId);
+  if (!row) return null;
+  const supabase = await createClient();
+  const { data: company, error } = await supabase
+    .from("companies")
+    .select("code, name")
+    .eq("id", row.company_id)
+    .maybeSingle();
+  if (error) throw new Error("No fue posible consultar la empresa del proyecto.");
+  const project: ProjectSummary = {
+    id: row.id,
+    companyId: row.company_id,
+    companyCode: company?.code ?? "",
+    companyName: company?.name ?? "Empresa",
+    name: row.name,
+    code: row.code,
+    address: row.address,
+    billingLegalName: row.billing_legal_name,
+    billingTaxId: row.billing_tax_id,
+    status: row.status,
+    timezone: row.timezone ?? "America/Guatemala",
+  };
+  const access = await resolveRolesAndPermissions(userId, project);
+  return { project, roleCodes: access.roleCodes, permissions: access.permissions };
+}
+
 export async function getProjectContext(userId: string): Promise<ProjectContextState> {
   try {
     const supabase = await createClient();
@@ -311,22 +343,23 @@ export async function getProjectContext(userId: string): Promise<ProjectContextS
     const companyIds = [...new Set(rows.map((project) => project.company_id))];
     const { data: companyRows, error: companiesError } = await supabase
       .from("companies")
-      .select("id, name")
+      .select("id, code, name")
       .in("id", companyIds);
 
     if (companiesError) {
       throw new Error("No fue posible consultar las empresas de los proyectos.");
     }
 
-    const companyNames = new Map(
-      ((companyRows ?? []) as CompanyRow[]).map((company) => [company.id, company.name]),
+    const companies = new Map(
+      ((companyRows ?? []) as CompanyRow[]).map((company) => [company.id, company]),
     );
 
     const projects: ProjectSummary[] = rows
       .map((project) => ({
         id: project.id,
         companyId: project.company_id,
-        companyName: companyNames.get(project.company_id) ?? "Empresa",
+        companyCode: companies.get(project.company_id)?.code ?? "",
+        companyName: companies.get(project.company_id)?.name ?? "Empresa",
         name: project.name,
         code: project.code,
         billingLegalName: project.billing_legal_name,
@@ -364,6 +397,11 @@ export async function getProjectContext(userId: string): Promise<ProjectContextS
       ...access,
       hasUniversalInvoiceAccess: accessByProject.some(({ access: item }) =>
         item.permissions.includes("invoice.universal"),
+      ),
+      hasUniversalBatchAccess: accessByProject.some(({ project, access: item }) =>
+        project.status === "ACTIVE" &&
+        item.permissions.includes("batch.view") &&
+        item.roleCodes.some((role) => ["PURCHASING", "COMPANY_ADMIN"].includes(role)),
       ),
     };
   } catch (error) {

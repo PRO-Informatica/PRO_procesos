@@ -3,6 +3,7 @@ import type { ProcessedInvoiceType } from "../invoice-processing";
 export type UniversalInvoiceStatus =
   | "READY"
   | "READY_WITH_DIFFERENCES"
+  | "REQUIRES_REINVOICING"
   | "INVALID_FILE"
   | "PROJECT_NOT_FOUND"
   | "PROJECT_AMBIGUOUS"
@@ -22,6 +23,7 @@ export type UniversalInvoiceResult = {
   fileSize: number;
   detectedType: ProcessedInvoiceType;
   invoiceNumber: string | null;
+  detectedBillingLegalName: string | null;
   orderNumber: string | null;
   projectId: string | null;
   projectLabel: string | null;
@@ -32,6 +34,9 @@ export type UniversalInvoiceResult = {
   candidateProjects: UniversalCandidate[];
   candidateDispatches: UniversalCandidate[];
   warnings: string[];
+  operation: "NEW" | "REINVOICE";
+  replacesInvoiceId: string | null;
+  replacesInvoiceNumber: string | null;
 };
 
 export type UniversalCommitResult = UniversalInvoiceResult & {

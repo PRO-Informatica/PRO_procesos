@@ -1,4 +1,5 @@
 import type { InvoiceProcessingPayload } from "@/features/invoices/invoice-processing";
+import type { ProjectSummary } from "@/features/projects/types";
 
 export const BATCH_STATUSES = ["OPEN", "CLOSED"] as const;
 export type BatchStatus = (typeof BATCH_STATUSES)[number];
@@ -14,6 +15,13 @@ export type BatchSummary = {
 };
 
 export type BatchPageData = { current: BatchSummary | null; history: BatchSummary[] };
+
+export type UniversalBatchProject = {
+  project: ProjectSummary;
+  roleCodes: string[];
+  permissions: string[];
+  batches: BatchSummary[];
+};
 
 export type BatchInvoice = {
   id: string; dispatchId: string; type: InvoiceType; number: string; date: string;
@@ -65,6 +73,20 @@ export type BatchDetail = BatchSummary & {
   projectId: string; activeRelations: BatchDispatchRelation[];
   removedRelations: BatchDispatchRelation[];
   eligibleDispatches: EligibleBatchDispatch[]; preview: BatchRolloverPreview[];
+  secondaryLoaded: boolean;
+  loadMetrics: BatchLoadMetrics;
+};
+
+export type BatchLoadMetrics = {
+  queryCount: number;
+  stageCount: number;
+  durationMs: number;
+};
+
+export type BatchSecondaryData = {
+  removedRelations: BatchDispatchRelation[];
+  preview: BatchRolloverPreview[];
+  loadMetrics: BatchLoadMetrics;
 };
 
 export type BatchPermissions = {
@@ -77,6 +99,9 @@ export const initialBatchMutationState: BatchMutationState = { status: "idle" };
 
 export type InvoiceInspection = {
   fileName: string; dispatchId: string | null; requestedType: InvoiceType | null;
-  status: "READY" | "WITH_DIFFERENCES" | "IN_EXECUTION" | "DISPATCH_NOT_FOUND" | "ERROR" | "REQUIRES_REVIEW";
+  status: "READY" | "WITH_DIFFERENCES" | "REQUIRES_REINVOICING" | "IN_EXECUTION" | "DISPATCH_NOT_FOUND" | "ERROR" | "REQUIRES_REVIEW";
   message: string; payload: InvoiceProcessingPayload | null; duplicate: boolean;
+  operation?: "NEW" | "REINVOICE";
+  replacesInvoiceId?: string | null;
+  replacesInvoiceNumber?: string | null;
 };

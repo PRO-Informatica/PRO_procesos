@@ -10,11 +10,16 @@ import { compareAddresses, normalizeAddressIdentity } from "@/lib/address-identi
 
 import { classifyInvoiceLine, classifyInvoiceLines } from "./invoice-classification";
 import { buildFiscalDocumentKey } from "./invoice-identity";
+import {
+  C14_REINVOICING_MESSAGE,
+  evaluateInvoiceRecipientPolicy,
+} from "./invoice-recipient-policy";
 
 export type ProcessedInvoiceType = "PRODUCT" | "SERVICE" | "UNKNOWN";
 
 export type InvoiceProcessingContext = {
   expectedType?: "PRODUCT" | "SERVICE";
+  companyCode: string;
   orderNumber: string;
   supplierName: string;
   supplierTaxId: string | null;
@@ -60,6 +65,13 @@ export type InvoiceProcessingPayload = {
   normalized_unit: string | null;
   expected_real_volume: number | null;
   difference: number | null;
+  recipient_policy: {
+    detected_identity: string | null;
+    allowed: boolean;
+    requires_reinvoicing: boolean;
+    reason: "C14_NOT_ALLOWED_FOR_PROJECT" | null;
+  };
+  requires_reinvoicing: boolean;
   validations: Record<string, boolean>;
   warnings: string[];
   engine_version: "MIXTO_LISTO_PDF_TEXT_V3";
@@ -143,6 +155,10 @@ export function processExtractedInvoice(
   const detectedOrder = normalizeOperationalOrder(extracted.pca_original);
   const expectedOrder = normalizeOperationalOrder(context.orderNumber);
   const billingName = normalizeBusinessIdentity(extracted.billing_legal_name);
+  const recipientPolicy = evaluateInvoiceRecipientPolicy({
+    billingLegalName: extracted.billing_legal_name,
+    companyCode: context.companyCode,
+  });
   const supplierName = normalizeBusinessIdentity(extracted.supplier_legal_name);
   const expectedSupplierName = normalizeBusinessIdentity(context.supplierName);
   const supplierTax = normalizeTaxId(extracted.supplier_tax_id);
@@ -152,10 +168,13 @@ export function processExtractedInvoice(
     extracted.shipping_address,
   );
   const projectValid = addressComparison.result === "MATCH";
-  const billingNameValid = Boolean(
+  const configuredBillingNameMatches = Boolean(
     normalizeBusinessIdentity(context.billingLegalName) &&
       normalizeBusinessIdentity(context.billingLegalName) === billingName,
   );
+  const billingNameValid = recipientPolicy.isC14
+    ? recipientPolicy.allowed
+    : configuredBillingNameMatches;
   const supplierValid = supplierTax && expectedSupplierTax
     ? supplierTax === expectedSupplierTax
     : Boolean(expectedSupplierName && supplierName === expectedSupplierName);
@@ -177,8 +196,11 @@ export function processExtractedInvoice(
   }
   const periodValid = sameMonth(extracted.invoice_date!, context.accountingPeriod);
   if (!periodValid) warnings.push("La fecha de la factura está fuera del período contable del lote.");
-  if (!billingNameValid)
+  if (recipientPolicy.requiresReinvoicing) {
+    warnings.push(C14_REINVOICING_MESSAGE);
+  } else if (!billingNameValid) {
     warnings.push("La dirección corresponde al proyecto, pero la razón social receptora es diferente.");
+  }
   if (detectedType === "PRODUCT" && invoiceUnit !== expectedUnit)
     warnings.push("La unidad facturada no coincide con la unidad del Volumen Real.");
   if (difference !== null && Math.abs(difference) >= 0.001)
@@ -189,6 +211,8 @@ export function processExtractedInvoice(
     type_valid: context.expectedType ? detectedType === context.expectedType : detectedType !== "UNKNOWN",
     project_valid: projectValid,
     billing_name_valid: billingNameValid,
+    billing_society_allowed: recipientPolicy.allowed,
+    requires_reinvoicing: recipientPolicy.requiresReinvoicing,
     supplier_valid: supplierValid,
     order_valid: detectedOrder !== null && detectedOrder === expectedOrder,
     period_valid: periodValid,
@@ -250,6 +274,13 @@ export function processExtractedInvoice(
       normalized_unit: invoiceUnit,
       expected_real_volume: context.realVolume,
       difference,
+      recipient_policy: {
+        detected_identity: recipientPolicy.detectedIdentity,
+        allowed: recipientPolicy.allowed,
+        requires_reinvoicing: recipientPolicy.requiresReinvoicing,
+        reason: recipientPolicy.reason,
+      },
+      requires_reinvoicing: recipientPolicy.requiresReinvoicing,
       validations,
       warnings,
       engine_version: "MIXTO_LISTO_PDF_TEXT_V3",

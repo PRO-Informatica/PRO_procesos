@@ -12,6 +12,7 @@ import type {
   IncidentMutationState,
   UploadActionResult,
 } from "./types";
+import { validateDispatchGuideLines } from "./validation";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -217,8 +218,8 @@ function guideLines(formData: FormData) {
   return quantities.map((quantity, index) => ({
     quantity,
     unit_code: units[index]?.trim(),
-    product_code: codes[index],
-    product_description: descriptions[index],
+    product_code: codes[index] || null,
+    product_description: descriptions[index] || null,
   }));
 }
 
@@ -236,17 +237,8 @@ export async function saveDispatchGuideAction(
     return { status: "error", message: "Recarga el despacho antes de guardar la guía." };
   if (!guideNumber)
     return { status: "error", message: "Ingresa el número de guía." };
-  if (
-    !lines.length ||
-    lines.some(
-      (line) =>
-        !Number.isFinite(line.quantity) ||
-        line.quantity <= 0 ||
-        !line.unit_code ||
-        !line.product_code ||
-        !line.product_description,
-    )
-  ) return { status: "error", message: "Cada producto necesita cantidad, UM, código y descripción." };
+  const linesError = validateDispatchGuideLines(lines);
+  if (linesError) return { status: "error", message: linesError };
   if (!(await authorize(projectId, "dispatch.modify")))
     return { status: "error", message: "No tienes permiso para guardar guías." };
   const supabase = await createClient();

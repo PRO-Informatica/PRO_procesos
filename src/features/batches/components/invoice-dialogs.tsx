@@ -31,12 +31,13 @@ type IndividualProps = {
   type: InvoiceType;
   replacement?: boolean;
   onClose: () => void;
+  onSuccess?: () => void | Promise<void>;
 };
 
 function inspectionTone(status: InvoiceInspection["status"], duplicate = false) {
   if (duplicate) return "bg-destructive-soft text-destructive";
   if (status === "READY") return "bg-success-soft text-success";
-  if (status === "WITH_DIFFERENCES") {
+  if (status === "WITH_DIFFERENCES" || status === "REQUIRES_REINVOICING") {
     return "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200";
   }
   return "bg-destructive-soft text-destructive";
@@ -51,10 +52,17 @@ function InspectionSummary({ inspection }: { inspection: InvoiceInspection }) {
           <div><dt>Factura</dt><dd className="font-semibold">{inspection.payload.invoice_number}</dd></div>
           <div><dt>Pedido detectado</dt><dd className="font-semibold">{inspection.payload.detected_order_number ?? "—"}</dd></div>
           <div><dt>Tipo detectado</dt><dd className="font-semibold">{inspection.payload.detected_type}</dd></div>
+          <div><dt>Razón Social</dt><dd className="font-semibold">{inspection.payload.billing_legal_name ?? "—"}</dd></div>
+          <div><dt>Estado</dt><dd className="font-semibold">{inspection.payload.requires_reinvoicing ? "Pendiente de refacturación" : "Validada"}</dd></div>
           <div><dt>Cantidad conciliable</dt><dd className="font-semibold">{formatBatchQuantity(inspection.payload.invoiced_quantity)} {inspection.payload.normalized_unit ?? ""}</dd></div>
           <div><dt>Volumen Real</dt><dd className="font-semibold">{inspection.payload.expected_real_volume === null ? "Pendiente" : formatBatchQuantity(inspection.payload.expected_real_volume)}</dd></div>
           <div><dt>Diferencia</dt><dd className="font-semibold">{inspection.payload.difference === null ? "No comparable" : formatBatchQuantity(inspection.payload.difference)}</dd></div>
         </dl>
+      )}
+      {inspection.operation === "REINVOICE" && (
+        <p className="mt-3 text-xs font-semibold">
+          Nueva Factura de Producto · reemplaza la factura {inspection.replacesInvoiceNumber ?? "vigente"}.
+        </p>
       )}
     </div>
   );
@@ -67,6 +75,7 @@ export function DispatchInvoiceDialog({
   type,
   replacement = false,
   onClose,
+  onSuccess,
 }: IndividualProps) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -100,7 +109,7 @@ export function DispatchInvoiceDialog({
     startTransition(async () => {
       const data = new FormData();
       data.set("file", file);
-      const replaces = replacement ? relation.productInvoice?.id ?? null : null;
+      const replaces = replacement ? relation.productInvoice?.id ?? null : inspection.replacesInvoiceId ?? null;
       const result = await saveDispatchInvoice(
         projectId,
         batchId,
@@ -112,7 +121,8 @@ export function DispatchInvoiceDialog({
       setMessage(result.message);
       if (result.status === "success") {
         notify.success(notifications.invoiceSaved);
-        router.refresh();
+        if (onSuccess) await onSuccess();
+        else router.refresh();
         onClose();
       } else {
         notify.error(notifications.saveFailed);
@@ -123,13 +133,13 @@ export function DispatchInvoiceDialog({
 
   const canSave = Boolean(
     inspection?.payload &&
-      ["READY", "WITH_DIFFERENCES"].includes(inspection.status) &&
+      ["READY", "WITH_DIFFERENCES", "REQUIRES_REINVOICING"].includes(inspection.status) &&
       (!inspection.duplicate || replacement),
   );
 
   return (
     <Modal
-      title={replacement ? "Cargar factura refacturada" : `Cargar factura de ${type === "PRODUCT" ? "producto" : "servicio"}`}
+      title={replacement ? "Cargar factura refacturada de Producto" : `Cargar factura de ${type === "PRODUCT" ? "producto" : "servicio"}`}
       description={`${relation.programmingCode} · Pedido ${relation.orderNumber ?? "pendiente"}. Un PDF digital corresponde a una factura.`}
       icon={FileText}
       onClose={onClose}
@@ -147,6 +157,12 @@ export function DispatchInvoiceDialog({
           }}
         />
         <p className="text-xs text-foreground-muted">Solo PDF digital, máximo 10 MiB. No se utiliza OCR.</p>
+        {replacement && relation.productInvoice && (
+          <div className="rounded-xl border border-warning/25 bg-warning-soft p-3 text-sm text-warning">
+            <p className="font-semibold">Factura de Producto anterior: {relation.productInvoice.number}</p>
+            <p className="mt-1 text-xs">La nueva factura debe tener una identidad fiscal distinta. La anterior permanecerá en el historial.</p>
+          </div>
+        )}
         {inspection && <InspectionSummary inspection={inspection} />}
         {inspection?.duplicate && !replacement && (
           <p className="rounded-xl bg-destructive-soft p-3 text-sm text-destructive">
@@ -190,14 +206,43 @@ function formatInvoiceTotal(total: number, currency: string) {
   }).format(total);
 }
 
+function bulkRowPresentation(row: BulkRow, duplicateKeys: Set<string>) {
+  const result = row.inspection;
+  const payload = result?.payload;
+  const key = result?.dispatchId && result.requestedType
+    ? `${result.dispatchId}:${result.requestedType}`
+    : "";
+  const duplicated = duplicateKeys.has(key);
+  const alreadyRegistered = Boolean(result?.duplicate);
+  const message = row.saved
+    ? "Guardada"
+    : row.saveError
+      ?? (alreadyRegistered ? result?.message
+        : duplicated
+          ? "Requiere revisión: hay más de un PDF del mismo tipo en esta carga"
+          : result?.message ?? "Pendiente de validar");
+
+  return {
+    result,
+    payload,
+    formattedTotal: payload ? formatInvoiceTotal(payload.total, payload.currency) : "—",
+    duplicated,
+    alreadyRegistered,
+    message,
+    hasProblem: alreadyRegistered || duplicated || Boolean(row.saveError),
+  };
+}
+
 export function BulkInvoiceDialog({
   projectId,
   batchId,
   onClose,
+  onSuccess,
 }: {
   projectId: string;
   batchId: string;
   onClose: () => void;
+  onSuccess?: () => void | Promise<void>;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<BulkRow[]>([]);
@@ -317,14 +362,14 @@ export function BulkInvoiceDialog({
         const row = next[index];
         const result = row.inspection;
         const duplicateKey = result?.dispatchId && result.requestedType ? `${result.dispatchId}:${result.requestedType}` : "";
-        if (row.saved || !result?.payload || !result.dispatchId || !result.requestedType || result.duplicate || duplicateKeys.has(duplicateKey) || !["READY", "WITH_DIFFERENCES"].includes(result.status)) continue;
+        if (row.saved || !result?.payload || !result.dispatchId || !result.requestedType || result.duplicate || duplicateKeys.has(duplicateKey) || !["READY", "WITH_DIFFERENCES", "REQUIRES_REINVOICING"].includes(result.status)) continue;
         const data = new FormData();
         data.set("file", row.file);
-        const response = await saveDispatchInvoice(projectId, batchId, result.dispatchId, result.requestedType, null, data);
+        const response = await saveDispatchInvoice(projectId, batchId, result.dispatchId, result.requestedType, result.replacesInvoiceId ?? null, data);
         if (response.status === "success") {
           next[index] = { ...row, saved: true, saveError: null };
           saved += 1;
-          if (result.requestedType === "PRODUCT") productDispatches.add(result.dispatchId);
+          if (result.requestedType === "PRODUCT" && result.operation !== "REINVOICE") productDispatches.add(result.dispatchId);
         } else {
           next[index] = { ...row, saveError: response.message };
         }
@@ -337,10 +382,11 @@ export function BulkInvoiceDialog({
       setMessage(`${saved} factura(s) guardada(s). ${reconciled} conciliación(es) ejecutada(s). Los casos con error o duplicidad no fueron persistidos.`);
       if (saved > 0) {
         notify.success(notifications.invoicesSaved, `${saved} ${saved === 1 ? "archivo procesado" : "archivos procesados"}.`);
+        if (onSuccess) await onSuccess();
+        else router.refresh();
       } else {
         notify.error(notifications.saveFailed);
       }
-      router.refresh();
       setOperation(null);
     });
   }
@@ -348,12 +394,12 @@ export function BulkInvoiceDialog({
   const readyCount = rows.filter((row) => {
     const result = row.inspection;
     const key = result?.dispatchId && result.requestedType ? `${result.dispatchId}:${result.requestedType}` : "";
-    return !row.saved && result?.payload && !result.duplicate && !duplicateKeys.has(key) && ["READY", "WITH_DIFFERENCES"].includes(result.status);
+    return !row.saved && result?.payload && !result.duplicate && !duplicateKeys.has(key) && ["READY", "WITH_DIFFERENCES", "REQUIRES_REINVOICING"].includes(result.status);
   }).length;
 
   return (
     <Modal title="Carga masiva de facturas" description="La vista previa no persiste documentos, asociaciones ni conciliaciones." icon={Files} onClose={onClose} pending={pending} wide>
-      <div className="space-y-4 p-5 sm:p-6">
+      <div className="space-y-4 p-4 sm:p-6">
         <input
           type="file"
           multiple
@@ -377,7 +423,56 @@ export function BulkInvoiceDialog({
                     {group.rows.length} {group.rows.length === 1 ? "PDF" : "PDFs"}
                   </span>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="divide-y divide-border lg:hidden">
+                  {group.rows.map((row) => {
+                    const view = bulkRowPresentation(row, duplicateKeys);
+                    return (
+                      <article key={row.key} className="space-y-3 p-3.5 sm:p-4">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand-strong">
+                            <FileText aria-hidden="true" className="size-4" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="break-all text-sm font-semibold leading-5">{row.file.name}</p>
+                            <p className="mt-1 text-xs text-foreground-muted">
+                              {view.payload?.invoice_number ? `Factura ${view.payload.invoice_number}` : "Sin clasificar"}
+                            </p>
+                          </div>
+                          <IconButton
+                            label={row.saved ? "La factura ya fue guardada" : `Quitar ${row.file.name} de la carga`}
+                            tone="destructive"
+                            disabled={pending || row.saved}
+                            onClick={() => removeFile(row.key)}
+                            className="size-10 shrink-0 border border-destructive/25"
+                          >
+                            <Trash2 className="size-4" />
+                          </IconButton>
+                        </div>
+
+                        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg bg-muted/45 p-3 text-xs">
+                          <div>
+                            <dt className="text-foreground-muted">Tipo</dt>
+                            <dd className="mt-1 font-semibold">
+                              {view.result?.requestedType === "PRODUCT" ? "Producto" : view.result?.requestedType === "SERVICE" ? "Servicio" : "—"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-foreground-muted">Total</dt>
+                            <dd className="mt-1 font-semibold">
+                              {view.formattedTotal}
+                            </dd>
+                          </div>
+                        </dl>
+
+                        <p className={`rounded-lg px-3 py-2 text-xs leading-5 ${view.hasProblem || (!group.dispatchId && Boolean(view.result)) ? "bg-destructive-soft text-destructive" : "bg-muted/45 text-foreground-muted"}`}>
+                          {view.message}
+                        </p>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                <div className="hidden overflow-x-auto lg:block">
                   <table className="w-full min-w-[900px] text-left text-xs">
                     <thead className="bg-muted/25 uppercase text-foreground-muted">
                       <tr>
@@ -391,19 +486,15 @@ export function BulkInvoiceDialog({
                     </thead>
                     <tbody className="divide-y divide-border">
                       {group.rows.map((row) => {
-                        const result = row.inspection;
-                        const key = result?.dispatchId && result.requestedType ? `${result.dispatchId}:${result.requestedType}` : "";
-                        const duplicated = duplicateKeys.has(key);
-                        const alreadyRegistered = Boolean(result?.duplicate);
-                        const payload = result?.payload;
+                        const view = bulkRowPresentation(row, duplicateKeys);
                         return (
                           <tr key={row.key}>
                             <td className="max-w-64 p-3 font-semibold"><span className="block truncate" title={row.file.name}>{row.file.name}</span></td>
-                            <td className="p-3">{payload?.invoice_number ?? "—"}</td>
-                            <td className="p-3">{result?.requestedType === "PRODUCT" ? "Producto" : result?.requestedType === "SERVICE" ? "Servicio" : "—"}</td>
-                            <td className="whitespace-nowrap p-3 font-semibold">{payload ? formatInvoiceTotal(payload.total, payload.currency) : "—"}</td>
-                            <td className="max-w-80 p-3"><span className={alreadyRegistered || duplicated || row.saveError || (!group.dispatchId && Boolean(result)) ? "text-destructive" : ""}>{row.saved ? "Guardada" : row.saveError ?? (alreadyRegistered ? result?.message : duplicated ? "Requiere revisión: hay más de un PDF del mismo tipo en esta carga" : result?.message ?? "Pendiente de validar")}</span></td>
-                                <td className="p-3 text-right"><IconButton label={row.saved ? "La factura ya fue guardada" : `Quitar ${row.file.name} de la carga`} tone="destructive" disabled={pending || row.saved} onClick={() => removeFile(row.key)} className="size-8 border border-destructive/25"><Trash2 className="size-4" /></IconButton></td>
+                            <td className="p-3">{view.payload?.invoice_number ?? "—"}</td>
+                            <td className="p-3">{view.result?.requestedType === "PRODUCT" ? "Producto" : view.result?.requestedType === "SERVICE" ? "Servicio" : "—"}</td>
+                            <td className="whitespace-nowrap p-3 font-semibold">{view.formattedTotal}</td>
+                            <td className="max-w-80 p-3"><span className={view.hasProblem || (!group.dispatchId && Boolean(view.result)) ? "text-destructive" : ""}>{view.message}</span></td>
+                            <td className="p-3 text-right"><IconButton label={row.saved ? "La factura ya fue guardada" : `Quitar ${row.file.name} de la carga`} tone="destructive" disabled={pending || row.saved} onClick={() => removeFile(row.key)} className="size-8 border border-destructive/25"><Trash2 className="size-4" /></IconButton></td>
                           </tr>
                         );
                       })}

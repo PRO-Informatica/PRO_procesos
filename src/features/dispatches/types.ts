@@ -10,8 +10,8 @@ export type IncidentTypeOption = { id: string; name: string };
 export type DispatchGuideLine = {
   id: string;
   position: number;
-  productCode: string;
-  productDescription: string;
+  productCode: string | null;
+  productDescription: string | null;
   quantity: number;
   unitCode: string;
 };

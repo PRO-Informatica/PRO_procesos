@@ -3,6 +3,7 @@ export type ProjectStatus = "ACTIVE" | "INACTIVE" | "CLOSED";
 export type ProjectSummary = {
   id: string;
   companyId: string;
+  companyCode: string;
   companyName: string;
   name: string;
   code: string;
@@ -20,6 +21,7 @@ export type ProjectContextData = {
   permissions: string[];
   isCompanyAdmin: boolean;
   hasUniversalInvoiceAccess: boolean;
+  hasUniversalBatchAccess: boolean;
 };
 
 export type ProjectContextState =
@@ -45,4 +47,5 @@ export const emptyProjectContext: ProjectContextData = {
   permissions: [],
   isCompanyAdmin: false,
   hasUniversalInvoiceAccess: false,
+  hasUniversalBatchAccess: false,
 };

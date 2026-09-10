@@ -175,16 +175,10 @@ export function ProgrammingWorkspace({
   );
   const scopedItems = useMemo(() => {
     return items.filter((item) => {
-      const reconciliation = {
-        effectiveStatus: item.effectiveStatus,
-        reconciliationStatus:
-          item.dispatches.find(
-            (dispatch) => dispatch.reconciliationStatus === "RECONCILED",
-          )?.reconciliationStatus ?? null,
-      };
+      const programming = { effectiveStatus: item.effectiveStatus };
       return scope === "active"
-        ? isActiveProgramming(reconciliation)
-        : isHistoricalProgramming(reconciliation);
+        ? isActiveProgramming(programming)
+        : isHistoricalProgramming(programming);
     });
   }, [items, scope]);
   const today = useMemo(() => todayInTimezone(project.timezone), [project.timezone]);

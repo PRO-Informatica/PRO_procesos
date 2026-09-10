@@ -12,7 +12,6 @@ export type ProgrammingAvailabilityInput = {
 
 export type ProgrammingScopeInput = {
   effectiveStatus: ProgrammingEffectiveStatus;
-  reconciliationStatus: string | null;
 };
 
 const DEFAULT_TIMEZONE = "America/Guatemala";
@@ -66,17 +65,12 @@ export function canCreateDispatchForProgramming(
 export function isActiveProgramming(
   programming: ProgrammingScopeInput,
 ) {
-  return (
-    programming.reconciliationStatus !== "RECONCILED" &&
-    programming.effectiveStatus !== "CANCELLED"
-  );
+  void programming;
+  return true;
 }
 
 export function isHistoricalProgramming(
   programming: ProgrammingScopeInput,
 ) {
-  return (
-    programming.reconciliationStatus === "RECONCILED" ||
-    programming.effectiveStatus === "CANCELLED"
-  );
+  return programming.effectiveStatus === "COMPLETED";
 }

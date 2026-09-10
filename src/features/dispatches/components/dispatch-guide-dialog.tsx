@@ -68,8 +68,8 @@ export function DispatchGuideDialog({
           key: line.id,
           quantity: String(line.quantity),
           unitCode: line.unitCode,
-          productCode: line.productCode,
-          productDescription: line.productDescription,
+          productCode: line.productCode ?? "",
+          productDescription: line.productDescription ?? "",
         }))
       : [{
           key: "new-line-1",
@@ -98,21 +98,21 @@ export function DispatchGuideDialog({
           <input type="hidden" name="dispatchId" value={dispatchId} />
           <input type="hidden" name="expectedVersion" value={expectedVersion} />
           <input type="hidden" name="guideId" value={guide?.id ?? ""} />
-          <div className="max-h-[calc(92vh-9rem)] space-y-5 overflow-y-auto p-5 sm:p-6">
+          <div className="max-h-[calc(92vh-9rem)] space-y-5 overflow-y-auto p-4 sm:p-6">
             <div className="grid gap-4 sm:grid-cols-2">
               <div><label className="form-label" htmlFor="guide-number">Número de guía *</label><input id="guide-number" name="guideNumber" required maxLength={120} value={guideNumber} onChange={(event) => setGuideNumber(event.target.value)} className="form-input" /></div>
               <div><label className="form-label" htmlFor="guide-date">Fecha *</label><input id="guide-date" name="guideDate" type="date" required value={guideDate} onChange={(event) => setGuideDate(event.target.value)} className="form-input" /></div>
             </div>
             <div className="rounded-xl border border-border">
-              <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3"><div><h3 className="text-sm font-semibold">Productos</h3><p className="mt-0.5 text-xs text-foreground-muted">Cantidad, UM, código y descripción.</p></div><button type="button" onClick={() => setLines((current) => [...current, { key: crypto.randomUUID(), quantity: "", unitCode: programmedUnitCode, productCode: "", productDescription: "" }])} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted"><Plus className="size-4" /> Agregar producto</button></div>
+              <div className="flex flex-col gap-3 border-b border-border px-4 py-3 min-[460px]:flex-row min-[460px]:items-center min-[460px]:justify-between"><div><h3 className="text-sm font-semibold">Productos</h3><p className="mt-0.5 text-xs text-foreground-muted">Cantidad y UM son obligatorias; código y descripción son opcionales.</p></div><button type="button" onClick={() => setLines((current) => [...current, { key: crypto.randomUUID(), quantity: "", unitCode: programmedUnitCode, productCode: "", productDescription: "" }])} className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted min-[460px]:min-h-9 min-[460px]:w-auto"><Plus className="size-4" /> Agregar producto</button></div>
               <div className="divide-y divide-border">
                 {lines.map((line, index) => (
-                  <div key={line.key} className="grid gap-3 p-4 md:grid-cols-[7rem_8rem_10rem_minmax(0,1fr)_2.5rem]">
+                  <div key={line.key} className="grid gap-3 p-4 min-[460px]:grid-cols-2 md:grid-cols-[7rem_8rem_10rem_minmax(0,1fr)_2.5rem]">
                     <div><label className="form-label" htmlFor={`line-quantity-${line.key}`}>Cantidad *</label><input id={`line-quantity-${line.key}`} name="lineQuantity" type="number" min="0.001" step="0.001" required value={line.quantity} onChange={(event) => update(line.key, "quantity", event.target.value)} className="form-input" /></div>
                     <div><label className="form-label" htmlFor={`line-unit-${line.key}`}>UM *</label><select id={`line-unit-${line.key}`} name="lineUnitCode" required value={line.unitCode} onChange={(event) => update(line.key, "unitCode", event.target.value)} className="form-input">{units.map((unit) => <option key={unit.code} value={unit.code}>{unit.code}</option>)}</select></div>
-                    <div><label className="form-label" htmlFor={`line-code-${line.key}`}>Código *</label><input id={`line-code-${line.key}`} name="lineProductCode" required maxLength={120} value={line.productCode} onChange={(event) => update(line.key, "productCode", event.target.value)} className="form-input" /></div>
-                    <div><label className="form-label" htmlFor={`line-description-${line.key}`}>Descripción *</label><input id={`line-description-${line.key}`} name="lineProductDescription" required maxLength={500} value={line.productDescription} onChange={(event) => update(line.key, "productDescription", event.target.value)} className="form-input" /></div>
-                    <div className="flex items-end"><IconButton label={`Eliminar producto ${index + 1}`} disabled={lines.length === 1} onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))} tone="destructive"><Trash2 className="size-4" /></IconButton></div>
+                    <div><label className="form-label" htmlFor={`line-code-${line.key}`}>Código <span className="font-normal text-foreground-muted">(opcional)</span></label><input id={`line-code-${line.key}`} name="lineProductCode" maxLength={120} value={line.productCode} onChange={(event) => update(line.key, "productCode", event.target.value)} className="form-input" /></div>
+                    <div><label className="form-label" htmlFor={`line-description-${line.key}`}>Descripción <span className="font-normal text-foreground-muted">(opcional)</span></label><input id={`line-description-${line.key}`} name="lineProductDescription" maxLength={500} value={line.productDescription} onChange={(event) => update(line.key, "productDescription", event.target.value)} className="form-input" /></div>
+                    <div className="flex items-end justify-end min-[460px]:col-span-2 md:col-span-1"><IconButton label={`Eliminar producto ${index + 1}`} disabled={lines.length === 1} onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))} tone="destructive"><Trash2 className="size-4" /></IconButton></div>
                   </div>
                 ))}
               </div>

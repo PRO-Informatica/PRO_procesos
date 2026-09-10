@@ -273,7 +273,7 @@ function DirectConfirmButton({ detail }: { detail: ProgrammingDetailPageData["de
       <input type="hidden" name="programmingId" value={detail.id} />
       <input type="hidden" name="expectedVersion" value={detail.version} />
       <input type="hidden" name="confirmedQuantity" value={detail.requestedQuantity} />
-      <LoadingButton loadingLabel="Confirmando…" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong">
+      <LoadingButton loadingLabel="Confirmando…" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong sm:min-h-10 sm:w-auto">
         <CheckCircle2 aria-hidden="true" className="size-4" /> Confirmar
       </LoadingButton>
       {state.status === "error" && <span className="w-full text-right text-xs font-medium text-destructive">{state.message}</span>}
@@ -353,7 +353,7 @@ export function ProgrammingDetailView({
               PRG-{detail.id.slice(0, 8).toUpperCase()} · versión {detail.version} · {project.name}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2 sm:justify-end">
+          <div className="grid w-full gap-2 min-[420px]:grid-cols-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
             {actions.map((action) => {
               const Icon = action.icon;
               const destructive = action.intent === "cancel";
@@ -363,8 +363,8 @@ export function ProgrammingDetailView({
                   type="button"
                   onClick={() => setIntent(action.intent)}
                   className={destructive
-                    ? "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-destructive/30 px-3 text-sm font-semibold text-destructive hover:bg-destructive-soft"
-                    : "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-semibold text-foreground hover:bg-muted"}
+                    ? "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-destructive/30 px-3 text-sm font-semibold text-destructive hover:bg-destructive-soft sm:min-h-10 sm:w-auto"
+                    : "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-semibold text-foreground hover:bg-muted sm:min-h-10 sm:w-auto"}
                 >
                   <Icon aria-hidden="true" className="size-4" /> {action.label}
                 </button>
@@ -374,7 +374,7 @@ export function ProgrammingDetailView({
               <DirectConfirmButton detail={detail} />
             )}
             {canRegisterDispatch && (
-              <button type="button" onClick={() => setRegisterOpen(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong">
+              <button type="button" onClick={() => setRegisterOpen(true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong sm:min-h-10 sm:w-auto">
                 <Truck aria-hidden="true" className="size-4" /> Registrar despacho
               </button>
             )}
@@ -397,13 +397,13 @@ export function ProgrammingDetailView({
                 <CalendarClock aria-hidden="true" className="size-5 text-brand-strong" />
                 <h2 className="font-semibold text-foreground">Información general</h2>
               </div>
-              <dl className="mt-5 grid gap-5 sm:grid-cols-2">
-                <div><dt className="form-label">Proveedor</dt><dd className="text-sm text-foreground">{detail.supplierName}</dd></div>
-                <div><dt className="form-label">Fecha programada</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.scheduledAt, project.timezone)}</dd></div>
-                <div><dt className="form-label">Creada por</dt><dd className="text-sm text-foreground">{detail.createdByName}</dd></div>
-                <div><dt className="form-label">Creada</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.createdAt, project.timezone)}</dd></div>
-                <div><dt className="form-label">Persona que confirmó</dt><dd className="text-sm text-foreground">{detail.confirmedByName ?? "Sin confirmar"}</dd></div>
-                <div><dt className="form-label">Última actualización</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.updatedAt, project.timezone)}</dd></div>
+              <dl className="mt-5 grid gap-3 min-[420px]:grid-cols-2 sm:gap-5">
+                <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Proveedor</dt><dd className="break-words text-sm text-foreground">{detail.supplierName}</dd></div>
+                <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Fecha programada</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.scheduledAt, project.timezone)}</dd></div>
+                <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Creada por</dt><dd className="break-words text-sm text-foreground">{detail.createdByName}</dd></div>
+                <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Creada</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.createdAt, project.timezone)}</dd></div>
+                <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Persona que confirmó</dt><dd className="break-words text-sm text-foreground">{detail.confirmedByName ?? "Sin confirmar"}</dd></div>
+                <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Última actualización</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.updatedAt, project.timezone)}</dd></div>
               </dl>
             </section>
 
@@ -440,10 +440,10 @@ export function ProgrammingDetailView({
                 <ul className="divide-y divide-border">
                   {detail.dispatches.map((dispatch) => (
                     <li key={dispatch.id}>
-                      <Link href={`/dispatches/${dispatch.id}`} className="grid gap-2 px-5 py-4 text-sm transition hover:bg-muted/35 sm:grid-cols-5 sm:px-6">
-                      <div><span className="form-label">Despacho</span><span className="font-mono text-xs text-foreground">#{dispatch.id.slice(0, 8).toUpperCase()}</span></div>
-                      <div><span className="form-label">Fecha</span><span className="font-medium text-foreground">{formatProgrammingDateTime(dispatch.createdAt, project.timezone)}</span></div>
-                      <div><span className="form-label">Guía</span><span className="font-medium text-foreground">{dispatch.guideNumber ?? "Pendiente"}</span></div>
+                      <Link href={`/dispatches/${dispatch.id}`} className="grid grid-cols-2 gap-3 px-4 py-4 text-sm transition hover:bg-muted/35 sm:grid-cols-5 sm:px-6">
+                      <div className="col-span-2 rounded-lg bg-muted/30 p-3 sm:col-span-1 sm:bg-transparent sm:p-0"><span className="form-label">Despacho</span><span className="break-all font-mono text-xs font-semibold text-brand-strong">#{dispatch.id.slice(0, 8).toUpperCase()}</span></div>
+                      <div className="col-span-2 sm:col-span-1"><span className="form-label">Fecha</span><span className="font-medium text-foreground">{formatProgrammingDateTime(dispatch.createdAt, project.timezone)}</span></div>
+                      <div><span className="form-label">Guía</span><span className="break-all font-medium text-foreground">{dispatch.guideNumber ?? "Pendiente"}</span></div>
                       <div><span className="form-label">Estado del proceso</span><span className="font-medium text-foreground">{formatStatusLabel(dispatch.status)}</span><span className="form-label mt-2">Resultado físico</span><span className="font-medium text-foreground">{formatStatusLabel(dispatch.result, "Sin resultado")}</span></div>
                       <div><span className="form-label">Cantidad</span><span className="font-medium text-foreground">{dispatch.quantity === null ? "—" : `${formatProgrammingQuantity(dispatch.quantity)} ${dispatch.unitCode}`}</span></div>
                       </Link>
@@ -465,7 +465,7 @@ export function ProgrammingDetailView({
               <div className="flex items-center gap-2"><History aria-hidden="true" className="size-5 text-brand-strong" /><h2 className="font-semibold text-foreground">Historial</h2></div>
               <span className="text-xs font-medium text-foreground-muted">{revisionCountLabel}</span>
             </div>
-            <ol className="max-h-[70vh] divide-y divide-border overflow-y-auto">
+            <ol className="max-h-[32rem] divide-y divide-border overflow-y-auto overscroll-contain xl:max-h-[70vh]">
               {relevantRevisions.map((revision) => (
                 <li key={revision.id} className="relative px-5 py-5">
                   <div className="flex items-start justify-between gap-3">

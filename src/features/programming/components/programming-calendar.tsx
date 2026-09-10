@@ -122,8 +122,8 @@ export function ProgrammingCalendar({
         },
         completed: {
           colorName: "completed",
-          lightColors: { main: "#16794d", container: "#ecfdf3", onContainer: "#166534" },
-          darkColors: { main: "#6ce9a6", container: "#123326", onContainer: "#bbf7d0" },
+          lightColors: { main: "#7c3aed", container: "#ede9fe", onContainer: "#5b21b6" },
+          darkColors: { main: "#c4b5fd", container: "#2e1065", onContainer: "#ddd6fe" },
         },
         cancelled: {
           colorName: "cancelled",

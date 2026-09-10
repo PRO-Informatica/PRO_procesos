@@ -50,6 +50,15 @@ export async function switchProject(
   });
 
   revalidatePath("/", "layout");
+  const universalBatchReturn = typeof returnTo === "string" &&
+      (returnTo === "/batches/universal" ||
+        /^\/batches\/universal\?project=[0-9a-f-]{36}&batch=[0-9a-f-]{36}$/i.test(returnTo))
+    ? returnTo
+    : null;
+  const dispatchDetailReturn = typeof returnTo === "string" &&
+      /^\/dispatches\/[0-9a-f-]{36}$/i.test(returnTo)
+    ? returnTo
+    : null;
   const moduleRoot =
     typeof returnTo === "string"
       ? ["programming", "dispatches", "batches", "invoices", "reconciliation"].find(
@@ -57,6 +66,6 @@ export async function switchProject(
             returnTo === `/${segment}` || returnTo.startsWith(`/${segment}/`),
         )
       : null;
-  const safeReturnTo = moduleRoot ? `/${moduleRoot}` : "/";
+  const safeReturnTo = universalBatchReturn ?? dispatchDetailReturn ?? (moduleRoot ? `/${moduleRoot}` : "/");
   redirect(safeReturnTo);
 }

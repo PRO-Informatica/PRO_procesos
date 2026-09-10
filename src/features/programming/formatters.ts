@@ -11,7 +11,7 @@ export function programmingStatusTone(status: ProgrammingEffectiveStatus) {
     PENDING_CONFIRMATION: "bg-amber-100 text-amber-800 dark:bg-amber-950/55 dark:text-amber-300",
     CONFIRMED: "bg-blue-100 text-blue-800 dark:bg-blue-950/55 dark:text-blue-300",
     IN_EXECUTION: "bg-brand-soft text-brand-strong",
-    COMPLETED: "bg-success-soft text-success",
+    COMPLETED: "bg-violet-100 text-violet-800 dark:bg-violet-950/55 dark:text-violet-300",
     CANCELLED: "bg-destructive-soft text-destructive",
     EXPIRED: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
   };

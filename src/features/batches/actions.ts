@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { classifyInvoiceLines } from "@/features/invoices/invoice-classification";
 import { normalizeOperationalOrder, processInvoicePdf, type InvoiceProcessingContext } from "@/features/invoices/invoice-processing";
-import { getProjectContext } from "@/features/projects/queries";
+import { resolveInvoiceUploadSlot } from "@/features/invoices/reinvoicing";
+import { getOperationalProjectAccessForProject } from "@/features/projects/queries";
 import { addressesMatch } from "@/lib/address-identity";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -24,9 +25,9 @@ function value(formData: FormData, name: string) {
 
 async function authorize(projectId: string, permission: string) {
   const profile = await requireActiveProfile();
-  const context = await getProjectContext(profile.id);
-  if (context.status !== "ready" || context.activeProject?.id !== projectId || !context.permissions.includes(permission)) return null;
-  return { profile, context };
+  const scope = await getOperationalProjectAccessForProject(profile.id, projectId);
+  if (!scope?.permissions.includes(permission)) return null;
+  return { profile, scope };
 }
 
 function refresh(batchId?: string, dispatchId?: string) {
@@ -59,6 +60,9 @@ function invoiceError(message: string) {
   if (error.includes("CRITICAL_VALIDATION")) return "El PDF no corresponde al proyecto, proveedor o pedido del despacho.";
   if (error.includes("PRODUCT_INVOICE_REQUIRED")) return "Carga la factura de producto antes de conciliar.";
   if (error.includes("FISCAL_DOCUMENT_ALREADY_EXISTS")) return "Esta factura fiscal ya fue procesada anteriormente.";
+  if (error.includes("REINVOICING_NOT_AVAILABLE")) return "La conciliación ya no está disponible para solicitar refacturación.";
+  if (error.includes("REINVOICING_REASON_INVALID")) return "Indica un motivo válido para solicitar la refacturación.";
+  if (error.includes("PRODUCT_REINVOICING_CONTEXT_INVALID")) return "La Factura de Producto vigente cambió; vuelve a validar el PDF.";
   if (error.includes("PERMISSION_DENIED")) return "No tienes permiso para gestionar facturas.";
   return "No fue posible completar el proceso de factura.";
 }
@@ -74,17 +78,20 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
   const [dispatchResult, batchResult, projectResult, reconciliationResult] = await Promise.all([
     admin.from("dispatches").select("id, project_id, supplier_id, order_number, real_volume, real_unit_code, status").eq("id", dispatchId).eq("project_id", projectId).maybeSingle(),
     admin.from("batches").select("id, project_id, accounting_period").eq("id", batchId).eq("project_id", projectId).maybeSingle(),
-    admin.from("projects").select("id, address, billing_legal_name, billing_tax_id").eq("id", projectId).maybeSingle(),
+    admin.from("projects").select("id, company_id, address, billing_legal_name, billing_tax_id").eq("id", projectId).maybeSingle(),
     admin.from("dispatch_reconciliations").select("status, current_product_invoice_id, current_service_invoice_id").eq("dispatch_id", dispatchId).eq("project_id", projectId).maybeSingle(),
   ]);
   if (!dispatchResult.data || !batchResult.data || !projectResult.data) return null;
-  const relationResult = await admin.from("batch_dispatches").select("id").eq("batch_id", batchId).eq("dispatch_id", dispatchId).is("removed_at", null).maybeSingle();
-  if (!relationResult.data) return null;
-  const supplierResult = await admin.from("suppliers").select("name, tax_id").eq("id", dispatchResult.data.supplier_id).maybeSingle();
-  if (!supplierResult.data) return null;
+  const [relationResult, supplierResult, companyResult] = await Promise.all([
+    admin.from("batch_dispatches").select("id").eq("batch_id", batchId).eq("dispatch_id", dispatchId).is("removed_at", null).maybeSingle(),
+    admin.from("suppliers").select("name, tax_id").eq("id", dispatchResult.data.supplier_id).maybeSingle(),
+    admin.from("companies").select("code").eq("id", projectResult.data.company_id).maybeSingle(),
+  ]);
+  if (!relationResult.data || !supplierResult.data || !companyResult.data) return null;
   return {
     projectId, batchId, dispatchId,
     operationalStatus: dispatchResult.data.status,
+    companyCode: companyResult.data.code,
     orderNumber: dispatchResult.data.order_number ?? "",
     supplierName: supplierResult.data.name,
     supplierTaxId: supplierResult.data.tax_id,
@@ -153,17 +160,45 @@ export async function inspectDispatchInvoicePdf(projectId: string, batchId: stri
   try {
     const processed = await processInvoicePdf(await file.arrayBuffer(), { ...context, expectedType: requestedType });
     if (processed.status === "error") return { fileName: file.name, dispatchId, requestedType, status: "ERROR", message: [processed.message, ...processed.details].join(" "), payload: null, duplicate: false };
-    const duplicate = requestedType === "PRODUCT" ? Boolean(context.productInvoiceId) : Boolean(context.serviceInvoiceId);
+    const invoiceSlot = resolveInvoiceUploadSlot({
+      invoiceType: requestedType,
+      reconciliationStatus: context.reconciliationStatus,
+      currentProductInvoiceId: context.productInvoiceId,
+      currentServiceInvoiceId: context.serviceInvoiceId,
+    });
+    const reinvoicing = invoiceSlot.operation === "REINVOICE";
+    const duplicate = invoiceSlot.occupied;
+    let replacesInvoiceNumber: string | null = null;
+    if (reinvoicing && context.productInvoiceId) {
+      const previous = await createAdminClient()
+        .from("invoices")
+        .select("invoice_number")
+        .eq("id", context.productInvoiceId)
+        .eq("dispatch_id", dispatchId)
+        .eq("invoice_type", "PRODUCT")
+        .maybeSingle();
+      if (!previous.data) return { fileName: file.name, dispatchId, requestedType, status: "ERROR", message: "No fue posible recuperar la Factura de Producto vigente.", payload: null, duplicate: false };
+      replacesInvoiceNumber = previous.data.invoice_number;
+    }
     return {
       fileName: file.name,
       dispatchId,
       requestedType,
-      status: processed.payload.warnings.length ? "WITH_DIFFERENCES" : "READY",
-      message: duplicate
+      status: processed.payload.requires_reinvoicing
+        ? "REQUIRES_REINVOICING"
+        : processed.payload.warnings.length ? "WITH_DIFFERENCES" : "READY",
+      message: processed.payload.requires_reinvoicing
+        ? "Refacturación requerida: sociedad de facturación no permitida para este proyecto."
+        : reinvoicing
+        ? "Factura refacturada lista para reemplazar la Factura de Producto anterior."
+        : duplicate
         ? `Ya existe una factura de ${requestedType === "PRODUCT" ? "producto" : "servicio"} cargada para este despacho.`
         : processed.payload.warnings.join(" ") || "Factura lista para guardar.",
       payload: processed.payload,
       duplicate,
+      operation: reinvoicing ? "REINVOICE" : "NEW",
+      replacesInvoiceId: invoiceSlot.replacesInvoiceId,
+      replacesInvoiceNumber,
     };
   } catch {
     return { fileName: file.name, dispatchId, requestedType, status: "ERROR", message: "No fue posible extraer texto del PDF digital.", payload: null, duplicate: false };
@@ -178,7 +213,7 @@ export async function inspectBatchInvoicePdf(projectId: string, batchId: string,
     const raw = await extractMixtoListoInvoicePdf(await file.arrayBuffer());
     if (raw.detected_invoice_numbers.length > 1) return { fileName: file.name, dispatchId: null, requestedType: null, status: "REQUIRES_REVIEW", message: "El PDF contiene más de una factura y no puede procesarse automáticamente.", payload: null, duplicate: false };
     const admin = createAdminClient();
-    const project = await admin.from("projects").select("address, billing_legal_name, billing_tax_id").eq("id", projectId).maybeSingle();
+    const project = await admin.from("projects").select("address").eq("id", projectId).maybeSingle();
     if (!project.data?.address?.trim()) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "El proyecto actual no tiene configurada su Dirección exacta de Obra.", payload: null, duplicate: false };
     if (!addressesMatch(project.data.address, raw.shipping_address)) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "La Dirección de Envío de la factura no corresponde a la Dirección exacta de Obra del proyecto.", payload: null, duplicate: false };
     const orderNumber = orderNumberFromMixtoListoPca(raw.pca_original);
@@ -204,13 +239,23 @@ export async function saveDispatchInvoice(projectId: string, batchId: string, di
   if (!(await authorize(projectId, "invoice.create"))) return { status: "error" as const, message: "No tienes permiso para registrar facturas." };
   const context = await invoiceContext(projectId, batchId, dispatchId);
   if (!context || context.operationalStatus !== "COMPLETED") return { status: "error" as const, message: "El despacho debe estar completado y pertenecer al lote." };
+  const expectedReplacementId = resolveInvoiceUploadSlot({
+    invoiceType: requestedType,
+    reconciliationStatus: context.reconciliationStatus,
+    currentProductInvoiceId: context.productInvoiceId,
+    currentServiceInvoiceId: context.serviceInvoiceId,
+  }).replacesInvoiceId;
+  if (replacesInvoiceId && replacesInvoiceId !== expectedReplacementId) {
+    return { status: "error" as const, message: "La factura anterior ya no corresponde a la refacturación vigente." };
+  }
+  const effectiveReplacementId = expectedReplacementId;
   let processed;
   try { processed = await processInvoicePdf(await file.arrayBuffer(), { ...context, expectedType: requestedType }); }
   catch { return { status: "error" as const, message: "No fue posible leer el PDF digital." }; }
   if (processed.status === "error") return { status: "error" as const, message: [processed.message, ...processed.details].join(" ") };
   const supabase = await createClient();
   const payload = { ...processed.payload, file_sha256: Buffer.from(await crypto.subtle.digest("SHA-256", await file.arrayBuffer())).toString("hex") };
-  const prepared = await supabase.rpc("prepare_dispatch_invoice_upload_v2", { p_batch_id: batchId, p_dispatch_id: dispatchId, p_invoice_type: requestedType, p_payload: payload, p_file_name: file.name, p_file_size: file.size, p_replaces_invoice_id: replacesInvoiceId });
+  const prepared = await supabase.rpc("prepare_dispatch_invoice_upload_v2", { p_batch_id: batchId, p_dispatch_id: dispatchId, p_invoice_type: requestedType, p_payload: payload, p_file_name: file.name, p_file_size: file.size, p_replaces_invoice_id: effectiveReplacementId });
   const row = prepared.data?.[0];
   if (prepared.error || !row) return { status: "error" as const, message: invoiceError(prepared.error?.message ?? "INVOICE_PREPARE_FAILED") };
   const admin = createAdminClient();
@@ -231,8 +276,40 @@ export async function saveDispatchInvoice(projectId: string, batchId: string, di
     await supabase.rpc("fail_dispatch_invoice_processing", { p_invoice_id: row.invoice_id, p_reason: completed.error.message.slice(0, 500) });
     return { status: "error" as const, message: invoiceError(completed.error.message) };
   }
+  let reconciliationStatus: string | undefined;
+  if (effectiveReplacementId) {
+    const reconciled = await supabase.rpc("reconcile_dispatch", { p_dispatch_id: dispatchId });
+    if (reconciled.error) {
+      refresh(batchId, dispatchId);
+      return { status: "error" as const, message: "La factura refacturada se guardó, pero la conciliación debe reintentarse." };
+    }
+    reconciliationStatus = String(reconciled.data);
+  }
   refresh(batchId, dispatchId);
-  return { status: "success" as const, message: "Factura guardada y procesada.", invoiceId: String(row.invoice_id), warnings: processed.payload.warnings };
+  return {
+    status: "success" as const,
+    message: processed.payload.requires_reinvoicing
+      ? requestedType === "PRODUCT"
+        ? "Factura registrada. La sociedad de facturación no está permitida y el despacho quedó pendiente de refacturación."
+        : "Factura de Servicio conservada como no procedente; requiere sustitución por sociedad no permitida."
+      : effectiveReplacementId
+      ? reconciliationStatus === "RECONCILED"
+        ? "Factura refacturada guardada y conciliada correctamente."
+        : "Factura refacturada guardada; la conciliación conserva diferencias."
+      : "Factura guardada y procesada.",
+    invoiceId: String(row.invoice_id),
+    warnings: processed.payload.warnings,
+    reconciliationStatus,
+  };
+}
+
+export async function requestDispatchReinvoicingAction(_previous: BatchMutationState, formData: FormData): Promise<BatchMutationState> {
+  const projectId = value(formData, "projectId"), batchId = value(formData, "batchId"), dispatchId = value(formData, "dispatchId");
+  if (![projectId, batchId, dispatchId].every((id) => UUID.test(id)) || !(await authorize(projectId, "invoice.review"))) return { status: "error", message: "No tienes permiso para solicitar refacturación." };
+  const { error } = await (await createClient()).rpc("request_dispatch_reinvoicing", { p_dispatch_id: dispatchId, p_reason: value(formData, "reason") });
+  if (error) return { status: "error", message: invoiceError(error.message) };
+  refresh(batchId, dispatchId);
+  return { status: "success", message: "Refacturación solicitada; la factura anterior se conserva." };
 }
 
 export async function reconcileDispatchAction(projectId: string, batchId: string, dispatchId: string) {
