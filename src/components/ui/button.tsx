@@ -6,11 +6,12 @@ import { motion, type HTMLMotionProps } from "motion/react";
 import { cn } from "@/lib/class-names";
 import { motionTokens } from "@/lib/motion/tokens";
 
-export type ButtonVariant = "primary" | "secondary" | "destructive" | "ghost";
+export type ButtonVariant = "primary" | "secondary" | "success" | "destructive" | "ghost";
 
 export const buttonVariantClass: Record<ButtonVariant, string> = {
   primary: "primary-button",
   secondary: "secondary-button",
+  success: "success-button",
   destructive: "destructive-button",
   ghost: "ghost-button",
 };

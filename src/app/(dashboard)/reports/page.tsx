@@ -13,6 +13,6 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   if (!context.permissions.includes("dispatch.view")) return <EmptyState title="Sin acceso a Reportería" description="Tu rol necesita acceso de consulta a Despachos y Guías." />;
   const filters = parseGuideReportFilters(await searchParams);
   const projects = context.isCompanyAdmin ? context.projects.filter((project) => project.companyId === context.activeProject?.companyId) : [context.activeProject];
-  const data = await getGuideReport(projects.map(({ id, name, timezone }) => ({ id, name, timezone })), filters);
+  const data = await getGuideReport(projects.map(({ id, name, code, billingLegalName, companyName, timezone }) => ({ id, name, code, billingLegalName, companyName, timezone })), filters);
   return <GuideReport data={data} filters={filters} />;
 }

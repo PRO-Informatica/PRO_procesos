@@ -8,15 +8,16 @@ const C14_IDENTITIES = new Set([
   "CONSTRUCTORACATORCESA",
 ]);
 
-export const C14_REINVOICING_MESSAGE =
-  "La factura corresponde al proyecto por dirección y pedido, pero fue emitida a nombre de C14. Para este proyecto no se permite facturación con esa sociedad. Se requiere refacturación.";
+export const C14_EXCEPTION_MESSAGE =
+  "La factura corresponde al proyecto y pedido, pero fue emitida a nombre de C14. Compras debe aceptar la excepción o solicitar refacturación.";
 
 export type InvoiceRecipientPolicy = {
   detectedIdentity: string | null;
   isC14: boolean;
   allowed: boolean;
+  requiresSocietyException: boolean;
   requiresReinvoicing: boolean;
-  reason: "C14_NOT_ALLOWED_FOR_PROJECT" | null;
+  reason: "C14_EXCEPTION_REQUIRES_REVIEW" | null;
 };
 
 export function isC14BillingIdentity(value: string | null | undefined) {
@@ -31,13 +32,16 @@ export function evaluateInvoiceRecipientPolicy(input: {
   const detectedIdentity = normalizeBusinessIdentity(input.billingLegalName);
   const isC14 = detectedIdentity !== null && C14_IDENTITIES.has(detectedIdentity);
   const isCsal = input.companyCode?.trim().toUpperCase() === CSAL_COMPANY_CODE;
-  const requiresReinvoicing = isC14 && !isCsal;
+  const requiresSocietyException = isC14 && !isCsal;
 
   return {
     detectedIdentity,
     isC14,
-    allowed: !requiresReinvoicing,
-    requiresReinvoicing,
-    reason: requiresReinvoicing ? "C14_NOT_ALLOWED_FOR_PROJECT" : null,
+    // The PDF may enter the pipeline. Purchasing decides the fiscal exception
+    // separately from the Product reconciliation result.
+    allowed: true,
+    requiresSocietyException,
+    requiresReinvoicing: false,
+    reason: requiresSocietyException ? "C14_EXCEPTION_REQUIRES_REVIEW" : null,
   };
 }

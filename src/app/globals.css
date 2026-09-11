@@ -294,6 +294,32 @@ details[open] > .menu-popover {
   opacity: 0.6;
 }
 
+.success-button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 0.625rem;
+  background: var(--success);
+  padding: 0.625rem 1rem;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 600;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--success) 18%, transparent);
+  transition: background-color var(--motion-hover) ease, border-color var(--motion-hover) ease, box-shadow var(--motion-hover) ease, transform var(--motion-hover) ease, opacity 150ms ease;
+}
+
+.success-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--success) 88%, black);
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--success) 20%, transparent);
+}
+
+.success-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .destructive-button,
 .ghost-button,
 .icon-button {

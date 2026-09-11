@@ -6,6 +6,7 @@ import { requireActiveProfile } from "@/features/auth/queries";
 import { classifyInvoiceLines } from "@/features/invoices/invoice-classification";
 import { normalizeOperationalOrder, processInvoicePdf, type InvoiceProcessingContext } from "@/features/invoices/invoice-processing";
 import { resolveInvoiceUploadSlot } from "@/features/invoices/reinvoicing";
+import { decideInvoiceRecipientException, type RecipientExceptionDecision } from "@/features/invoices/recipient-exception-service";
 import { getOperationalProjectAccessForProject } from "@/features/projects/queries";
 import { addressesMatch } from "@/lib/address-identity";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -184,11 +185,11 @@ export async function inspectDispatchInvoicePdf(projectId: string, batchId: stri
       fileName: file.name,
       dispatchId,
       requestedType,
-      status: processed.payload.requires_reinvoicing
-        ? "REQUIRES_REINVOICING"
+      status: processed.payload.recipient_exception_required
+        ? "REQUIRES_RECIPIENT_EXCEPTION"
         : processed.payload.warnings.length ? "WITH_DIFFERENCES" : "READY",
-      message: processed.payload.requires_reinvoicing
-        ? "Refacturación requerida: sociedad de facturación no permitida para este proyecto."
+      message: processed.payload.recipient_exception_required
+        ? "La factura puede guardarse; Compras debe aceptar la excepción C14 o solicitar refacturación."
         : reinvoicing
         ? "Factura refacturada lista para reemplazar la Factura de Producto anterior."
         : duplicate
@@ -288,10 +289,8 @@ export async function saveDispatchInvoice(projectId: string, batchId: string, di
   refresh(batchId, dispatchId);
   return {
     status: "success" as const,
-    message: processed.payload.requires_reinvoicing
-      ? requestedType === "PRODUCT"
-        ? "Factura registrada. La sociedad de facturación no está permitida y el despacho quedó pendiente de refacturación."
-        : "Factura de Servicio conservada como no procedente; requiere sustitución por sociedad no permitida."
+    message: processed.payload.recipient_exception_required
+      ? "Factura guardada. Compras debe aceptar la excepción C14 o solicitar refacturación."
       : effectiveReplacementId
       ? reconciliationStatus === "RECONCILED"
         ? "Factura refacturada guardada y conciliada correctamente."
@@ -310,6 +309,17 @@ export async function requestDispatchReinvoicingAction(_previous: BatchMutationS
   if (error) return { status: "error", message: invoiceError(error.message) };
   refresh(batchId, dispatchId);
   return { status: "success", message: "Refacturación solicitada; la factura anterior se conserva." };
+}
+
+export async function decideInvoiceRecipientExceptionAction(
+  projectId: string,
+  batchId: string,
+  invoiceId: string,
+  decision: RecipientExceptionDecision,
+) {
+  const result = await decideInvoiceRecipientException(projectId, invoiceId, decision);
+  if (result.status === "success") refresh(batchId);
+  return result;
 }
 
 export async function reconcileDispatchAction(projectId: string, batchId: string, dispatchId: string) {

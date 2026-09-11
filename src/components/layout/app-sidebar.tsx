@@ -44,6 +44,7 @@ type NavigationItem = {
   companyAdminOnly?: boolean;
   universalInvoicesOnly?: boolean;
   universalBatchesOnly?: boolean;
+  universalReportsOnly?: boolean;
   exact?: boolean;
 };
 
@@ -67,7 +68,13 @@ const navigation: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "Gestión",
     items: [
-      { label: "Reportería", icon: BarChart3, href: "/reports", permission: "dispatch.view" },
+      { label: "Reportería", icon: BarChart3, href: "/reports", permission: "dispatch.view", exact: true },
+      {
+        label: "Reportería Universal",
+        icon: Globe2,
+        href: "/reports/universal",
+        universalReportsOnly: true,
+      },
       { label: "Lotes", icon: FolderKanban, href: "/batches", permission: "batch.view", exact: true },
       {
         label: "Lotes Universal",
@@ -123,6 +130,7 @@ export function AppSidebar({
       items: section.items.filter((item) => {
         if (item.universalInvoicesOnly) return projectContext.hasUniversalInvoiceAccess;
         if (item.universalBatchesOnly) return projectContext.hasUniversalBatchAccess;
+        if (item.universalReportsOnly) return projectContext.hasUniversalReportAccess;
         if (item.enabled || (!item.permission && !item.anyPermission && !item.companyAdminOnly)) {
           return true;
         }

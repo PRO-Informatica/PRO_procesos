@@ -361,11 +361,11 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
     dispatchLabel: `Pedido ${selectedDispatch.order_number}`,
     batchId: batch.id,
     batchLabel: batch.code,
-    status: processed.payload.requires_reinvoicing
-      ? "REQUIRES_REINVOICING"
+    status: processed.payload.recipient_exception_required
+      ? "REQUIRES_RECIPIENT_EXCEPTION"
       : processed.payload.warnings.length ? "READY_WITH_DIFFERENCES" : "READY",
-    message: processed.payload.requires_reinvoicing
-      ? "Refacturación requerida: la factura fue identificada para este proyecto y pedido, pero C14 no es una sociedad de facturación permitida."
+    message: processed.payload.recipient_exception_required
+      ? "La factura puede guardarse, pero Compras debe decidir si acepta C14 o solicita refacturación."
       : isReinvoicing
       ? "Lista para reemplazar la Factura de Producto anterior."
       : processed.payload.warnings.length ? "Lista con observaciones." : "Lista para conciliar.",
@@ -384,7 +384,7 @@ export async function classifyUniversalInvoice(file: File, selection?: Selection
 export async function commitUniversalInvoice(file: File, selection?: Selection): Promise<UniversalCommitResult> {
   const classified = await classifyInternal(file, selection);
   if (!classified.payload || !classified.projectId || !classified.dispatchId || !classified.batchId ||
-      !["READY", "READY_WITH_DIFFERENCES", "REQUIRES_REINVOICING"].includes(classified.status)) {
+      !["READY", "READY_WITH_DIFFERENCES", "REQUIRES_RECIPIENT_EXCEPTION", "REQUIRES_REINVOICING"].includes(classified.status)) {
     return { ...publicResult(classified), saved: false };
   }
   const supabase = await createClient();
@@ -426,17 +426,15 @@ export async function commitUniversalInvoice(file: File, selection?: Selection):
   }
   let reconciliationStatus: string | undefined;
   const warnings = [...classified.warnings];
-  if (classified.detectedType === "PRODUCT") {
+  if (classified.detectedType === "PRODUCT" && !classified.payload.recipient_exception_required) {
     const reconciled = await supabase.rpc("reconcile_dispatch", { p_dispatch_id: classified.dispatchId });
     if (reconciled.error) warnings.push("La factura se guardó, pero la conciliación debe reintentarse.");
     else reconciliationStatus = String(reconciled.data);
   }
   return {
     ...publicResult(classified),
-    message: classified.payload.requires_reinvoicing
-      ? classified.detectedType === "PRODUCT"
-        ? "Factura registrada y marcada automáticamente como pendiente de refacturación por sociedad no permitida."
-        : "Factura de Servicio conservada como no procedente; requiere sustitución por sociedad no permitida."
+    message: classified.payload.recipient_exception_required
+      ? "Factura guardada. Compras debe aceptar la excepción C14 o solicitar refacturación."
       : classified.detectedType === "PRODUCT"
       ? reconciliationStatus === "WITH_DIFFERENCES"
         ? "Factura guardada; la conciliación detectó diferencias."
@@ -448,5 +446,6 @@ export async function commitUniversalInvoice(file: File, selection?: Selection):
     saved: true,
     invoiceId: String(row.invoice_id),
     reconciliationStatus,
+    recipientExceptionStatus: classified.payload.recipient_exception_required ? "PENDING" : null,
   };
 }

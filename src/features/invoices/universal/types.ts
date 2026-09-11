@@ -3,6 +3,7 @@ import type { ProcessedInvoiceType } from "../invoice-processing";
 export type UniversalInvoiceStatus =
   | "READY"
   | "READY_WITH_DIFFERENCES"
+  | "REQUIRES_RECIPIENT_EXCEPTION"
   | "REQUIRES_REINVOICING"
   | "INVALID_FILE"
   | "PROJECT_NOT_FOUND"
@@ -43,4 +44,5 @@ export type UniversalCommitResult = UniversalInvoiceResult & {
   saved: boolean;
   invoiceId?: string;
   reconciliationStatus?: string;
+  recipientExceptionStatus?: "PENDING" | "APPROVED" | "REINVOICE_REQUESTED" | null;
 };

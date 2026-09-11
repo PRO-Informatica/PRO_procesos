@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-
 import { Workbook, type Worksheet } from "exceljs";
 import JSZip from "jszip";
 import type { NextRequest } from "next/server";
@@ -9,10 +6,9 @@ import { requireActiveProfile } from "@/features/auth/queries";
 import { getProjectContext } from "@/features/projects/queries";
 import { reportArchiveItems, reportArchivePath, sanitizeArchiveSegment } from "@/features/reports/export-utils";
 import { parseGuideReportFilters } from "@/features/reports/filters";
-import { getGuideReport } from "@/features/reports/queries";
+import { getGuideReport, getUniversalReportScopes } from "@/features/reports/queries";
 import type { GuideReportData, ProgrammingReportItem, ReportInvoice } from "@/features/reports/types";
 import {
-  addReportLogo,
   REPORT_TABLE_HEADER_ROW,
   setupReportSheet,
   type ReportWorkbookHeader,
@@ -27,10 +23,12 @@ const COLORS = { ink: "FF17191F", muted: "FF667085", border: "FFE4E7EC", white: 
 type Column = { header: string; key: string; width: number; kind?: "date" | "datetime" | "quantity" | "money" | "integer" };
 
 const REPORT_COLUMNS: Column[] = [
+  { header: "Empresa", key: "companyName", width: 24 },
+  { header: "Razón social de facturación *", key: "projectBillingLegalName", width: 34 },
+  { header: "Proyecto", key: "projectName", width: 22 },
   { header: "Programación", key: "programmingCode", width: 18 },
   { header: "Estado programación", key: "programmingStatus", width: 22 },
   { header: "Fecha programación", key: "scheduledAt", width: 21, kind: "datetime" },
-  { header: "Proyecto", key: "projectName", width: 22 },
   { header: "Proveedor", key: "supplierName", width: 26 },
   { header: "Cantidad programada", key: "programmedQuantity", width: 20, kind: "quantity" },
   { header: "UM programada", key: "programmedUnit", width: 14 },
@@ -62,6 +60,9 @@ const REPORT_COLUMNS: Column[] = [
 ];
 
 const INVOICE_COLUMNS: Column[] = [
+  { header: "Empresa", key: "companyName", width: 24 },
+  { header: "Razón social de facturación *", key: "projectBillingLegalName", width: 34 },
+  { header: "Proyecto", key: "projectName", width: 22 },
   { header: "Programación", key: "programmingCode", width: 18 },
   { header: "Despacho", key: "dispatchCode", width: 18 },
   { header: "Pedido despacho", key: "dispatchOrder", width: 18 },
@@ -115,6 +116,9 @@ function addStyledRow(sheet: Worksheet, values: Record<string, unknown>) {
 
 function invoiceRow(programming: ProgrammingReportItem, dispatch: ProgrammingReportItem["dispatches"][number], invoice: ReportInvoice) {
   return {
+    companyName: programming.companyName,
+    projectBillingLegalName: programming.projectBillingLegalName ?? "No configurada",
+    projectName: programming.projectName,
     programmingCode: programming.code,
     dispatchCode: dispatch.dispatchCode,
     dispatchOrder: dispatch.orderNumber ?? "",
@@ -153,11 +157,9 @@ async function buildWorkbook(
   const reportSheet = workbook.addWorksheet("Reporte", { properties: { tabColor: { argb: COLORS.red } } });
   const productSheet = workbook.addWorksheet("Facturas Producto");
   const serviceSheet = workbook.addWorksheet("Facturas Servicio");
-  const logo = await readFile(path.join(process.cwd(), "public", "pro-logo.png"));
-  const logoId = addReportLogo(workbook, logo.toString("base64"));
-  setupReportSheet(reportSheet, REPORT_COLUMNS, header, logoId);
-  setupReportSheet(productSheet, INVOICE_COLUMNS, header, logoId);
-  setupReportSheet(serviceSheet, INVOICE_COLUMNS, header, logoId);
+  setupReportSheet(reportSheet, REPORT_COLUMNS, header);
+  setupReportSheet(productSheet, INVOICE_COLUMNS, header);
+  setupReportSheet(serviceSheet, INVOICE_COLUMNS, header);
   applyColumnFormats(reportSheet, REPORT_COLUMNS);
   applyColumnFormats(productSheet, INVOICE_COLUMNS);
   applyColumnFormats(serviceSheet, INVOICE_COLUMNS);
@@ -166,10 +168,12 @@ async function buildWorkbook(
     const dispatches = programming.dispatches.length ? programming.dispatches : [null];
     for (const dispatch of dispatches) {
       addStyledRow(reportSheet, {
+        companyName: programming.companyName,
+        projectBillingLegalName: programming.projectBillingLegalName ?? "No configurada",
+        projectName: programming.projectName,
         programmingCode: programming.code,
         programmingStatus: formatStatusLabel(programming.status),
         scheduledAt: excelDate(programming.scheduledAt),
-        projectName: programming.projectName,
         supplierName: programming.supplierName,
         programmedQuantity: programming.confirmedQuantity ?? programming.requestedQuantity,
         programmedUnit: programming.unitCode,
@@ -206,7 +210,7 @@ async function buildWorkbook(
   return workbook;
 }
 
-async function buildZip(report: GuideReportData) {
+async function buildZip(report: GuideReportData, includeProjectFolders: boolean) {
   const admin = createAdminClient();
   const items = reportArchiveItems(report);
   const documentIds = [...new Set(items.map((item) => item.invoice.documentId).filter((id): id is string => Boolean(id)))];
@@ -223,7 +227,7 @@ async function buildZip(report: GuideReportData) {
     if (!version) continue;
     const downloaded = await admin.storage.from(version.storage_bucket).download(version.storage_path);
     if (downloaded.error || !downloaded.data) throw new Error("No fue posible descargar uno de los PDF del reporte.");
-    zip.file(reportArchivePath(item, usedPaths), await downloaded.data.arrayBuffer());
+    zip.file(reportArchivePath(item, usedPaths, { includeProject: includeProjectFolders }), await downloaded.data.arrayBuffer());
     fileCount += 1;
   }
   return { zip, fileCount };
@@ -231,38 +235,54 @@ async function buildZip(report: GuideReportData) {
 
 export async function GET(request: NextRequest) {
   const profile = await requireActiveProfile();
-  const context = await getProjectContext(profile.id);
-  if (context.status !== "ready" || !context.activeProject || !context.permissions.includes("dispatch.view")) {
-    return Response.json({ message: "No tienes acceso a Reportería." }, { status: 403 });
-  }
 
   try {
+    const universal = request.nextUrl.searchParams.get("scope") === "universal";
+    const context = universal ? null : await getProjectContext(profile.id);
+    const projects = universal
+      ? (await getUniversalReportScopes(profile.id)).map(({ project }) => project)
+      : context?.status === "ready" && context.activeProject && context.permissions.includes("dispatch.view")
+        ? context.isCompanyAdmin
+          ? context.projects.filter((project) => project.companyId === context.activeProject?.companyId)
+          : [context.activeProject]
+        : [];
+    if (!projects.length) {
+      return Response.json({ message: `No tienes acceso a Reportería${universal ? " Universal" : ""}.` }, { status: 403 });
+    }
+
     const filters = parseGuideReportFilters(request.nextUrl.searchParams);
-    const projects = context.isCompanyAdmin ? context.projects.filter((project) => project.companyId === context.activeProject?.companyId) : [context.activeProject];
-    const report = await getGuideReport(projects.map(({ id, name, timezone }) => ({ id, name, timezone })), filters);
+    const report = await getGuideReport(projects.map(({ id, name, code, billingLegalName, companyName, timezone }) => ({ id, name, code, billingLegalName, companyName, timezone })), filters);
     const selectedProject = filters.projectId ? projects.find((project) => project.id === filters.projectId) : null;
     const reportProject = selectedProject ?? (projects.length === 1 ? projects[0] : null);
-    const projectLabel = reportProject?.name ?? `Todos los proyectos (${projects.length})`;
+    const projectLabel = reportProject?.name ?? `${universal ? "Reportería Universal" : "Todos los proyectos"} (${projects.length})`;
     const safeProject = sanitizeArchiveSegment(projectLabel, "Proyectos");
     const format = request.nextUrl.searchParams.get("format") === "zip" ? "zip" : "xlsx";
 
     if (format === "zip") {
-      const { zip, fileCount } = await buildZip(report);
+      const { zip, fileCount } = await buildZip(report, universal || projects.length > 1);
       if (!fileCount) return Response.json({ message: "El resultado filtrado no contiene facturas con PDF disponible." }, { status: 404 });
       const buffer = await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE", compressionOptions: { level: 6 } });
       return new Response(buffer, { headers: { "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="Reporte_${safeProject}_${filters.dateFrom}_${filters.dateTo}.zip"`, "Cache-Control": "private, no-store" } });
     }
 
-    const workbook = await buildWorkbook(report, context.activeProject.companyName, {
+    const companyNames = [...new Set(projects.map((project) => project.companyName))];
+    const exportedProjects = reportProject ? [reportProject] : projects;
+    const billingLegalNameList = exportedProjects
+      .map((project) => `${project.name} - ${project.billingLegalName ?? "No configurada"}`)
+      .join("\n");
+    const billingTaxIdList = exportedProjects
+      .map((project) => `${project.name} - ${project.billingTaxId ?? "No configurado"}`)
+      .join("\n");
+    const workbook = await buildWorkbook(report, companyNames.length === 1 ? companyNames[0] : "Proyectos autorizados", {
       projectTitle: reportProject
         ? `${reportProject.name} · ${reportProject.code}`
         : projectLabel,
       billingLegalName:
         reportProject?.billingLegalName ??
-        (reportProject ? "No configurada" : "Varía según el proyecto"),
+        (reportProject ? "No configurada" : billingLegalNameList),
       billingTaxId:
         reportProject?.billingTaxId ??
-        (reportProject ? "No configurado" : "Varía según el proyecto"),
+        (reportProject ? "No configurado" : billingTaxIdList),
       period: `${displayDate(filters.dateFrom)} a ${displayDate(filters.dateTo)}`,
     });
     const buffer = await workbook.xlsx.writeBuffer();

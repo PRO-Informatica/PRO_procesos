@@ -2,10 +2,19 @@ import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { getOperationalProjectAccess } from "@/features/projects/queries";
+import type { ProjectAccessScope } from "@/features/projects/types";
 
 import type { GuideReportData, GuideReportFilters, GuideReportRow, ProgrammingReportItem, ReportInvoice, ReportOption } from "./types";
 
-type ProjectInput = { id: string; name: string; timezone: string };
+export type ReportProjectInput = {
+  id: string;
+  name: string;
+  code: string;
+  billingLegalName: string | null;
+  companyName: string;
+  timezone: string;
+};
 type Row = Record<string, unknown>;
 type ActorLabelRow = { profile_id: string; display_label: string };
 const empty = <T,>() => Promise.resolve({ data: [] as T[], error: null });
@@ -19,13 +28,21 @@ function dispatchCode(id: string) { return `DSP-${id.slice(0, 8).toUpperCase()}`
 function options(values: Array<[string, string]>): ReportOption[] { return [...new Map(values).entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, "es")); }
 function hasDispatchFilters(filters: GuideReportFilters) { return Boolean(filters.orderNumber || filters.batchId || filters.dispatchStatus || filters.orderStatus || filters.reconciliationStatus || filters.withIncidents); }
 
-export async function getGuideReport(projects: ProjectInput[], filters: GuideReportFilters): Promise<GuideReportData> {
+export async function getUniversalReportScopes(userId: string): Promise<ProjectAccessScope[]> {
+  return (await getOperationalProjectAccess(userId)).filter(({ project, roleCodes, permissions }) =>
+    project.status === "ACTIVE" &&
+    permissions.includes("dispatch.view") &&
+    roleCodes.some((role) => ["PURCHASING", "COMPANY_ADMIN"].includes(role)),
+  );
+}
+
+export async function getGuideReport(projects: ReportProjectInput[], filters: GuideReportFilters): Promise<GuideReportData> {
   const supabase = await createClient();
   const admin = createAdminClient();
   const allowed = new Set(projects.map((project) => project.id));
   const projectIds = filters.projectId && allowed.has(filters.projectId) ? [filters.projectId] : projects.map((project) => project.id);
   const projectMap = new Map(projects.map((project) => [project.id, project]));
-  const blank: GuideReportData = { rows: [], programming: [], filters: { projects: options(projects.map((project) => [project.id, project.name])), suppliers: [], users: [], batches: [] } };
+  const blank: GuideReportData = { rows: [], programming: [], filters: { projects: options(projects.map((project) => [project.id, `${project.name} · ${project.code}`])), suppliers: [], users: [], batches: [] } };
   if (!projectIds.length) return blank;
 
   let programmingQuery = supabase.from("programming").select("id, project_id, supplier_id, scheduled_at, requested_quantity, confirmed_quantity, unit_code, status, created_by").in("project_id", projectIds).gte("scheduled_at", `${filters.dateFrom}T00:00:00`).lte("scheduled_at", `${filters.dateTo}T23:59:59.999`).order("scheduled_at");
@@ -132,7 +149,7 @@ export async function getGuideReport(projects: ProjectInput[], filters: GuideRep
       const batchId = batchByDispatch.get(id) ?? null;
       const incidentList = incidentsByDispatch.get(id) ?? [];
       return {
-        dispatchId: id, dispatchCode: dispatchCode(id), projectId: String(program.project_id), projectName: project?.name ?? "Proyecto", timezone: project?.timezone ?? "America/Guatemala",
+        dispatchId: id, dispatchCode: dispatchCode(id), projectId: String(program.project_id), projectName: project?.name ?? "Proyecto", projectCode: project?.code ?? "", projectBillingLegalName: project?.billingLegalName ?? null, companyName: project?.companyName ?? "Empresa", timezone: project?.timezone ?? "America/Guatemala",
         supplierId: String(dispatch.supplier_id), supplierName: supplierMap.get(String(dispatch.supplier_id)) ?? "Proveedor no disponible", programmingCode: programmingCode(String(program.id)),
         orderNumber: optionalText(dispatch.order_number), batchId, batchCode: batchId ? batchMap.get(batchId) ?? null : null, guideCount: dispatchGuides.length,
         documentedQuantity: dispatchGuides.reduce((sum, guide) => sum + numeric(guide.quantity), 0), unitCode: String(dispatch.real_unit_code ?? program.unit_code ?? ""), receivedQuantity: numeric(dispatch.real_volume),
@@ -148,9 +165,9 @@ export async function getGuideReport(projects: ProjectInput[], filters: GuideRep
     if (filters.orderStatus) children = children.filter((row) => filters.orderStatus === "REINVOICING" ? row.reinvoicingRequired : row.orderStatus === filters.orderStatus);
     if (filters.reconciliationStatus) children = children.filter((row) => row.reconciliationStatus === filters.reconciliationStatus);
     if (filters.withIncidents) children = children.filter((row) => filters.withIncidents === "yes" ? row.incidentCount > 0 : row.incidentCount === 0);
-    return { id: String(program.id), code: programmingCode(String(program.id)), projectId: String(program.project_id), projectName: project?.name ?? "Proyecto", timezone: project?.timezone ?? "America/Guatemala", supplierId: String(program.supplier_id), supplierName: supplierMap.get(String(program.supplier_id)) ?? "Proveedor no disponible", scheduledAt: String(program.scheduled_at), requestedQuantity: numeric(program.requested_quantity), confirmedQuantity: program.confirmed_quantity === null ? null : numeric(program.confirmed_quantity), unitCode: String(program.unit_code), status: String(program.status), createdById: String(program.created_by), createdByName: profileMap.get(String(program.created_by)) ?? "Usuario no disponible", dispatches: children };
+    return { id: String(program.id), code: programmingCode(String(program.id)), projectId: String(program.project_id), projectName: project?.name ?? "Proyecto", projectCode: project?.code ?? "", projectBillingLegalName: project?.billingLegalName ?? null, companyName: project?.companyName ?? "Empresa", timezone: project?.timezone ?? "America/Guatemala", supplierId: String(program.supplier_id), supplierName: supplierMap.get(String(program.supplier_id)) ?? "Proveedor no disponible", scheduledAt: String(program.scheduled_at), requestedQuantity: numeric(program.requested_quantity), confirmedQuantity: program.confirmed_quantity === null ? null : numeric(program.confirmed_quantity), unitCode: String(program.unit_code), status: String(program.status), createdById: String(program.created_by), createdByName: profileMap.get(String(program.created_by)) ?? "Usuario no disponible", dispatches: children };
   });
   if (hasDispatchFilters(filters)) programming = programming.filter((program) => program.dispatches.length > 0);
   if (filters.userId) programming = programming.filter((program) => program.createdById === filters.userId || program.dispatches.some((dispatch) => dispatch.registeredById === filters.userId));
-  return { rows: programming.flatMap((program) => program.dispatches), programming, filters: { projects: options(projects.map((project) => [project.id, project.name])), suppliers: options([...supplierMap.entries()]), users: options([...profileMap.entries()]), batches: options((batches.data ?? []).map((batch) => [batch.id, batch.code])) } };
+  return { rows: programming.flatMap((program) => program.dispatches), programming, filters: { projects: options(projects.map((project) => [project.id, `${project.name} · ${project.code}`])), suppliers: options([...supplierMap.entries()]), users: options([...profileMap.entries()]), batches: options((batches.data ?? []).map((batch) => [batch.id, batch.code])) } };
 }

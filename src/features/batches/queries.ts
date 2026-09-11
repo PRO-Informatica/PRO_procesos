@@ -18,6 +18,7 @@ type RelationRow = { id: string; project_id: string; batch_id: string; dispatch_
 type DispatchRow = { id: string; programming_id: string; supplier_id: string; order_number: string | null; status: "IN_EXECUTION" | "COMPLETED"; real_volume: number | string | null; real_unit_code: string | null };
 type ReconciliationRow = { id: string; project_id?: string; dispatch_id: string; status: ReconciliationStatus; current_product_invoice_id: string | null; current_service_invoice_id: string | null };
 type InvoiceRow = { id: string; dispatch_id: string; invoice_type: "PRODUCT" | "SERVICE"; invoice_number: string; invoice_date: string; status: string; total: number | string; currency: string; order_number: string | null; pca_original: string | null; replaces_invoice_id: string | null; created_at: string };
+type RecipientExceptionRow = { id: string; invoice_id: string; status: "PENDING" | "APPROVED" | "REINVOICE_REQUESTED"; detected_billing_legal_name: string; detected_identity: string; decided_at: string | null };
 
 function numeric(value: unknown) {
   const parsed = Number(value ?? 0);
@@ -160,19 +161,21 @@ export async function getBatchDetail(
   const programmingIds = [...new Set(dispatches.map((row) => row.programming_id))];
   const supplierIds = [...new Set(dispatches.map((row) => row.supplier_id))];
 
-  const [programmingResult, suppliersResult, guidesResult, reconciliationsResult, invoicesResult, attemptsResult, profilesResult] = await Promise.all([
+  const [programmingResult, suppliersResult, guidesResult, reconciliationsResult, invoicesResult, attemptsResult, exceptionsResult, profilesResult] = await Promise.all([
     programmingIds.length ? supabase.from("programming").select("id, scheduled_at").eq("project_id", projectId).in("id", programmingIds) : Promise.resolve({ data: [], error: null }),
     supplierIds.length ? supabase.from("suppliers").select("id, name").in("id", supplierIds) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("dispatch_guides").select("id, dispatch_id").eq("project_id", projectId).in("dispatch_id", dispatchIds) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("dispatch_reconciliations").select("id, dispatch_id, status, current_product_invoice_id, current_service_invoice_id").eq("project_id", projectId).in("dispatch_id", dispatchIds) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("invoices").select("id, dispatch_id, invoice_type, invoice_number, invoice_date, status, total, currency, order_number, pca_original, replaces_invoice_id, created_at").eq("project_id", projectId).in("dispatch_id", dispatchIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("dispatch_reconciliation_attempts").select("id, dispatch_id, product_invoice_id, attempt_number, expected_order_number, detected_order_number, expected_real_volume, expected_unit_code, invoiced_quantity, invoice_unit_code, difference, validations, result, executed_by, executed_at").eq("project_id", projectId).in("dispatch_id", dispatchIds).order("executed_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    dispatchIds.length ? supabase.from("invoice_recipient_exceptions").select("id, invoice_id, status, detected_billing_legal_name, detected_identity, decided_at").eq("project_id", projectId).in("dispatch_id", dispatchIds) : Promise.resolve({ data: [], error: null }),
     includeSecondary && relations.some((row) => row.removed_by) ? admin.from("profiles").select("id, full_name").in("id", relations.flatMap((row) => row.removed_by ? [row.removed_by] : [])) : Promise.resolve({ data: [], error: null }),
   ]);
-  const relatedError = programmingResult.error ?? suppliersResult.error ?? guidesResult.error ?? reconciliationsResult.error ?? invoicesResult.error ?? attemptsResult.error ?? profilesResult.error;
+  const relatedError = programmingResult.error ?? suppliersResult.error ?? guidesResult.error ?? reconciliationsResult.error ?? invoicesResult.error ?? attemptsResult.error ?? exceptionsResult.error ?? profilesResult.error;
   if (relatedError) throw new Error(`No fue posible resolver los datos del lote. ${relatedError.message}`);
   const reconciliations = (reconciliationsResult.data ?? []) as ReconciliationRow[];
   const invoices = (invoicesResult.data ?? []) as InvoiceRow[];
+  const exceptionByInvoice = new Map(((exceptionsResult.data ?? []) as RecipientExceptionRow[]).map((row) => [row.invoice_id, row]));
 
   const programmingById = new Map((programmingResult.data ?? []).map((row) => [row.id, row]));
   const supplierNames = new Map((suppliersResult.data ?? []).map((row) => [row.id, row.name]));
@@ -181,6 +184,7 @@ export async function getBatchDetail(
   for (const guide of guidesResult.data ?? []) guideCount.set(guide.dispatch_id, (guideCount.get(guide.dispatch_id) ?? 0) + 1);
   const invoiceViewById = new Map<string, BatchInvoice>();
   for (const invoice of invoices) {
+    const recipientException = exceptionByInvoice.get(invoice.id);
     invoiceViewById.set(invoice.id, {
       id: invoice.id, dispatchId: invoice.dispatch_id, type: invoice.invoice_type,
       number: invoice.invoice_number, date: invoice.invoice_date,
@@ -191,6 +195,15 @@ export async function getBatchDetail(
       documentId: null, fileName: null,
       extractionId: null, extractionPayload: null,
       createdAt: invoice.created_at,
+      recipientException: recipientException ? {
+        id: recipientException.id,
+        invoiceId: recipientException.invoice_id,
+        status: recipientException.status,
+        detectedBillingLegalName: recipientException.detected_billing_legal_name,
+        detectedIdentity: recipientException.detected_identity,
+        decidedByName: null,
+        decidedAt: recipientException.decided_at,
+      } : null,
     });
   }
   const attempts = attemptsResult.data ?? [];
@@ -253,7 +266,7 @@ export async function getBatchDetail(
   const summary = summarize(batch, relations, reconciliations, localDate(timezone));
   const queryCount = 4 + (includeSecondary ? 1 : 0) +
     Number(programmingIds.length > 0) + Number(supplierIds.length > 0) +
-    (dispatchIds.length > 0 ? 4 : 0) +
+    (dispatchIds.length > 0 ? 5 : 0) +
     Number(includeSecondary && relations.some((row) => row.removed_by));
   return {
     ...summary,

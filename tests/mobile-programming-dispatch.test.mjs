@@ -4,13 +4,15 @@ import test from "node:test";
 
 const readSource = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [dispatchWorkspace, dispatchDetail, guideDialog, programmingDetail, programmingPreview] =
+const [dispatchWorkspace, dispatchDetail, guideDialog, programmingDetail, programmingPreview, button, globals] =
   await Promise.all([
     readSource("../src/features/dispatches/components/dispatches-workspace.tsx"),
     readSource("../src/features/dispatches/components/dispatch-detail-view.tsx"),
     readSource("../src/features/dispatches/components/dispatch-guide-dialog.tsx"),
     readSource("../src/features/programming/components/programming-detail-view.tsx"),
     readSource("../src/features/programming/components/programming-preview-drawer.tsx"),
+    readSource("../src/components/ui/button.tsx"),
+    readSource("../src/app/globals.css"),
   ]);
 
 test("Despachos separa la tabla de escritorio de las tarjetas móviles de guías", () => {
@@ -27,6 +29,12 @@ test("el detalle de despacho conserva toda la información con jerarquía móvil
   assert.match(dispatchDetail, /sm:bg-transparent sm:p-0/u);
   assert.match(dispatchDetail, /Factura de producto/u);
   assert.match(dispatchDetail, /Factura de servicio/u);
+});
+
+test("Finalizar despacho utiliza el botón verde en la acción y confirmación", () => {
+  assert.equal((dispatchDetail.match(/variant="success"/gu) ?? []).length, 2);
+  assert.match(button, /success: "success-button"/u);
+  assert.match(globals, /\.success-button \{[\s\S]*background: var\(--success\)/u);
 });
 
 test("el editor de guía adapta productos y acciones a pantallas pequeñas", () => {

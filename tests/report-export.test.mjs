@@ -11,7 +11,6 @@ import {
 } from "../src/features/reports/export-utils.ts";
 import {
   REPORT_TABLE_HEADER_ROW,
-  addReportLogo,
   setupReportSheet,
 } from "../src/features/reports/workbook-header.ts";
 import { reportDispatchProcessStatus } from "../src/features/reports/presentation.ts";
@@ -58,6 +57,8 @@ function invoice(id, type, number = "123") {
 function report(productInvoice, serviceInvoice, projectId = "project-a") {
   const dispatch = {
     projectId,
+    projectName: "CER",
+    projectCode: "CER-PRO",
     dispatchId: "dispatch-a",
     dispatchCode: "DSP-DISPATCH",
     orderNumber: "21",
@@ -71,7 +72,7 @@ test("Excel y ZIP reutilizan exactamente el mismo reporte filtrado", () => {
   assert.match(route, /parseGuideReportFilters\(request\.nextUrl\.searchParams\)/u);
   assert.match(route, /const report = await getGuideReport\(/u);
   assert.match(route, /buildWorkbook\(report,/u);
-  assert.match(route, /buildZip\(report\)/u);
+  assert.match(route, /buildZip\(report,/u);
 });
 
 test("Reportería pagina la vista cada ocho programaciones sin limitar la exportación", () => {
@@ -133,6 +134,28 @@ test("los nombres del ZIP se sanitizan y las colisiones reciben sufijo", () => {
   assert.equal(reportArchivePath(item, used), "Pedido_21/Factura_Producto_A-1_2.pdf");
 });
 
+test("el ZIP universal separa las facturas por proyecto", () => {
+  const used = new Set();
+  const item = reportArchiveItems(report(invoice("product", "PRODUCT"), null))[0];
+  assert.equal(
+    reportArchivePath(item, used, { includeProject: true }),
+    "Proyecto_CER_CER-PRO/Pedido_21/Factura_Producto_123.pdf",
+  );
+});
+
+test("el Excel consolidado identifica empresa, proyecto y razón social de facturación", () => {
+  assert.match(route, /header: "Empresa", key: "companyName"/u);
+  assert.match(route, /header: "Razón social de facturación \*", key: "projectBillingLegalName"/u);
+  assert.match(route, /header: "Proyecto", key: "projectName"/u);
+  assert.doesNotMatch(route, /header: "Código proyecto"/u);
+});
+
+test("el encabezado universal enumera cada proyecto con su razón social", () => {
+  assert.match(route, /billingLegalNameList = exportedProjects/u);
+  assert.match(route, /`\$\{project\.name\} - \$\{project\.billingLegalName \?\? "No configurada"\}`/u);
+  assert.doesNotMatch(route, /Varía según el proyecto/u);
+});
+
 test("la consulta restringe datos y documentos a proyectos permitidos", () => {
   assert.match(query, /\.in\("project_id", projectIds\)/u);
   assert.match(query, /invoice_documents[\s\S]*\.in\("project_id", projectIds\)/u);
@@ -149,11 +172,9 @@ test("los actores reales de Programación y Despacho se resuelven con el RPC aut
   assert.match(actorMigration, /nullif\(btrim\(auth_user\.email\), ''\)/u);
 });
 
-test("el Excel muestra logo, proyecto, razón social y NIT antes de la tabla", async () => {
+test("el Excel muestra proyecto, razón social y NIT sin logo antes de la tabla", async () => {
   const workbook = new Workbook();
   const sheet = workbook.addWorksheet("Reporte");
-  const logo = await readFile(new URL("../public/pro-logo.png", import.meta.url));
-  const logoId = addReportLogo(workbook, logo.toString("base64"));
 
   setupReportSheet(
     sheet,
@@ -169,26 +190,25 @@ test("el Excel muestra logo, proyecto, razón social y NIT antes de la tabla", a
       billingTaxId: "111871344",
       period: "01/09/2026 a 30/09/2026",
     },
-    logoId,
   );
 
-  assert.equal(sheet.getCell("C1").value, "CER · CER");
+  assert.equal(sheet.getCell("A1").value, "CER · CER");
   assert.equal(
-    sheet.getCell("C2").value,
+    sheet.getCell("A2").value,
     "Razón social de facturación: INMOBILIARIA LOS ANTURIOS, S.A.",
   );
-  assert.equal(sheet.getCell("C3").value, "NIT receptor: 111871344");
+  assert.equal(sheet.getCell("A3").value, "NIT receptor: 111871344");
   assert.equal(
     sheet.getRow(REPORT_TABLE_HEADER_ROW).getCell(1).value,
     "Programación",
   );
-  assert.equal(sheet.getImages().length, 1);
+  assert.equal(sheet.getImages().length, 0);
 
   const serialized = await workbook.xlsx.writeBuffer();
   const reopened = new Workbook();
   await reopened.xlsx.load(serialized);
-  assert.equal(reopened.getWorksheet("Reporte")?.getCell("C1").value, "CER · CER");
-  assert.equal(reopened.getWorksheet("Reporte")?.getImages().length, 1);
+  assert.equal(reopened.getWorksheet("Reporte")?.getCell("A1").value, "CER · CER");
+  assert.equal(reopened.getWorksheet("Reporte")?.getImages().length, 0);
 });
 
 test("la exportación obtiene el NIT receptor desde el proyecto", () => {

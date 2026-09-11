@@ -59,13 +59,17 @@ export async function switchProject(
       /^\/dispatches\/[0-9a-f-]{36}$/i.test(returnTo)
     ? returnTo
     : null;
+  const programmingDetailReturn = typeof returnTo === "string" &&
+      /^\/programming\/[0-9a-f-]{36}$/i.test(returnTo)
+    ? returnTo
+    : null;
   const moduleRoot =
     typeof returnTo === "string"
-      ? ["programming", "dispatches", "batches", "invoices", "reconciliation"].find(
+      ? ["programming", "dispatches", "batches", "invoices", "reconciliation", "reports"].find(
           (segment) =>
             returnTo === `/${segment}` || returnTo.startsWith(`/${segment}/`),
         )
       : null;
-  const safeReturnTo = universalBatchReturn ?? dispatchDetailReturn ?? (moduleRoot ? `/${moduleRoot}` : "/");
+  const safeReturnTo = universalBatchReturn ?? dispatchDetailReturn ?? programmingDetailReturn ?? (moduleRoot ? `/${moduleRoot}` : "/");
   redirect(safeReturnTo);
 }

@@ -403,6 +403,11 @@ export async function getProjectContext(userId: string): Promise<ProjectContextS
         item.permissions.includes("batch.view") &&
         item.roleCodes.some((role) => ["PURCHASING", "COMPANY_ADMIN"].includes(role)),
       ),
+      hasUniversalReportAccess: accessByProject.some(({ project, access: item }) =>
+        project.status === "ACTIVE" &&
+        item.permissions.includes("dispatch.view") &&
+        item.roleCodes.some((role) => ["PURCHASING", "COMPANY_ADMIN"].includes(role)),
+      ),
     };
   } catch (error) {
     return {

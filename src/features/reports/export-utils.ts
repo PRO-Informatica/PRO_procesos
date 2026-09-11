@@ -2,6 +2,8 @@ import type { GuideReportData, ReportInvoice } from "./types";
 
 export type ReportArchiveItem = {
   projectId: string;
+  projectName: string;
+  projectCode: string;
   dispatchId: string;
   dispatchCode: string;
   orderNumber: string | null;
@@ -44,6 +46,8 @@ export function reportArchiveItems(report: GuideReportData): ReportArchiveItem[]
     .filter((invoice): invoice is ReportInvoice => Boolean(invoice?.documentId))
     .map((invoice) => ({
       projectId: dispatch.projectId,
+      projectName: dispatch.projectName,
+      projectCode: dispatch.projectCode,
       dispatchId: dispatch.dispatchId,
       dispatchCode: dispatch.dispatchCode,
       orderNumber: dispatch.orderNumber,
@@ -51,11 +55,18 @@ export function reportArchiveItems(report: GuideReportData): ReportArchiveItem[]
     })));
 }
 
-export function reportArchivePath(item: ReportArchiveItem, usedPaths: Set<string>) {
+export function reportArchivePath(
+  item: ReportArchiveItem,
+  usedPaths: Set<string>,
+  { includeProject = false }: { includeProject?: boolean } = {},
+) {
   const order = item.orderNumber
     ? sanitizeArchiveSegment(item.orderNumber, "Sin_numero")
     : `Sin_numero_${sanitizeArchiveSegment(item.dispatchCode)}`;
   const type = item.invoice.type === "PRODUCT" ? "Producto" : "Servicio";
   const invoiceNumber = sanitizeArchiveSegment(item.invoice.number, "Sin_numero");
-  return uniqueArchivePath(`Pedido_${order}/Factura_${type}_${invoiceNumber}.pdf`, usedPaths);
+  const projectFolder = includeProject
+    ? `Proyecto_${sanitizeArchiveSegment(`${item.projectName}_${item.projectCode}`, "Proyecto")}/`
+    : "";
+  return uniqueArchivePath(`${projectFolder}Pedido_${order}/Factura_${type}_${invoiceNumber}.pdf`, usedPaths);
 }

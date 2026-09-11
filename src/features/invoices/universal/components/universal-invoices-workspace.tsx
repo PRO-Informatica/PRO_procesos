@@ -28,6 +28,7 @@ const CONCURRENCY = Math.max(1, Math.min(8, Number(process.env.NEXT_PUBLIC_UNIVE
 const toneByStatus: Record<string, BadgeTone> = {
   READY: "success",
   READY_WITH_DIFFERENCES: "warning",
+  REQUIRES_RECIPIENT_EXCEPTION: "warning",
   REQUIRES_REINVOICING: "warning",
   PROJECT_AMBIGUOUS: "warning",
   DISPATCH_AMBIGUOUS: "warning",
@@ -39,6 +40,7 @@ const toneByStatus: Record<string, BadgeTone> = {
 const labelByStatus: Record<string, string> = {
   READY: "Lista",
   READY_WITH_DIFFERENCES: "Con observaciones",
+  REQUIRES_RECIPIENT_EXCEPTION: "Decisión C14",
   REQUIRES_REINVOICING: "Requiere refacturación",
   PROJECT_NOT_FOUND: "Proyecto no encontrado",
   PROJECT_AMBIGUOUS: "Proyecto ambiguo",
@@ -85,13 +87,18 @@ async function requestResult(
   return body;
 }
 
-function EntryCard({ entry, onChange, onRemove }: {
+function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending }: {
   entry: Entry;
   onChange: (entry: Entry) => void;
   onRemove: () => void;
+  onDecision: (decision: "APPROVE" | "REQUEST_REINVOICE") => void;
+  decisionPending: boolean;
 }) {
   const pending = entry.phase === "CLASSIFYING" || entry.phase === "SAVING";
   const status = entry.phase === "SAVED" ? "SAVED" : entry.result?.status;
+  const exceptionStatus = entry.result && "recipientExceptionStatus" in entry.result
+    ? entry.result.recipientExceptionStatus
+    : null;
   return (
     <motion.article layout className="rounded-xl border border-border bg-surface p-3 sm:p-4" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}>
       <div className="flex min-w-0 items-start gap-3">
@@ -102,10 +109,16 @@ function EntryCard({ entry, onChange, onRemove }: {
             {status && <Badge tone={toneByStatus[status] ?? "danger"}>{labelByStatus[status] ?? status}</Badge>}
           </div>
           <p className="mt-1 text-xs text-foreground-muted">{sizeLabel(entry.file.size)}{entry.result?.invoiceNumber ? ` · Factura ${entry.result.invoiceNumber}` : ""}{entry.result?.detectedType && entry.result.detectedType !== "UNKNOWN" ? ` · ${entry.result.detectedType === "PRODUCT" ? "Producto" : "Servicio"}` : ""}</p>
-          {entry.result?.status === "REQUIRES_REINVOICING" && (
+          {entry.result?.status === "REQUIRES_RECIPIENT_EXCEPTION" && (
             <div className="mt-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-xs text-warning">
-              <p className="font-semibold">Pendiente de refacturación</p>
-              <p className="mt-0.5">C14 no está permitido para este proyecto.</p>
+              <p className="font-semibold">{exceptionStatus === "APPROVED" ? "Excepción C14 aceptada" : exceptionStatus === "REINVOICE_REQUESTED" ? "Refacturación solicitada" : "Decisión de Compras pendiente"}</p>
+              <p className="mt-0.5">{exceptionStatus === "APPROVED" ? "La factura continuó con su flujo normal." : exceptionStatus === "REINVOICE_REQUESTED" ? "La factura original se conserva en el historial." : "Acepta la excepción C14 o solicita refacturación."}</p>
+              {entry.phase === "SAVED" && exceptionStatus === "PENDING" && (
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                  <Button type="button" className="text-xs" variant="secondary" disabled={decisionPending} onClick={() => onDecision("REQUEST_REINVOICE")}>Solicitar refacturación</Button>
+                  <Button type="button" className="text-xs" disabled={decisionPending} onClick={() => onDecision("APPROVE")}>Aceptar excepción</Button>
+                </div>
+              )}
             </div>
           )}
           {entry.result?.operation === "REINVOICE" && (
@@ -114,8 +127,8 @@ function EntryCard({ entry, onChange, onRemove }: {
               <p className="mt-0.5">Reemplaza la factura {entry.result.replacesInvoiceNumber ?? "vigente"}.</p>
             </div>
           )}
-          {entry.result?.status !== "REQUIRES_REINVOICING" && entry.result?.message && <p className="mt-2 text-xs text-foreground-muted">{entry.result.message}</p>}
-          {entry.result?.status !== "REQUIRES_REINVOICING" && entry.result?.warnings.map((warning) => <p key={warning} className="mt-2 text-xs text-warning">{warning}</p>)}
+          {entry.result?.status !== "REQUIRES_RECIPIENT_EXCEPTION" && entry.result?.message && <p className="mt-2 text-xs text-foreground-muted">{entry.result.message}</p>}
+          {entry.result?.status !== "REQUIRES_RECIPIENT_EXCEPTION" && entry.result?.warnings.map((warning) => <p key={warning} className="mt-2 text-xs text-warning">{warning}</p>)}
           {entry.result?.status === "PROJECT_AMBIGUOUS" && (
             <label className="mt-3 block text-xs font-medium">Proyecto
               <select className="form-input mt-1" value={entry.projectId} onChange={(event) => onChange({ ...entry, projectId: event.target.value, dispatchId: "" })}>
@@ -143,8 +156,9 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
   const inputRef = useRef<HTMLInputElement>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [dragActive, setDragActive] = useState(false);
+  const [decisionPendingId, setDecisionPendingId] = useState<string | null>(null);
   const busy = entries.some((entry) => entry.phase === "CLASSIFYING" || entry.phase === "SAVING");
-  const ready = entries.filter((entry) => entry.result && ["READY", "READY_WITH_DIFFERENCES", "REQUIRES_REINVOICING"].includes(entry.result.status));
+  const ready = entries.filter((entry) => entry.phase !== "SAVED" && entry.result && ["READY", "READY_WITH_DIFFERENCES", "REQUIRES_RECIPIENT_EXCEPTION", "REQUIRES_REINVOICING"].includes(entry.result.status));
   const needsResolution = entries.filter((entry) =>
     (entry.result?.status === "PROJECT_AMBIGUOUS" && entry.projectId) ||
     (entry.result?.status === "DISPATCH_AMBIGUOUS" && entry.dispatchId),
@@ -216,7 +230,7 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
   const resolveSelections = async () => classify(needsResolution);
 
   const commit = async () => {
-    const targets = entries.filter((entry) => entry.result && ["READY", "READY_WITH_DIFFERENCES", "REQUIRES_REINVOICING"].includes(entry.result.status));
+    const targets = entries.filter((entry) => entry.phase !== "SAVED" && entry.result && ["READY", "READY_WITH_DIFFERENCES", "REQUIRES_RECIPIENT_EXCEPTION", "REQUIRES_REINVOICING"].includes(entry.result.status));
     await runPool(targets, async (target) => {
       setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "SAVING" } : entry));
       try {
@@ -228,6 +242,35 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
       }
     });
     notify.success("Proceso finalizado", "Revisa el resultado por archivo.");
+  };
+
+  const decideException = async (entry: Entry, decision: "APPROVE" | "REQUEST_REINVOICE") => {
+    const result = entry.result as UniversalCommitResult | null;
+    if (!result?.invoiceId || !result.projectId) return;
+    setDecisionPendingId(entry.id);
+    try {
+      const response = await fetch("/api/invoices/recipient-exceptions/decide", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: result.projectId, invoiceId: result.invoiceId, decision }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || body?.status !== "success") throw new Error(body?.message || "No fue posible registrar la decisión.");
+      setEntries((current) => current.map((item) => item.id === entry.id ? {
+        ...item,
+        result: {
+          ...result,
+          recipientExceptionStatus: body.exceptionStatus,
+          reconciliationStatus: body.reconciliationStatus,
+          message: body.message,
+        },
+      } : item));
+      notify.success(decision === "APPROVE" ? "Excepción aceptada" : "Refacturación solicitada", body.message);
+    } catch (error) {
+      notify.error("No se guardó la decisión", error instanceof Error ? error.message : "Intenta nuevamente.");
+    } finally {
+      setDecisionPendingId(null);
+    }
   };
 
   return (
@@ -289,6 +332,8 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
                           entry={entry}
                           onChange={(next) => setEntries((current) => current.map((item) => item.id === next.id ? next : item))}
                           onRemove={() => setEntries((current) => current.filter((item) => item.id !== entry.id))}
+                          onDecision={(decision) => void decideException(entry, decision)}
+                          decisionPending={decisionPendingId === entry.id}
                         />
                       ))}
                     </div>

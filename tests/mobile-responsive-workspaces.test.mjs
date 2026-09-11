@@ -44,7 +44,7 @@ test("Facturas Universal reduce la zona de carga y usa acciones de ancho complet
   assert.match(universalInvoices, /min-h-32[^"]*sm:min-h-40/u);
   assert.match(universalInvoices, /Selecciona tus facturas PDF/u);
   assert.ok((universalInvoices.match(/w-full sm:w-auto/gu) ?? []).length >= 4);
-  assert.match(universalInvoices, /C14 no está permitido para este proyecto/u);
+  assert.match(universalInvoices, /Acepta la excepción C14 o solicita refacturación/u);
 });
 
 test("selección múltiple de despachos mantiene scroll corto y controles táctiles", () => {

@@ -22,6 +22,7 @@ export type ProjectContextData = {
   isCompanyAdmin: boolean;
   hasUniversalInvoiceAccess: boolean;
   hasUniversalBatchAccess: boolean;
+  hasUniversalReportAccess: boolean;
 };
 
 export type ProjectContextState =
@@ -48,4 +49,5 @@ export const emptyProjectContext: ProjectContextData = {
   isCompanyAdmin: false,
   hasUniversalInvoiceAccess: false,
   hasUniversalBatchAccess: false,
+  hasUniversalReportAccess: false,
 };

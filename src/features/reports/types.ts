@@ -43,6 +43,9 @@ export type GuideReportRow = {
   dispatchCode: string;
   projectId: string;
   projectName: string;
+  projectCode: string;
+  projectBillingLegalName: string | null;
+  companyName: string;
   timezone: string;
   supplierId: string;
   supplierName: string;
@@ -76,6 +79,9 @@ export type ProgrammingReportItem = {
   code: string;
   projectId: string;
   projectName: string;
+  projectCode: string;
+  projectBillingLegalName: string | null;
+  companyName: string;
   timezone: string;
   supplierId: string;
   supplierName: string;

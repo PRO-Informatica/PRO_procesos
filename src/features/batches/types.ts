@@ -30,6 +30,17 @@ export type BatchInvoice = {
   replacedByInvoiceId: string | null; documentId: string | null;
   fileName: string | null; extractionId: string | null;
   extractionPayload: InvoiceProcessingPayload | null; createdAt: string;
+  recipientException: InvoiceRecipientException | null;
+};
+
+export type InvoiceRecipientException = {
+  id: string;
+  invoiceId: string;
+  status: "PENDING" | "APPROVED" | "REINVOICE_REQUESTED";
+  detectedBillingLegalName: string;
+  detectedIdentity: string;
+  decidedByName: string | null;
+  decidedAt: string | null;
 };
 
 export type ReconciliationAttempt = {
@@ -99,7 +110,7 @@ export const initialBatchMutationState: BatchMutationState = { status: "idle" };
 
 export type InvoiceInspection = {
   fileName: string; dispatchId: string | null; requestedType: InvoiceType | null;
-  status: "READY" | "WITH_DIFFERENCES" | "REQUIRES_REINVOICING" | "IN_EXECUTION" | "DISPATCH_NOT_FOUND" | "ERROR" | "REQUIRES_REVIEW";
+  status: "READY" | "WITH_DIFFERENCES" | "REQUIRES_RECIPIENT_EXCEPTION" | "REQUIRES_REINVOICING" | "IN_EXECUTION" | "DISPATCH_NOT_FOUND" | "ERROR" | "REQUIRES_REVIEW";
   message: string; payload: InvoiceProcessingPayload | null; duplicate: boolean;
   operation?: "NEW" | "REINVOICE";
   replacesInvoiceId?: string | null;

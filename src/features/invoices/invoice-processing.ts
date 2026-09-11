@@ -11,7 +11,7 @@ import { compareAddresses, normalizeAddressIdentity } from "@/lib/address-identi
 import { classifyInvoiceLine, classifyInvoiceLines } from "./invoice-classification";
 import { buildFiscalDocumentKey } from "./invoice-identity";
 import {
-  C14_REINVOICING_MESSAGE,
+  C14_EXCEPTION_MESSAGE,
   evaluateInvoiceRecipientPolicy,
 } from "./invoice-recipient-policy";
 
@@ -68,9 +68,11 @@ export type InvoiceProcessingPayload = {
   recipient_policy: {
     detected_identity: string | null;
     allowed: boolean;
+    exception_required: boolean;
     requires_reinvoicing: boolean;
-    reason: "C14_NOT_ALLOWED_FOR_PROJECT" | null;
+    reason: "C14_EXCEPTION_REQUIRES_REVIEW" | null;
   };
+  recipient_exception_required: boolean;
   requires_reinvoicing: boolean;
   validations: Record<string, boolean>;
   warnings: string[];
@@ -173,7 +175,7 @@ export function processExtractedInvoice(
       normalizeBusinessIdentity(context.billingLegalName) === billingName,
   );
   const billingNameValid = recipientPolicy.isC14
-    ? recipientPolicy.allowed
+    ? true
     : configuredBillingNameMatches;
   const supplierValid = supplierTax && expectedSupplierTax
     ? supplierTax === expectedSupplierTax
@@ -196,8 +198,8 @@ export function processExtractedInvoice(
   }
   const periodValid = sameMonth(extracted.invoice_date!, context.accountingPeriod);
   if (!periodValid) warnings.push("La fecha de la factura está fuera del período contable del lote.");
-  if (recipientPolicy.requiresReinvoicing) {
-    warnings.push(C14_REINVOICING_MESSAGE);
+  if (recipientPolicy.requiresSocietyException) {
+    warnings.push(C14_EXCEPTION_MESSAGE);
   } else if (!billingNameValid) {
     warnings.push("La dirección corresponde al proyecto, pero la razón social receptora es diferente.");
   }
@@ -211,7 +213,8 @@ export function processExtractedInvoice(
     type_valid: context.expectedType ? detectedType === context.expectedType : detectedType !== "UNKNOWN",
     project_valid: projectValid,
     billing_name_valid: billingNameValid,
-    billing_society_allowed: recipientPolicy.allowed,
+    billing_society_allowed: !recipientPolicy.requiresSocietyException,
+    recipient_exception_required: recipientPolicy.requiresSocietyException,
     requires_reinvoicing: recipientPolicy.requiresReinvoicing,
     supplier_valid: supplierValid,
     order_valid: detectedOrder !== null && detectedOrder === expectedOrder,
@@ -277,9 +280,11 @@ export function processExtractedInvoice(
       recipient_policy: {
         detected_identity: recipientPolicy.detectedIdentity,
         allowed: recipientPolicy.allowed,
+        exception_required: recipientPolicy.requiresSocietyException,
         requires_reinvoicing: recipientPolicy.requiresReinvoicing,
         reason: recipientPolicy.reason,
       },
+      recipient_exception_required: recipientPolicy.requiresSocietyException,
       requires_reinvoicing: recipientPolicy.requiresReinvoicing,
       validations,
       warnings,

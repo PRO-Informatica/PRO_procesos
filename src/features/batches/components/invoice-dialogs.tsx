@@ -37,7 +37,7 @@ type IndividualProps = {
 function inspectionTone(status: InvoiceInspection["status"], duplicate = false) {
   if (duplicate) return "bg-destructive-soft text-destructive";
   if (status === "READY") return "bg-success-soft text-success";
-  if (status === "WITH_DIFFERENCES" || status === "REQUIRES_REINVOICING") {
+  if (["WITH_DIFFERENCES", "REQUIRES_RECIPIENT_EXCEPTION", "REQUIRES_REINVOICING"].includes(status)) {
     return "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200";
   }
   return "bg-destructive-soft text-destructive";
@@ -53,7 +53,7 @@ function InspectionSummary({ inspection }: { inspection: InvoiceInspection }) {
           <div><dt>Pedido detectado</dt><dd className="font-semibold">{inspection.payload.detected_order_number ?? "—"}</dd></div>
           <div><dt>Tipo detectado</dt><dd className="font-semibold">{inspection.payload.detected_type}</dd></div>
           <div><dt>Razón Social</dt><dd className="font-semibold">{inspection.payload.billing_legal_name ?? "—"}</dd></div>
-          <div><dt>Estado</dt><dd className="font-semibold">{inspection.payload.requires_reinvoicing ? "Pendiente de refacturación" : "Validada"}</dd></div>
+          <div><dt>Estado</dt><dd className="font-semibold">{inspection.payload.recipient_exception_required ? "Decisión de Compras pendiente" : "Validada"}</dd></div>
           <div><dt>Cantidad conciliable</dt><dd className="font-semibold">{formatBatchQuantity(inspection.payload.invoiced_quantity)} {inspection.payload.normalized_unit ?? ""}</dd></div>
           <div><dt>Volumen Real</dt><dd className="font-semibold">{inspection.payload.expected_real_volume === null ? "Pendiente" : formatBatchQuantity(inspection.payload.expected_real_volume)}</dd></div>
           <div><dt>Diferencia</dt><dd className="font-semibold">{inspection.payload.difference === null ? "No comparable" : formatBatchQuantity(inspection.payload.difference)}</dd></div>
@@ -133,7 +133,7 @@ export function DispatchInvoiceDialog({
 
   const canSave = Boolean(
     inspection?.payload &&
-      ["READY", "WITH_DIFFERENCES", "REQUIRES_REINVOICING"].includes(inspection.status) &&
+      ["READY", "WITH_DIFFERENCES", "REQUIRES_RECIPIENT_EXCEPTION", "REQUIRES_REINVOICING"].includes(inspection.status) &&
       (!inspection.duplicate || replacement),
   );
 
@@ -362,14 +362,14 @@ export function BulkInvoiceDialog({
         const row = next[index];
         const result = row.inspection;
         const duplicateKey = result?.dispatchId && result.requestedType ? `${result.dispatchId}:${result.requestedType}` : "";
-        if (row.saved || !result?.payload || !result.dispatchId || !result.requestedType || result.duplicate || duplicateKeys.has(duplicateKey) || !["READY", "WITH_DIFFERENCES", "REQUIRES_REINVOICING"].includes(result.status)) continue;
+        if (row.saved || !result?.payload || !result.dispatchId || !result.requestedType || result.duplicate || duplicateKeys.has(duplicateKey) || !["READY", "WITH_DIFFERENCES", "REQUIRES_RECIPIENT_EXCEPTION", "REQUIRES_REINVOICING"].includes(result.status)) continue;
         const data = new FormData();
         data.set("file", row.file);
         const response = await saveDispatchInvoice(projectId, batchId, result.dispatchId, result.requestedType, result.replacesInvoiceId ?? null, data);
         if (response.status === "success") {
           next[index] = { ...row, saved: true, saveError: null };
           saved += 1;
-          if (result.requestedType === "PRODUCT" && result.operation !== "REINVOICE") productDispatches.add(result.dispatchId);
+          if (result.requestedType === "PRODUCT" && result.operation !== "REINVOICE" && !result.payload.recipient_exception_required) productDispatches.add(result.dispatchId);
         } else {
           next[index] = { ...row, saveError: response.message };
         }
@@ -394,7 +394,7 @@ export function BulkInvoiceDialog({
   const readyCount = rows.filter((row) => {
     const result = row.inspection;
     const key = result?.dispatchId && result.requestedType ? `${result.dispatchId}:${result.requestedType}` : "";
-    return !row.saved && result?.payload && !result.duplicate && !duplicateKeys.has(key) && ["READY", "WITH_DIFFERENCES", "REQUIRES_REINVOICING"].includes(result.status);
+    return !row.saved && result?.payload && !result.duplicate && !duplicateKeys.has(key) && ["READY", "WITH_DIFFERENCES", "REQUIRES_RECIPIENT_EXCEPTION", "REQUIRES_REINVOICING"].includes(result.status);
   }).length;
 
   return (
