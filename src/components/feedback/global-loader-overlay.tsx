@@ -5,6 +5,7 @@ import Image from "next/image";
 import { createPortal } from "react-dom";
 
 import type { GlobalLoadingState } from "./global-loading-provider";
+import { useDelayedPending } from "./use-delayed-pending";
 import { motionTokens } from "@/lib/motion/tokens";
 
 export function GlobalLoaderOverlay({
@@ -13,12 +14,13 @@ export function GlobalLoaderOverlay({
   state: GlobalLoadingState | null;
 }) {
   const reducedMotion = useReducedMotion();
+  const visible = useDelayedPending(Boolean(state));
 
   if (typeof document === "undefined") return null;
 
   return createPortal(
     <AnimatePresence>
-      {state && (
+      {state && visible && (
         <motion.div
           className="fixed inset-0 z-[9999] grid cursor-wait place-items-center bg-black/35 p-4 backdrop-blur-[2px]"
           initial={reducedMotion ? false : { opacity: 0 }}

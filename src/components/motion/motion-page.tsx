@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 
 import { pageTransition } from "@/lib/motion/variants";
 
@@ -13,7 +13,9 @@ export function MotionPage({
   className?: string;
   disableMotion?: boolean;
 }) {
-  if (disableMotion) return <div className={className}>{children}</div>;
+  const reduceMotion = useReducedMotion();
+
+  if (disableMotion || reduceMotion) return <div className={className}>{children}</div>;
 
   return (
     <motion.div

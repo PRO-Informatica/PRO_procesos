@@ -8,6 +8,9 @@ export type GlobalReconciliationItem = {
   supplierName: string;
   realVolume: number;
   unitCode: string;
+  comparisonQuantity: number | null;
+  comparisonUnitCode: string;
+  comparisonSource: "REAL_VOLUME" | "PROGRAMMED_QUANTITY";
   invoiceCount: number;
   hasProductInvoice: boolean;
   hasServiceInvoice: boolean;

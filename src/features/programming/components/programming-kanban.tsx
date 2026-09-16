@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarClock, Droplets, Truck } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -29,13 +29,15 @@ function ProgrammingCard({
   timezone: string;
   onSelect: (item: ProgrammingItem) => void;
 }) {
+  const reduceMotion = useReducedMotion();
+
   return (
     <motion.button
       type="button"
       onClick={() => onSelect(item)}
       className="data-card-interactive w-full touch-manipulation rounded-xl border border-border bg-surface p-3.5 text-left shadow-sm active:border-brand/30 active:bg-brand-soft/10"
-      whileTap={{ scale: 0.995 }}
-      transition={{ duration: motionTokens.duration.hover, ease: motionTokens.ease }}
+      whileTap={reduceMotion ? undefined : { scale: 0.995 }}
+      transition={{ duration: reduceMotion ? 0 : motionTokens.duration.hover, ease: motionTokens.ease }}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">

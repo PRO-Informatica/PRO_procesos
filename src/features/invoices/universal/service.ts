@@ -17,6 +17,7 @@ import {
   processExtractedInvoice,
   type InvoiceProcessingPayload,
 } from "../invoice-processing";
+import { resolveReconciliationQuantityBasis, selectValidProgrammedQuantity } from "../reconciliation-quantity";
 import { resolveInvoiceUploadSlot } from "../reinvoicing";
 import type { UniversalCommitResult, UniversalInvoiceResult } from "./types";
 
@@ -229,7 +230,7 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
   }
   const dispatchResult = await admin
     .from("dispatches")
-    .select("id, programming_id, supplier_id, order_number, real_volume, real_unit_code, status")
+    .select("id, programming_id, supplier_id, order_number, real_volume, real_unit_code, status, result")
     .eq("project_id", project.id)
     .eq("status", "COMPLETED")
     .limit(2000);
@@ -258,12 +259,28 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
     });
   }
 
-  const relations = await admin
-    .from("batch_dispatches")
-    .select("batch_id")
-    .eq("project_id", project.id)
-    .eq("dispatch_id", selectedDispatch.id)
-    .is("removed_at", null);
+  const [relations, programmingResult, incidentsResult] = await Promise.all([
+    admin
+      .from("batch_dispatches")
+      .select("batch_id")
+      .eq("project_id", project.id)
+      .eq("dispatch_id", selectedDispatch.id)
+      .is("removed_at", null),
+    admin
+      .from("programming")
+      .select("requested_quantity, confirmed_quantity, unit_code")
+      .eq("id", selectedDispatch.programming_id)
+      .eq("project_id", project.id)
+      .maybeSingle(),
+    admin
+      .from("dispatch_incidents")
+      .select("id", { count: "exact", head: true })
+      .eq("dispatch_id", selectedDispatch.id)
+      .eq("project_id", project.id),
+  ]);
+  if (relations.error || programmingResult.error || incidentsResult.error || !programmingResult.data) {
+    throw new Error("No fue posible resolver la base de conciliación del despacho.");
+  }
   const batchIds = [...new Set((relations.data ?? []).map((row) => row.batch_id))];
   const batches = batchIds.length
     ? await admin.from("batches").select("id, code, accounting_period, status").in("id", batchIds).eq("status", "OPEN")
@@ -327,6 +344,18 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
   }
   const supplier = await admin.from("suppliers").select("name, tax_id").eq("id", selectedDispatch.supplier_id).maybeSingle();
   if (!supplier.data) throw new Error("No se encontró el proveedor del despacho.");
+  const programmedQuantity = selectValidProgrammedQuantity(
+    programmingResult.data.confirmed_quantity === null ? null : Number(programmingResult.data.confirmed_quantity),
+    programmingResult.data.requested_quantity === null ? null : Number(programmingResult.data.requested_quantity),
+  );
+  const quantityBasis = resolveReconciliationQuantityBasis({
+    dispatchResult: selectedDispatch.result,
+    incidentCount: incidentsResult.count ?? 0,
+    realVolume: selectedDispatch.real_volume === null ? null : Number(selectedDispatch.real_volume),
+    realUnitCode: selectedDispatch.real_unit_code,
+    programmedQuantity: programmedQuantity === null ? null : Number(programmedQuantity),
+    programmedUnitCode: programmingResult.data.unit_code,
+  });
   const processed = processExtractedInvoice(raw, {
     expectedType: detectedType,
     companyCode: project.companyCode,
@@ -337,8 +366,10 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
     billingTaxId: project.billingTaxId,
     projectAddress: project.address,
     accountingPeriod: batch.accounting_period,
+    expectedQuantity: quantityBasis.quantity,
+    expectedUnitCode: quantityBasis.unitCode,
+    expectedQuantitySource: quantityBasis.source,
     realVolume: selectedDispatch.real_volume === null ? null : Number(selectedDispatch.real_volume),
-    realUnitCode: selectedDispatch.real_unit_code,
   });
   if (processed.status === "error") {
     return result(file, {

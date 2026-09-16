@@ -5,8 +5,11 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { EmptyState } from "@/components/feedback/empty-state";
+import { SkeletonBlock } from "@/components/feedback/skeletons";
+import { useDelayedPending } from "@/components/feedback/use-delayed-pending";
 import { MotionPage } from "@/components/motion/motion-page";
 import { MotionSection } from "@/components/motion/motion-section";
+import { panelTransition } from "@/lib/motion/variants";
 
 import { formatBatchDate } from "../formatters";
 import type {
@@ -42,6 +45,7 @@ function BatchOption({ batch, selected, pending, onSelect }: {
   onSelect: () => void;
 }) {
   const reduceMotion = useReducedMotion();
+  const showPending = useDelayedPending(pending);
   return <motion.button
     type="button"
     onClick={onSelect}
@@ -55,7 +59,7 @@ function BatchOption({ batch, selected, pending, onSelect }: {
     transition={{ duration: reduceMotion ? 0 : 0.2 }}
   >
     <span className="min-w-0"><strong className="block truncate text-sm">{batch.code}</strong><span className="mt-1 block text-xs leading-5 text-foreground-muted">{formatBatchDate(batch.periodStart)} – {formatBatchDate(batch.periodEnd)} · {batch.activeDispatchCount} despacho(s)</span></span>
-    <span className="flex shrink-0 items-center justify-between gap-2 min-[420px]:justify-end"><BatchStatusBadge status={batch.status} />{pending ? <LoaderCircle className="size-4 animate-spin text-brand-strong" /> : <ChevronRight className={`size-4 transition-transform ${selected ? "translate-x-0.5 text-brand-strong" : "text-foreground-muted"}`} />}</span>
+    <span className="flex shrink-0 items-center justify-between gap-2 min-[420px]:justify-end"><BatchStatusBadge status={batch.status} />{showPending ? <LoaderCircle className="size-4 animate-spin text-brand-strong motion-reduce:animate-none" /> : <ChevronRight className={`size-4 transition-transform ${selected ? "translate-x-0.5 text-brand-strong" : "text-foreground-muted"}`} />}</span>
   </motion.button>;
 }
 
@@ -75,6 +79,7 @@ export function UniversalBatchesWorkspace({ projects }: { projects: UniversalBat
   const detailCache = useRef(new Map<string, BatchDetail>());
   const pendingRequest = useRef<AbortController | null>(null);
   const reduceMotion = useReducedMotion();
+  const showDetailLoading = useDelayedPending(detailLoading && !selectedDetail);
 
   useEffect(() => () => pendingRequest.current?.abort(), []);
 
@@ -201,14 +206,50 @@ export function UniversalBatchesWorkspace({ projects }: { projects: UniversalBat
     <MotionSection className="space-y-3">
       <div className="flex items-center justify-between gap-3"><div><h2 className="font-semibold">Proyectos y lotes</h2><p className="mt-1 text-xs text-foreground-muted"><span className="sm:hidden">Desliza horizontalmente.</span><span className="hidden sm:inline">Desliza horizontalmente o utiliza las flechas.</span></p></div>{visibleProjects.length > 1 && <div className="hidden shrink-0 gap-2 sm:flex"><button type="button" onClick={() => moveCarousel(-1)} className="grid size-11 cursor-pointer place-items-center rounded-lg border border-border bg-surface text-foreground-muted transition-colors hover:border-brand/35 hover:text-foreground active:bg-muted" aria-label="Proyecto anterior"><ChevronLeft className="size-5" /></button><button type="button" onClick={() => moveCarousel(1)} className="grid size-11 cursor-pointer place-items-center rounded-lg border border-border bg-surface text-foreground-muted transition-colors hover:border-brand/35 hover:text-foreground active:bg-muted" aria-label="Proyecto siguiente"><ChevronRight className="size-5" /></button></div>}</div>
       <div ref={carouselRef} className="flex touch-pan-x snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain pb-2 sm:gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {visibleProjects.map(({ project, batches }, index) => <motion.article key={project.id} className={`min-w-0 shrink-0 snap-start overflow-hidden rounded-xl border bg-surface shadow-sm ${project.id === selected?.projectId ? "border-brand/55" : "border-border"} basis-[calc(100%-0.5rem)] sm:basis-[28rem] lg:basis-[31rem]`} initial={reduceMotion ? false : { opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reduceMotion ? 0 : 0.2, delay: reduceMotion ? 0 : Math.min(index * 0.035, 0.14) }}><div className="flex min-h-16 items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5"><span className="min-w-0"><strong className="block truncate">{project.name}</strong><span className="mt-1 block truncate text-xs text-foreground-muted">{project.code} · {project.companyName}</span></span><span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted">{batches.length} lote(s)</span></div><div className="p-3 sm:p-4">{batches.length ? <div className={`space-y-2 overflow-y-auto overscroll-contain ${batches.length > 3 ? "max-h-[14rem] pr-1 [scrollbar-gutter:stable]" : ""}`}>{batches.map((batch) => <BatchOption key={batch.id} batch={batch} selected={batch.id === selected?.batchId && project.id === selected.projectId} pending={detailLoading && batch.id === selected?.batchId && project.id === selected.projectId} onSelect={() => selectBatch(project.id, batch.id)} />)}</div> : <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-foreground-muted">No existen lotes para este proyecto.</p>}</div></motion.article>)}
+        {visibleProjects.map(({ project, batches }) => <article key={project.id} className={`min-w-0 shrink-0 snap-start overflow-hidden rounded-xl border bg-surface shadow-sm ${project.id === selected?.projectId ? "border-brand/55" : "border-border"} basis-[calc(100%-0.5rem)] sm:basis-[28rem] lg:basis-[31rem]`}><div className="flex min-h-16 items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5"><span className="min-w-0"><strong className="block truncate">{project.name}</strong><span className="mt-1 block truncate text-xs text-foreground-muted">{project.code} · {project.companyName}</span></span><span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted">{batches.length} lote(s)</span></div><div className="p-3 sm:p-4">{batches.length ? <div className={`space-y-2 overflow-y-auto overscroll-contain ${batches.length > 3 ? "max-h-[14rem] pr-1 [scrollbar-gutter:stable]" : ""}`}>{batches.map((batch) => <BatchOption key={batch.id} batch={batch} selected={batch.id === selected?.batchId && project.id === selected.projectId} pending={detailLoading && batch.id === selected?.batchId && project.id === selected.projectId} onSelect={() => selectBatch(project.id, batch.id)} />)}</div> : <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-foreground-muted">No existen lotes para este proyecto.</p>}</div></article>)}
       </div>
       {!hasResults && (normalizedSearch || projectFilter !== "ALL" || statusFilter !== "ALL") && <EmptyState icon={FolderKanban} title="Sin resultados" description="No existen lotes que coincidan con los filtros seleccionados." />}
     </MotionSection>
 
     <div ref={detailRef} className="scroll-mt-20" aria-live="polite">
     <AnimatePresence mode="wait" initial={false}>
-      {detailLoading && !selectedDetail ? <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><MotionSection className="grid min-h-48 place-items-center rounded-xl border border-border bg-surface px-4"><span className="flex items-center gap-2 text-sm text-foreground-muted"><LoaderCircle className="size-5 animate-spin" /> Cargando detalle del lote…</span></MotionSection></motion.div> : detailError ? <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><MotionSection><EmptyState icon={FolderKanban} title="No fue posible cargar el lote" description={detailError} /></MotionSection></motion.div> : selectedDetail && selectedEntry && permissions ? <motion.div key={selectedDetail.id} initial={false}><section className="rounded-xl border border-border bg-surface p-3 sm:p-5"><BatchDetailView detail={selectedDetail} project={selectedEntry.project} permissions={permissions} embedded loadSecondary={loadSecondary} onDataChanged={refreshSelected} /></section></motion.div> : <motion.div key="empty-detail" initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }}><MotionSection><EmptyState icon={FolderKanban} title="Selecciona un lote" description="Los despachos y acciones del lote elegido aparecerán aquí, dentro de la misma página." /></MotionSection></motion.div>}
+      {detailLoading && !selectedDetail ? (
+        <motion.div key="loading" variants={panelTransition} initial={reduceMotion ? false : "hidden"} animate="visible" exit={reduceMotion ? undefined : "exit"}>
+          {showDetailLoading ? <MotionSection className="rounded-xl border border-border bg-surface p-4 sm:p-5" aria-busy="true">
+            <span className="sr-only">Cargando detalle del lote…</span>
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <SkeletonBlock className="h-3 w-40" />
+                <SkeletonBlock className="mt-3 h-9 w-72 max-w-full" />
+                <SkeletonBlock className="mt-3 h-4 w-96 max-w-full" />
+              </div>
+              <SkeletonBlock className="hidden h-11 w-72 sm:block" />
+            </div>
+            <div className="mt-5 overflow-hidden rounded-xl border border-border" aria-hidden="true">
+              <div className="grid grid-cols-3 gap-4 border-b border-border bg-muted/60 p-4">
+                {Array.from({ length: 3 }, (_, index) => <SkeletonBlock key={index} className="h-3" />)}
+              </div>
+              {Array.from({ length: 2 }, (_, row) => (
+                <div key={row} className="grid grid-cols-1 gap-3 border-b border-border p-4 last:border-0 sm:grid-cols-3">
+                  {Array.from({ length: 3 }, (__, column) => <SkeletonBlock key={column} className="h-4" />)}
+                </div>
+              ))}
+            </div>
+          </MotionSection> : <div className="min-h-48 rounded-xl border border-transparent" aria-busy="true"><span className="sr-only">Cargando detalle del lote…</span></div>}
+        </motion.div>
+      ) : detailError ? (
+        <motion.div key="error" variants={panelTransition} initial={reduceMotion ? false : "hidden"} animate="visible" exit={reduceMotion ? undefined : "exit"}><MotionSection><EmptyState icon={FolderKanban} title="No fue posible cargar el lote" description={detailError} /></MotionSection></motion.div>
+      ) : selectedDetail && selectedEntry && permissions ? (
+        <motion.div
+          key={selectedDetail.id}
+          variants={panelTransition}
+          initial={reduceMotion ? false : "hidden"}
+          animate="visible"
+          exit={reduceMotion ? undefined : "exit"}
+        ><section className="rounded-xl border border-border bg-surface p-3 sm:p-5"><BatchDetailView detail={selectedDetail} project={selectedEntry.project} permissions={permissions} embedded loadSecondary={loadSecondary} onDataChanged={refreshSelected} /></section></motion.div>
+      ) : (
+        <motion.div key="empty-detail" variants={panelTransition} initial={reduceMotion ? false : "hidden"} animate="visible" exit={reduceMotion ? undefined : "exit"}><MotionSection><EmptyState icon={FolderKanban} title="Selecciona un lote" description="Los despachos y acciones del lote elegido aparecerán aquí, dentro de la misma página." /></MotionSection></motion.div>
+      )}
     </AnimatePresence>
     </div>
   </MotionPage>;

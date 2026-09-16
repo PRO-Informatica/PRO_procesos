@@ -40,6 +40,7 @@ delete from public.notifications;
 delete from public.dispatch_reconciliation_attempts;
 delete from public.dispatch_reconciliations;
 
+delete from public.invoice_recipient_exceptions;
 delete from public.invoice_extractions
 where invoice_id in (select id from public.invoices)
    or processing_job_id in (select id from cleanup_processing_job_ids);
@@ -97,6 +98,7 @@ begin
      or exists (select 1 from public.batch_dispatches)
      or exists (select 1 from public.batches)
      or exists (select 1 from public.invoices)
+     or exists (select 1 from public.invoice_recipient_exceptions)
      or exists (select 1 from public.dispatch_reconciliations)
      or exists (select 1 from public.dispatch_reconciliation_attempts)
      or exists (select 1 from public.documents)

@@ -1,7 +1,7 @@
 "use client";
 
 import { FileSpreadsheet, Trash2 } from "lucide-react";
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 
 import { LoadingButton } from "@/components/feedback/loading-button";
 import { FileDropField } from "@/components/forms/file-drop-field";
@@ -68,6 +68,7 @@ export function BulkProgrammingDialog({
     initialCreateProgrammingBatchState,
   );
   const [editedRows, setEditedRows] = useState<BulkProgrammingPreviewRow[] | null>(null);
+  const notifiedBatch = useRef<string | null>(null);
   const rows = useMemo(
     () => editedRows ?? extractState.rows ?? [],
     [editedRows, extractState.rows],
@@ -76,11 +77,14 @@ export function BulkProgrammingDialog({
 
   useEffect(() => {
     if (batchState.status === "success") {
+      const notificationKey = (batchState.programmingIds ?? []).join(":") || `rows:${rows.length}`;
+      if (notifiedBatch.current === notificationKey) return;
+      notifiedBatch.current = notificationKey;
       const count = batchState.programmingIds?.length ?? rows.length;
       notify.success(notifications.programmingImported, `${count} ${count === 1 ? "registro creado" : "registros creados"}.`);
       onCreated(count);
     }
-  }, [batchState.programmingIds?.length, batchState.status, onCreated, rows.length]);
+  }, [batchState.programmingIds, batchState.status, onCreated, rows.length]);
 
   const validatedRows = useMemo(
     () => rows.map((row) => ({ ...row, errors: rowErrors(row, today) })),

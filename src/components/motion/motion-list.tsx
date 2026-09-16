@@ -1,8 +1,8 @@
 "use client";
 
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 
-import { fadeUp, staggerContainer } from "@/lib/motion/variants";
+import { fadeUp } from "@/lib/motion/variants";
 
 export function MotionList({
   children,
@@ -11,8 +11,18 @@ export function MotionList({
   children: React.ReactNode;
   className?: string;
 }) {
+  const reduceMotion = useReducedMotion();
+
+  if (reduceMotion) return <div className={className}>{children}</div>;
+
   return (
-    <motion.div className={className} variants={staggerContainer}>
+    <motion.div
+      className={className}
+      variants={fadeUp}
+      initial="hidden"
+      whileInView="visible"
+      viewport={{ once: true, margin: "-60px 0px" }}
+    >
       {children}
     </motion.div>
   );
@@ -25,9 +35,5 @@ export function MotionItem({
   children: React.ReactNode;
   className?: string;
 }) {
-  return (
-    <motion.div className={className} variants={fadeUp}>
-      {children}
-    </motion.div>
-  );
+  return <div className={className}>{children}</div>;
 }

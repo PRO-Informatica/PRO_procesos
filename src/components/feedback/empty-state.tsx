@@ -1,7 +1,7 @@
 "use client";
 
 import { FolderOpen } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 
 export function EmptyState({
   title,
@@ -14,11 +14,14 @@ export function EmptyState({
   icon?: typeof FolderOpen;
   action?: React.ReactNode;
 }) {
+  const reduceMotion = useReducedMotion();
+
   return (
     <motion.div
       className="rounded-xl border border-dashed border-border bg-muted/40 px-6 py-12 text-center"
-      initial={{ opacity: 0, y: 8 }}
+      initial={reduceMotion ? false : { opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reduceMotion ? 0 : 0.18 }}
     >
       <span className="mx-auto grid size-11 place-items-center rounded-xl border border-border bg-surface text-foreground-muted">
         <Icon aria-hidden="true" className="size-5" />

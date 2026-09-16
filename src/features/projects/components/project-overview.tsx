@@ -8,12 +8,10 @@ import {
   MapPin,
   ShieldCheck,
 } from "lucide-react";
-import { motion } from "motion/react";
-
 import { EmptyState } from "@/components/feedback/empty-state";
 import { ErrorState } from "@/components/feedback/error-state";
 import { MotionPage } from "@/components/motion/motion-page";
-import { fadeUp, staggerContainer } from "@/lib/motion/variants";
+import { MotionSection } from "@/components/motion/motion-section";
 import { formatStatusLabel } from "@/lib/status-labels";
 
 import { useProjectContext } from "../project-context";
@@ -44,10 +42,7 @@ export function ProjectOverview() {
 
   return (
     <MotionPage className="mx-auto max-w-6xl">
-      <motion.section
-        className="overflow-hidden rounded-2xl border border-border bg-surface"
-        variants={fadeUp}
-      >
+      <MotionSection className="overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="border-b border-border p-6 sm:p-8">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
@@ -85,12 +80,7 @@ export function ProjectOverview() {
           </div>
         </div>
 
-        <motion.div
-          className="grid gap-px bg-border sm:grid-cols-3"
-          variants={staggerContainer}
-          initial="hidden"
-          animate="visible"
-        >
+        <div className="grid gap-px bg-border sm:grid-cols-3">
           <ProjectFact icon={CalendarClock} label="Zona horaria" value={project.timezone} />
           <ProjectFact
             icon={ShieldCheck}
@@ -102,20 +92,15 @@ export function ProjectOverview() {
             label="Permisos efectivos"
             value={`${context.permissions.length} habilitados`}
           />
-        </motion.div>
-      </motion.section>
+        </div>
+      </MotionSection>
 
-      <motion.section
-        className="mt-5 rounded-xl border border-dashed border-border bg-muted/40 p-6"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.12 }}
-      >
+      <MotionSection className="mt-5 rounded-xl border border-dashed border-border bg-muted/40 p-6">
         <p className="text-sm font-semibold text-foreground">Contexto configurado</p>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-foreground-muted">
           La navegación ya responde a los permisos efectivos de este proyecto. Los módulos operativos se habilitarán progresivamente en sus fases correspondientes; RLS continúa siendo la barrera final de seguridad.
         </p>
-      </motion.section>
+      </MotionSection>
     </MotionPage>
   );
 }
@@ -130,12 +115,12 @@ function ProjectFact({
   value: string;
 }) {
   return (
-    <motion.div className="bg-surface p-5 sm:p-6" variants={fadeUp}>
+    <div className="bg-surface p-5 sm:p-6">
       <Icon aria-hidden="true" className="size-5 text-brand-strong" />
       <p className="mt-4 text-xs font-medium text-foreground-muted">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-foreground" title={value}>
         {value}
       </p>
-    </motion.div>
+    </div>
   );
 }

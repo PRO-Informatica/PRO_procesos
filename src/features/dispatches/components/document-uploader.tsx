@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
+import { useDelayedPending } from "@/components/feedback/use-delayed-pending";
 import { notifications } from "@/lib/notification-messages";
 import { notify } from "@/lib/notify";
 import { createClient } from "@/lib/supabase/client";
@@ -41,6 +42,7 @@ export function DocumentUploader({ projectId, contextId, context, label, existin
   const fileInput = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const showBusy = useDelayedPending(busy);
   const [items, setItems] = useState<UploadItem[]>([]);
 
   const updateItem = (id: string, patch: Partial<UploadItem>) => {
@@ -76,22 +78,34 @@ export function DocumentUploader({ projectId, contextId, context, label, existin
     if (!selected.length || busy) return;
     setBusy(true);
     let completed = 0;
-    for (const item of selected) {
-      updateItem(item.id, { status: "uploading", error: undefined });
-      try {
-        await uploadOne(item);
-        completed += 1;
-        updateItem(item.id, { status: "success" });
-      } catch (error) {
-        updateItem(item.id, { status: "error", error: error instanceof Error ? error.message : "No se pudo cargar el archivo." });
+    try {
+      for (const item of selected) {
+        updateItem(item.id, { status: "uploading", error: undefined });
+        try {
+          await uploadOne(item);
+          completed += 1;
+          updateItem(item.id, { status: "success" });
+        } catch (error) {
+          updateItem(item.id, { status: "error", error: error instanceof Error ? error.message : "No se pudo cargar el archivo." });
+        }
       }
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
+    const failed = selected.length - completed;
     if (completed) {
-      notify.success(completed === 1 ? notifications.documentUploaded : notifications.documentsUploaded);
       router.refresh();
     }
-    if (completed < selected.length) notify.error(notifications.uploadFailed);
+    if (failed === 0) {
+      notify.success(completed === 1 ? notifications.documentUploaded : notifications.documentsUploaded);
+    } else if (completed === 0) {
+      notify.error(notifications.uploadFailed);
+    } else {
+      notify.warning(
+        "Carga finalizada con observaciones",
+        `${completed} ${completed === 1 ? "archivo cargado" : "archivos cargados"} y ${failed} ${failed === 1 ? "archivo pendiente" : "archivos pendientes"}. Revisa el detalle.`,
+      );
+    }
   };
 
   const selectFiles = (files: FileList | null, fromCamera = false) => {
@@ -112,14 +126,14 @@ export function DocumentUploader({ projectId, contextId, context, label, existin
       <input ref={cameraInput} type="file" accept={IMAGE_ACCEPT} capture="environment" className="sr-only" onChange={(event) => selectFiles(event.target.files, true)} />
       <div className="grid gap-2 min-[420px]:grid-cols-2 sm:flex sm:flex-wrap">
         <Button variant="secondary" disabled={busy} onClick={() => fileInput.current?.click()} className="min-h-11 w-full px-3 text-xs sm:min-h-10 sm:w-auto">
-          {busy ? <LoaderCircle className="size-4 animate-spin" /> : <FileUp className="size-4" />}{label}
+          {showBusy ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /> : <FileUp className="size-4" />}{label}
         </Button>
         <Button variant="secondary" disabled={busy} onClick={() => cameraInput.current?.click()} className="min-h-11 w-full px-3 text-xs sm:min-h-10 sm:w-auto"><Camera className="size-4" /> Tomar foto</Button>
       </div>
       {items.length > 0 && <ul className="space-y-2" aria-live="polite">
         {items.map((item) => <li key={item.id} className="overflow-hidden rounded-lg border border-border bg-muted/15">
           <div className="flex items-center gap-3 px-3 py-2.5">
-            {item.status === "uploading" ? <LoaderCircle className="size-4 shrink-0 animate-spin text-brand-strong" /> : item.status === "success" ? <CheckCircle2 className="size-4 shrink-0 text-success" /> : <FileUp className="size-4 shrink-0 text-foreground-muted" />}
+            {item.status === "uploading" && showBusy ? <LoaderCircle className="size-4 shrink-0 animate-spin text-brand-strong motion-reduce:animate-none" /> : item.status === "success" ? <CheckCircle2 className="size-4 shrink-0 text-success" /> : <FileUp className="size-4 shrink-0 text-foreground-muted" />}
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-semibold" title={item.file.name}>{item.file.name}</p>
               <p className={`mt-0.5 text-[11px] ${item.status === "error" ? "text-destructive" : "text-foreground-muted"}`}>
@@ -129,7 +143,7 @@ export function DocumentUploader({ projectId, contextId, context, label, existin
             {item.status === "error" && <IconButton label={`Reintentar ${item.file.name}`} onClick={() => void processItems([item])} disabled={busy}><RotateCcw className="size-4" /></IconButton>}
             {(item.status === "pending" || item.status === "error") && <IconButton label={`Quitar ${item.file.name}`} onClick={() => setItems((current) => current.filter((entry) => entry.id !== item.id))} disabled={busy} tone="destructive"><Trash2 className="size-4" /></IconButton>}
           </div>
-          {item.status === "uploading" && <div className="h-0.5 overflow-hidden bg-muted"><div className="h-full w-1/2 animate-pulse bg-brand motion-reduce:w-full motion-reduce:animate-none" /></div>}
+          {item.status === "uploading" && <div className="h-0.5 overflow-hidden bg-muted">{showBusy && <div className="h-full w-1/2 animate-pulse bg-brand motion-reduce:w-full motion-reduce:animate-none" />}</div>}
         </li>)}
       </ul>}
     </div>

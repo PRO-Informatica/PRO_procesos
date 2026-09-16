@@ -106,13 +106,15 @@ test("la vista conserva carrusel, scroll acotado, puntero y animación", () => {
   assert.match(workspace, /AnimatePresence mode="wait"/u);
 });
 
-test("el detalle embebido se renderiza nítido sin opacidades animadas anidadas", () => {
+test("el detalle embebido se renderiza nítido con un único reveal del bloque", () => {
   assert.match(motionPage, /disableMotion/u);
   assert.match(detail, /<MotionPage disableMotion=\{embedded\}/u);
   assert.match(motionSection, /disableMotion/u);
   assert.equal((detail.match(/<MotionSection disableMotion=\{embedded\}/gu) ?? []).length, 3);
-  assert.match(workspace, /selectedDetail\.id\} initial=\{false\}/u);
-  assert.doesNotMatch(workspace, /selectedDetail\.id\}[\s\S]{0,120}opacity:/u);
+  assert.match(workspace, /import \{ panelTransition \}/u);
+  assert.match(workspace, /selectedDetail\.id\}[\s\S]{0,120}variants=\{panelTransition\}/u);
+  assert.match(workspace, /exit=\{reduceMotion \? undefined : "exit"\}/u);
+  assert.doesNotMatch(detail, /staggerChildren|delayChildren/u);
 });
 
 test("abrir un despacho de otro proyecto cambia el contexto y conserva la ruta exacta", () => {

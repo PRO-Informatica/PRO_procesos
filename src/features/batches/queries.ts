@@ -167,7 +167,7 @@ export async function getBatchDetail(
     dispatchIds.length ? supabase.from("dispatch_guides").select("id, dispatch_id").eq("project_id", projectId).in("dispatch_id", dispatchIds) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("dispatch_reconciliations").select("id, dispatch_id, status, current_product_invoice_id, current_service_invoice_id").eq("project_id", projectId).in("dispatch_id", dispatchIds) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("invoices").select("id, dispatch_id, invoice_type, invoice_number, invoice_date, status, total, currency, order_number, pca_original, replaces_invoice_id, created_at").eq("project_id", projectId).in("dispatch_id", dispatchIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
-    dispatchIds.length ? supabase.from("dispatch_reconciliation_attempts").select("id, dispatch_id, product_invoice_id, attempt_number, expected_order_number, detected_order_number, expected_real_volume, expected_unit_code, invoiced_quantity, invoice_unit_code, difference, validations, result, executed_by, executed_at").eq("project_id", projectId).in("dispatch_id", dispatchIds).order("executed_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    dispatchIds.length ? supabase.from("dispatch_reconciliation_attempts").select("id, dispatch_id, product_invoice_id, attempt_number, expected_order_number, detected_order_number, expected_real_volume, expected_unit_code, comparison_quantity, comparison_unit_code, comparison_basis, invoiced_quantity, invoice_unit_code, difference, validations, result, executed_by, executed_at").eq("project_id", projectId).in("dispatch_id", dispatchIds).order("executed_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("invoice_recipient_exceptions").select("id, invoice_id, status, detected_billing_legal_name, detected_identity, decided_at").eq("project_id", projectId).in("dispatch_id", dispatchIds) : Promise.resolve({ data: [], error: null }),
     includeSecondary && relations.some((row) => row.removed_by) ? admin.from("profiles").select("id, full_name").in("id", relations.flatMap((row) => row.removed_by ? [row.removed_by] : [])) : Promise.resolve({ data: [], error: null }),
   ]);
@@ -212,6 +212,9 @@ export async function getBatchDetail(
     id: attempt.id, attemptNumber: attempt.attempt_number, productInvoiceId: attempt.product_invoice_id,
     expectedOrderNumber: attempt.expected_order_number, detectedOrderNumber: attempt.detected_order_number,
     expectedRealVolume: numeric(attempt.expected_real_volume), expectedUnitCode: attempt.expected_unit_code,
+    comparisonQuantity: numeric(attempt.comparison_quantity ?? attempt.expected_real_volume),
+    comparisonUnitCode: attempt.comparison_unit_code ?? attempt.expected_unit_code,
+    comparisonBasis: attempt.comparison_basis === "PROGRAMMED_QUANTITY" ? "PROGRAMMED_QUANTITY" : "REAL_VOLUME",
     invoicedQuantity: numeric(attempt.invoiced_quantity), invoiceUnitCode: attempt.invoice_unit_code,
     difference: attempt.difference === null ? null : numeric(attempt.difference),
     validations: attempt.validations as Record<string, boolean>, result: attempt.result,
