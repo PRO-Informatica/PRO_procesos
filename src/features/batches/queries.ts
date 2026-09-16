@@ -11,6 +11,7 @@ import type {
   UniversalBatchProject,
 } from "./types";
 import type { ProjectAccessScope } from "@/features/projects/types";
+import { hasUniversalOperationalViewRole } from "@/features/projects/access-policy";
 import { getOperationalProjectAccess, getOperationalProjectAccessForProject } from "@/features/projects/queries";
 
 type BatchRow = { id: string; project_id: string; code: string; period_start: string; period_end: string; accounting_period: string; status: BatchStatus; creation_source: BatchSource; created_at: string };
@@ -54,14 +55,14 @@ export async function getUniversalBatchScopes(userId: string) {
   return (await getOperationalProjectAccess(userId)).filter(({ project, roleCodes, permissions }) =>
     project.status === "ACTIVE" &&
     permissions.includes("batch.view") &&
-    roleCodes.some((role) => ["PURCHASING", "COMPANY_ADMIN"].includes(role)),
+    hasUniversalOperationalViewRole(roleCodes),
   );
 }
 
 export async function getUniversalBatchScope(userId: string, projectId: string) {
   const scope = await getOperationalProjectAccessForProject(userId, projectId);
   if (!scope || scope.project.status !== "ACTIVE" || !scope.permissions.includes("batch.view") ||
-    !scope.roleCodes.some((role) => ["PURCHASING", "COMPANY_ADMIN"].includes(role))) return null;
+    !hasUniversalOperationalViewRole(scope.roleCodes)) return null;
   return scope;
 }
 

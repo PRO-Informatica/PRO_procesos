@@ -2,8 +2,14 @@ import "server-only";
 
 import { cookies } from "next/headers";
 
+import { isPlatformAdmin } from "@/features/platform/queries";
 import { createClient } from "@/lib/supabase/server";
 
+import {
+  hasUniversalOperationalViewRole,
+  PLATFORM_ADMIN_VIEW_SOURCE_ROLES,
+  selectOperationalViewPermissions,
+} from "./access-policy";
 import type {
   ProjectContextState,
   ProjectAccessScope,
@@ -46,7 +52,82 @@ type CompanyRoleAssignmentRow = {
   role_id: string;
 };
 
+type PlatformAdminOperationalViewAccess = {
+  roleCodes: ["PLATFORM_ADMIN"];
+  permissions: string[];
+  isCompanyAdmin: false;
+};
+
+const PROJECT_COLUMNS =
+  "id, company_id, name, code, address, billing_legal_name, billing_tax_id, status, timezone";
+
+async function getPlatformAdminOperationalViewAccess(
+  userId: string,
+): Promise<PlatformAdminOperationalViewAccess | null> {
+  if (!(await isPlatformAdmin(userId))) return null;
+
+  const supabase = await createClient();
+  const { data: roles, error: rolesError } = await supabase
+    .from("roles")
+    .select("id, code")
+    .in("code", [...PLATFORM_ADMIN_VIEW_SOURCE_ROLES])
+    .eq("active", true);
+  if (rolesError || roles.length !== PLATFORM_ADMIN_VIEW_SOURCE_ROLES.length) {
+    throw new Error("No fue posible resolver las vistas operativas de plataforma.");
+  }
+
+  const { data: assignments, error: assignmentsError } = await supabase
+    .from("role_permissions")
+    .select("permission_id")
+    .in("role_id", roles.map((role) => role.id as string));
+  if (assignmentsError) {
+    throw new Error("No fue posible resolver los permisos operativos de plataforma.");
+  }
+
+  const permissionIds = [
+    ...new Set(assignments.map((assignment) => assignment.permission_id as string)),
+  ];
+  const { data: permissions, error: permissionsError } = permissionIds.length
+    ? await supabase
+        .from("permissions")
+        .select("code")
+        .in("id", permissionIds)
+        .eq("active", true)
+    : { data: [], error: null };
+  if (permissionsError) {
+    throw new Error("No fue posible cargar las vistas operativas de plataforma.");
+  }
+
+  return {
+    roleCodes: ["PLATFORM_ADMIN"],
+    permissions: selectOperationalViewPermissions(
+      permissions.map((permission) => permission.code as string),
+    ),
+    isCompanyAdmin: false,
+  };
+}
+
+async function getOperationalProjectRowsForAccess(
+  userId: string,
+  platformAdminAccess: PlatformAdminOperationalViewAccess | null,
+): Promise<ProjectRow[]> {
+  const supabase = await createClient();
+  if (platformAdminAccess) {
+    const { data, error } = await supabase.from("projects").select(PROJECT_COLUMNS);
+    if (error) throw new Error("No fue posible consultar los proyectos de plataforma.");
+    return (data ?? []) as ProjectRow[];
+  }
+  return getMemberOperationalProjectRows(userId);
+}
+
 export async function getOperationalProjectRows(userId: string): Promise<ProjectRow[]> {
+  return getOperationalProjectRowsForAccess(
+    userId,
+    await getPlatformAdminOperationalViewAccess(userId),
+  );
+}
+
+async function getMemberOperationalProjectRows(userId: string): Promise<ProjectRow[]> {
   const supabase = await createClient();
   const [projectMembershipsResult, companyMembershipsResult] = await Promise.all([
     supabase
@@ -127,16 +208,14 @@ export async function getOperationalProjectRows(userId: string): Promise<Project
     return [];
   }
 
-  const projectColumns =
-    "id, company_id, name, code, address, billing_legal_name, billing_tax_id, status, timezone";
   const [memberProjectsResult, companyProjectsResult] = await Promise.all([
     directProjectIds.length > 0
-      ? supabase.from("projects").select(projectColumns).in("id", directProjectIds)
+      ? supabase.from("projects").select(PROJECT_COLUMNS).in("id", directProjectIds)
       : Promise.resolve({ data: [], error: null }),
     administeredCompanyIds.length > 0
       ? supabase
           .from("projects")
-          .select(projectColumns)
+          .select(PROJECT_COLUMNS)
           .in("company_id", administeredCompanyIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
@@ -164,10 +243,12 @@ export async function canAccessOperationalProject(
   return projects.some((project) => project.id === projectId);
 }
 
-export async function resolveRolesAndPermissions(
+async function resolveRolesAndPermissionsForAccess(
   userId: string,
   project: ProjectSummary,
+  platformAdminAccess: PlatformAdminOperationalViewAccess | null,
 ) {
+  if (platformAdminAccess) return platformAdminAccess;
   const supabase = await createClient();
 
   const [projectMembershipResult, companyMembershipResult] = await Promise.all([
@@ -265,10 +346,22 @@ export async function resolveRolesAndPermissions(
   };
 }
 
+export async function resolveRolesAndPermissions(
+  userId: string,
+  project: ProjectSummary,
+) {
+  return resolveRolesAndPermissionsForAccess(
+    userId,
+    project,
+    await getPlatformAdminOperationalViewAccess(userId),
+  );
+}
+
 export async function getOperationalProjectAccess(
   userId: string,
 ): Promise<ProjectAccessScope[]> {
-  const rows = await getOperationalProjectRows(userId);
+  const platformAdminAccess = await getPlatformAdminOperationalViewAccess(userId);
+  const rows = await getOperationalProjectRowsForAccess(userId, platformAdminAccess);
   if (!rows.length) return [];
   const supabase = await createClient();
   const companyIds = [...new Set(rows.map((project) => project.company_id))];
@@ -295,7 +388,11 @@ export async function getOperationalProjectAccess(
   }));
   return Promise.all(
     projects.map(async (project) => {
-      const access = await resolveRolesAndPermissions(userId, project);
+      const access = await resolveRolesAndPermissionsForAccess(
+        userId,
+        project,
+        platformAdminAccess,
+      );
       return { project, roleCodes: access.roleCodes, permissions: access.permissions };
     }),
   );
@@ -305,7 +402,10 @@ export async function getOperationalProjectAccessForProject(
   userId: string,
   projectId: string,
 ): Promise<ProjectAccessScope | null> {
-  const row = (await getOperationalProjectRows(userId)).find((project) => project.id === projectId);
+  const platformAdminAccess = await getPlatformAdminOperationalViewAccess(userId);
+  const row = (
+    await getOperationalProjectRowsForAccess(userId, platformAdminAccess)
+  ).find((project) => project.id === projectId);
   if (!row) return null;
   const supabase = await createClient();
   const { data: company, error } = await supabase
@@ -327,14 +427,19 @@ export async function getOperationalProjectAccessForProject(
     status: row.status,
     timezone: row.timezone ?? "America/Guatemala",
   };
-  const access = await resolveRolesAndPermissions(userId, project);
+  const access = await resolveRolesAndPermissionsForAccess(
+    userId,
+    project,
+    platformAdminAccess,
+  );
   return { project, roleCodes: access.roleCodes, permissions: access.permissions };
 }
 
 export async function getProjectContext(userId: string): Promise<ProjectContextState> {
   try {
     const supabase = await createClient();
-    const rows = await getOperationalProjectRows(userId);
+    const platformAdminAccess = await getPlatformAdminOperationalViewAccess(userId);
+    const rows = await getOperationalProjectRowsForAccess(userId, platformAdminAccess);
 
     if (rows.length === 0) {
       return { status: "empty", ...emptyProjectContext };
@@ -385,7 +490,11 @@ export async function getProjectContext(userId: string): Promise<ProjectContextS
     const accessByProject = await Promise.all(
       projects.map(async (project) => ({
         project,
-        access: await resolveRolesAndPermissions(userId, project),
+        access: await resolveRolesAndPermissionsForAccess(
+          userId,
+          project,
+          platformAdminAccess,
+        ),
       })),
     );
     const access = accessByProject.find(({ project }) => project.id === activeProject.id)!.access;
@@ -401,12 +510,12 @@ export async function getProjectContext(userId: string): Promise<ProjectContextS
       hasUniversalBatchAccess: accessByProject.some(({ project, access: item }) =>
         project.status === "ACTIVE" &&
         item.permissions.includes("batch.view") &&
-        item.roleCodes.some((role) => ["PURCHASING", "COMPANY_ADMIN"].includes(role)),
+        hasUniversalOperationalViewRole(item.roleCodes),
       ),
       hasUniversalReportAccess: accessByProject.some(({ project, access: item }) =>
         project.status === "ACTIVE" &&
         item.permissions.includes("dispatch.view") &&
-        item.roleCodes.some((role) => ["PURCHASING", "COMPANY_ADMIN"].includes(role)),
+        hasUniversalOperationalViewRole(item.roleCodes),
       ),
     };
   } catch (error) {

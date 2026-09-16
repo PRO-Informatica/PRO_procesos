@@ -196,7 +196,9 @@ export function UserDetailView({ user }: { user: PlatformUserDetail }) {
           />
         </dl>
         <p className="mt-6 rounded-xl border border-border bg-muted/45 px-4 py-3 text-xs leading-5 text-foreground-muted">
-          PLATFORM_ADMIN es una capacidad global separada. No concede roles operativos de proyecto.
+          PLATFORM_ADMIN permite consultar todos los proyectos y las vistas operativas de
+          Compras, Recepción y Residentes. Las acciones de escritura continúan requiriendo un
+          rol operativo explícito.
         </p>
       </MotionSection>
 

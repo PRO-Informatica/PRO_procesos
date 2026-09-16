@@ -8,6 +8,7 @@ const authUtilityRoutes = [
   "/auth/callback",
   "/auth/confirm",
   "/auth/signout",
+  "/api/integrations/gmail",
   "/reset-password",
 ];
 

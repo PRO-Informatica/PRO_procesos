@@ -10,6 +10,7 @@ import {
   FolderKanban,
   Globe2,
   LayoutDashboard,
+  Mail,
   ReceiptText,
   Scale,
   Settings,
@@ -23,6 +24,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { ScopeSwitchLink } from "@/components/shared/scope-switch-link";
+import { canUseGmailModule } from "@/features/integrations/gmail/access-policy";
 import { usePlatformContext } from "@/features/platform/platform-context";
 import { ProjectSelector } from "@/features/projects/components/project-selector";
 import { useProjectContext } from "@/features/projects/project-context";
@@ -100,6 +102,7 @@ const navigation: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "Control",
     items: [
+      { label: "Correo", icon: Mail, href: "/mail", permission: "gmail.mailbox.view" },
       { label: "Documentos", icon: Files, href: "/documents", anyPermission: ["document.view", "dispatch.view", "invoice.view"] },
       { label: "Notificaciones", icon: Bell, href: "/notifications" },
     ],
@@ -135,6 +138,17 @@ export function AppSidebar({
           return true;
         }
         if (item.companyAdminOnly && projectContext.isCompanyAdmin) return true;
+        if (
+          item.permission === "gmail.mailbox.view" &&
+          canUseGmailModule({
+            isPlatformAdmin: platformContext.isPlatformAdmin,
+            projectStatus: projectContext.activeProject?.status,
+            permissions: projectContext.permissions,
+            permission: "gmail.mailbox.view",
+          })
+        ) {
+          return true;
+        }
         if (item.permission && projectContext.permissions.includes(item.permission)) return true;
         return item.anyPermission?.some((permission) =>
           projectContext.permissions.includes(permission),

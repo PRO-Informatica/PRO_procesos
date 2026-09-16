@@ -5,6 +5,9 @@ import { Bell, ChevronDown, LogOut, Menu } from "lucide-react";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import Link from "next/link";
 import type { SessionProfile } from "@/features/auth/types";
+import { canUseGmailModule } from "@/features/integrations/gmail/access-policy";
+import { GmailConnectionIndicator } from "@/features/integrations/gmail/components/gmail-connection-indicator";
+import { usePlatformContext } from "@/features/platform/platform-context";
 import { useProjectContext } from "@/features/projects/project-context";
 
 function initials(name: string) {
@@ -26,6 +29,13 @@ export function Topbar({
   unreadNotifications: number;
 }) {
   const projectContext = useProjectContext();
+  const platformContext = usePlatformContext();
+  const canViewGmail = canUseGmailModule({
+    isPlatformAdmin: platformContext.isPlatformAdmin,
+    projectStatus: projectContext.activeProject?.status,
+    permissions: projectContext.permissions,
+    permission: "gmail.mailbox.view",
+  });
 
   return (
     <header className="sticky top-0 z-30 flex min-h-16 items-center border-b border-border bg-surface/95 px-3 pt-[env(safe-area-inset-top)] backdrop-blur-sm sm:h-20 sm:px-6 lg:px-8">
@@ -48,6 +58,7 @@ export function Topbar({
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
+        {canViewGmail ? <GmailConnectionIndicator /> : null}
         <ThemeToggle />
         <Link
           href="/notifications"
