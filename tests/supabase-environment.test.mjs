@@ -11,11 +11,13 @@ const DEV_REF = "gholwtklihaphoevosyb";
 const PROD_REF = "jeyjblxfqqlypxiaznad";
 const dev = {
   NEXT_PUBLIC_APP_ENV: "DEV",
+  NEXT_PUBLIC_APP_DEV_URL: "http://localhost:3000",
   NEXT_PUBLIC_SUPABASE_DEV_URL: `https://${DEV_REF}.supabase.co`,
   NEXT_PUBLIC_SUPABASE_DEV_PUBLISHABLE_KEY: "dev-public-key",
 };
 const prod = {
   NEXT_PUBLIC_APP_ENV: "PROD",
+  NEXT_PUBLIC_APP_PROD_URL: "https://procesos.example.com",
   NEXT_PUBLIC_SUPABASE_PROD_URL: `https://${PROD_REF}.supabase.co`,
   NEXT_PUBLIC_SUPABASE_PROD_PUBLISHABLE_KEY: "prod-public-key",
 };
@@ -23,6 +25,7 @@ const prod = {
 test("DEV selecciona únicamente la configuración DEV", () => {
   const result = resolvePublicEnvironment(dev);
   assert.equal(result.appEnvironment, "DEV");
+  assert.equal(result.appUrl, "http://localhost:3000");
   assert.equal(result.projectRef, DEV_REF);
   assert.equal(result.supabasePublishableKey, "dev-public-key");
 });
@@ -30,6 +33,7 @@ test("DEV selecciona únicamente la configuración DEV", () => {
 test("PROD selecciona únicamente la configuración PROD", () => {
   const result = resolvePublicEnvironment(prod);
   assert.equal(result.appEnvironment, "PROD");
+  assert.equal(result.appUrl, "https://procesos.example.com");
   assert.equal(result.projectRef, PROD_REF);
   assert.equal(result.supabasePublishableKey, "prod-public-key");
 });
@@ -46,13 +50,18 @@ test("solo son obligatorias las variables del ambiente seleccionado", () => {
   assert.doesNotThrow(() => resolvePublicEnvironment(dev));
   assert.doesNotThrow(() => resolvePublicEnvironment(prod));
   assert.throws(
-    () => resolvePublicEnvironment({ NEXT_PUBLIC_APP_ENV: "DEV" }),
+    () =>
+      resolvePublicEnvironment({
+        NEXT_PUBLIC_APP_ENV: "DEV",
+        NEXT_PUBLIC_APP_DEV_URL: dev.NEXT_PUBLIC_APP_DEV_URL,
+      }),
     /NEXT_PUBLIC_SUPABASE_DEV_URL/u,
   );
   assert.throws(
     () =>
       resolvePublicEnvironment({
         NEXT_PUBLIC_APP_ENV: "DEV",
+        NEXT_PUBLIC_APP_DEV_URL: dev.NEXT_PUBLIC_APP_DEV_URL,
         NEXT_PUBLIC_SUPABASE_DEV_URL: dev.NEXT_PUBLIC_SUPABASE_DEV_URL,
       }),
     /NEXT_PUBLIC_SUPABASE_DEV_PUBLISHABLE_KEY/u,
@@ -90,6 +99,27 @@ test("exige HTTPS y el host exacto de Supabase", () => {
           NEXT_PUBLIC_SUPABASE_DEV_URL: url,
         }),
       /Supabase/u,
+    );
+  }
+});
+
+test("la URL confiable permite localhost solo en DEV y rechaza rutas o credenciales", () => {
+  assert.doesNotThrow(() => resolvePublicEnvironment(dev));
+  assert.throws(
+    () =>
+      resolvePublicEnvironment({
+        ...prod,
+        NEXT_PUBLIC_APP_PROD_URL: "http://procesos.example.com",
+      }),
+    /HTTPS/u,
+  );
+  for (const appUrl of [
+    "http://localhost:3000/login",
+    "http://usuario:clave@localhost:3000",
+  ]) {
+    assert.throws(
+      () => resolvePublicEnvironment({ ...dev, NEXT_PUBLIC_APP_DEV_URL: appUrl }),
+      /origen confiable/u,
     );
   }
 });

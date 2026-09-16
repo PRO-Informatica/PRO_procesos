@@ -7,6 +7,8 @@ export type AppEnvironment = keyof typeof SUPABASE_PROJECT_REFS;
 
 export type PublicEnvironmentSource = {
   NEXT_PUBLIC_APP_ENV?: string;
+  NEXT_PUBLIC_APP_DEV_URL?: string;
+  NEXT_PUBLIC_APP_PROD_URL?: string;
   NEXT_PUBLIC_SUPABASE_DEV_URL?: string;
   NEXT_PUBLIC_SUPABASE_DEV_PUBLISHABLE_KEY?: string;
   NEXT_PUBLIC_SUPABASE_PROD_URL?: string;
@@ -15,6 +17,7 @@ export type PublicEnvironmentSource = {
 
 export type PublicEnvironment = {
   appEnvironment: AppEnvironment;
+  appUrl: string;
   supabaseUrl: string;
   supabasePublishableKey: string;
   projectRef: (typeof SUPABASE_PROJECT_REFS)[AppEnvironment];
@@ -24,6 +27,40 @@ function required(value: string | undefined, variableName: string) {
   const normalized = value?.trim();
   if (!normalized) throw new Error(`Falta la variable de entorno ${variableName}.`);
   return normalized;
+}
+
+function validateAppUrl(url: string, environment: AppEnvironment) {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`La URL de la aplicación para ${environment} no es válida.`);
+  }
+
+  const isLocalDev =
+    environment === "DEV" &&
+    parsed.protocol === "http:" &&
+    parsed.hostname === "localhost";
+  const isSecureDeployment = parsed.protocol === "https:";
+
+  if (!isLocalDev && !isSecureDeployment) {
+    throw new Error(
+      `La URL de la aplicación para ${environment} debe usar HTTPS, salvo localhost en DEV.`,
+    );
+  }
+  if (
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== "/" ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error(
+      `La URL de la aplicación para ${environment} debe contener únicamente el origen confiable.`,
+    );
+  }
+
+  return parsed.origin;
 }
 
 function parseAppEnvironment(value: string | undefined): AppEnvironment {
@@ -63,20 +100,28 @@ export function resolvePublicEnvironment(
   const selected =
     appEnvironment === "DEV"
       ? {
+          appUrl: source.NEXT_PUBLIC_APP_DEV_URL,
           url: source.NEXT_PUBLIC_SUPABASE_DEV_URL,
           publishableKey: source.NEXT_PUBLIC_SUPABASE_DEV_PUBLISHABLE_KEY,
           urlVariable: "NEXT_PUBLIC_SUPABASE_DEV_URL",
           keyVariable: "NEXT_PUBLIC_SUPABASE_DEV_PUBLISHABLE_KEY",
+          appUrlVariable: "NEXT_PUBLIC_APP_DEV_URL",
         }
       : {
+          appUrl: source.NEXT_PUBLIC_APP_PROD_URL,
           url: source.NEXT_PUBLIC_SUPABASE_PROD_URL,
           publishableKey: source.NEXT_PUBLIC_SUPABASE_PROD_PUBLISHABLE_KEY,
           urlVariable: "NEXT_PUBLIC_SUPABASE_PROD_URL",
           keyVariable: "NEXT_PUBLIC_SUPABASE_PROD_PUBLISHABLE_KEY",
+          appUrlVariable: "NEXT_PUBLIC_APP_PROD_URL",
         };
 
   return {
     appEnvironment,
+    appUrl: validateAppUrl(
+      required(selected.appUrl, selected.appUrlVariable),
+      appEnvironment,
+    ),
     supabaseUrl: validateSupabaseUrl(
       required(selected.url, selected.urlVariable),
       appEnvironment,
@@ -90,6 +135,8 @@ export function getPublicEnvironment(): PublicEnvironment {
   // Direct property access is required so Next.js can inline NEXT_PUBLIC values.
   return resolvePublicEnvironment({
     NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV,
+    NEXT_PUBLIC_APP_DEV_URL: process.env.NEXT_PUBLIC_APP_DEV_URL,
+    NEXT_PUBLIC_APP_PROD_URL: process.env.NEXT_PUBLIC_APP_PROD_URL,
     NEXT_PUBLIC_SUPABASE_DEV_URL: process.env.NEXT_PUBLIC_SUPABASE_DEV_URL,
     NEXT_PUBLIC_SUPABASE_DEV_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_SUPABASE_DEV_PUBLISHABLE_KEY,

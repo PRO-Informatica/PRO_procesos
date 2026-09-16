@@ -4,7 +4,12 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getPublicEnvironment } from "@/lib/env";
 
 const guestRoutes = ["/login", "/forgot-password"];
-const authUtilityRoutes = ["/auth/confirm", "/auth/signout", "/reset-password"];
+const authUtilityRoutes = [
+  "/auth/callback",
+  "/auth/confirm",
+  "/auth/signout",
+  "/reset-password",
+];
 
 function copyCookies(source: NextResponse, target: NextResponse) {
   source.cookies.getAll().forEach((cookie) => target.cookies.set(cookie));

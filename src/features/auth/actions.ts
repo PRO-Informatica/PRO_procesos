@@ -1,11 +1,12 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { getPublicEnvironment } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 
 import type { AuthActionState } from "./types";
+import { buildTrustedUrl, safeInternalPath } from "./security";
 
 function readText(formData: FormData, name: string) {
   const value = formData.get(name);
@@ -16,17 +17,13 @@ function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-function safeNextPath(value: string) {
-  return value.startsWith("/") && !value.startsWith("//") ? value : "/";
-}
-
 export async function signIn(
   _previousState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
   const email = readText(formData, "email").toLowerCase();
   const password = readText(formData, "password");
-  const next = safeNextPath(readText(formData, "next"));
+  const next = safeInternalPath(readText(formData, "next"));
 
   if (!isEmail(email) || !password) {
     return {
@@ -83,14 +80,13 @@ export async function requestPasswordReset(
     };
   }
 
-  const requestHeaders = await headers();
-  const origin =
-    requestHeaders.get("origin") ??
-    `${requestHeaders.get("x-forwarded-proto") ?? "https"}://${requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host")}`;
-
+  const environment = getPublicEnvironment();
   const supabase = await createClient();
   await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${origin}/auth/confirm?next=/reset-password`,
+    redirectTo: buildTrustedUrl(
+      environment.appUrl,
+      "/auth/confirm?next=/reset-password",
+    ).toString(),
   });
 
   return {
