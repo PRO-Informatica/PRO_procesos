@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test": "node --no-warnings --experimental-strip-types --test tests/*.test.mjs",
+    "test:supabase-environment": "node --no-warnings --experimental-strip-types --test tests/supabase-environment.test.mjs",
     "test:programming-project-reference": "node --no-warnings --experimental-strip-types --test tests/programming-project-reference.test.mjs",
     "test:programming-scope": "node --no-warnings --experimental-strip-types --test tests/programming-scope.test.mjs",
     "test:phase2-dispatch": "node --no-warnings --experimental-strip-types --test tests/phase2-dispatch.test.mjs",

@@ -11,15 +11,17 @@ Aplicación empresarial para el control operativo y documental del concreto en p
 ## Configuración local
 
 1. Copia `.env.example` a `.env.local`.
-2. Completa `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-3. Instala dependencias con `npm install`.
-4. Inicia el entorno local con `npm run dev`.
+2. Define `NEXT_PUBLIC_APP_ENV` como `DEV` o `PROD`.
+3. Completa únicamente la URL, clave publicable y `service_role` del ambiente seleccionado.
+4. Instala dependencias con `npm install`.
+5. Inicia el entorno local con `npm run dev`.
 
 ## Verificación
 
 ```bash
 npm run lint
 npm run typecheck
+npm test
 npm run build
 ```
 

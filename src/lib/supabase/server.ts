@@ -8,8 +8,8 @@ export async function createClient() {
   const environment = getPublicEnvironment();
 
   return createServerClient(
-    environment.NEXT_PUBLIC_SUPABASE_URL,
-    environment.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    environment.supabaseUrl,
+    environment.supabasePublishableKey,
     {
       cookies: {
         getAll() {
