@@ -22,6 +22,7 @@ export type GmailMailboxMessage = {
   referencesHeader: string | null;
   attachments: GmailAttachmentSummary[];
   direction: "RECEIVED" | "SENT";
+  isUnread: boolean;
 };
 
 export type GmailThreadSummary = {
@@ -32,6 +33,7 @@ export type GmailThreadSummary = {
   sentAt: string;
   messageCount: number;
   hasAttachments: boolean;
+  isUnread: boolean;
 };
 
 export type GmailMailboxPage = {

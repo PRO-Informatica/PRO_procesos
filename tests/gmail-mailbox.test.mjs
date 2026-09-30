@@ -29,6 +29,7 @@ import {
   htmlToSafeText,
   sanitizeAttachmentFileName,
 } from "../src/features/integrations/gmail/mailbox-mime.ts";
+import { GMAIL_PREVIEWABLE_MIME_TYPES } from "../src/features/integrations/gmail/attachment-constants.ts";
 
 const allowedSenders = ["respuesta@mixtolisto.example"];
 const allowedRecipients = ["facturas@pro.com.gt", "compras@pro.com.gt"];
@@ -180,6 +181,24 @@ test("decodifica base64URL y MIME multipart anidado prefiriendo texto plano", ()
   assert.equal(decodeBase64Url(encodeBase64Url("áéí")).toString("utf8"), "áéí");
 });
 
+test("acepta padding Base64URL de Gmail y conserva el texto de una respuesta enviada", () => {
+  const reply = "PRUEBA RESPUESTA";
+  const paddedData = Buffer.from(reply, "utf8")
+    .toString("base64")
+    .replace(/\+/gu, "-")
+    .replace(/\//gu, "_");
+
+  assert.match(paddedData, /==$/u);
+  assert.equal(decodeBase64Url(paddedData).toString("utf8"), reply);
+  assert.equal(extractSafeMessageBody({
+    mimeType: "text/plain",
+    body: { data: paddedData },
+    headers: [{ name: "Content-Type", value: "text/plain; charset=utf-8" }],
+  }), reply);
+  assert.throws(() => decodeBase64Url("abcd="));
+  assert.throws(() => decodeBase64Url("ab=c"));
+});
+
 test("convierte HTML a texto y bloquea scripts, iframes, formularios e imágenes remotas", () => {
   const result = htmlToSafeText('<script>alert(1)</script><p>Hola &amp; equipo</p><img src="https://tracker.example/pixel"><iframe src="x">x</iframe><form>dato</form>');
   assert.equal(result, "Hola & equipo");
@@ -202,15 +221,27 @@ test("extrae metadatos de adjuntos externos e inline en MIME anidado", () => {
     ],
   });
   assert.equal(attachments.length, 2);
-  assert.deepEqual(attachments.find((item) => item.id === "adjunto_1"), {
-    id: "adjunto_1",
+  const pdf = attachments.find((item) => item.fileName === "Factura.pdf");
+  assert.ok(pdf);
+  assert.deepEqual(pdf, {
+    id: pdf.id,
     messageId: "mensaje",
     fileName: "Factura.pdf",
     mimeType: "application/pdf",
     size: 320,
     previewable: true,
   });
-  assert.match(attachments.find((item) => item.fileName === "imagen.png").id, /^inline_[A-Za-z0-9_-]+$/u);
+  assert.match(pdf.id, /^part_[A-Za-z0-9_-]+$/u);
+  assert.match(attachments.find((item) => item.fileName === "imagen.png").id, /^part_[A-Za-z0-9_-]+$/u);
+});
+
+test("solo PDF, JPEG y PNG ofrecen vista previa segura", () => {
+  assert.equal(GMAIL_PREVIEWABLE_MIME_TYPES.has("application/pdf"), true);
+  assert.equal(GMAIL_PREVIEWABLE_MIME_TYPES.has("image/jpeg"), true);
+  assert.equal(GMAIL_PREVIEWABLE_MIME_TYPES.has("image/png"), true);
+  assert.equal(GMAIL_PREVIEWABLE_MIME_TYPES.has("application/vnd.ms-excel"), false);
+  assert.equal(GMAIL_PREVIEWABLE_MIME_TYPES.has("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"), false);
+  assert.equal(GMAIL_PREVIEWABLE_MIME_TYPES.has("text/csv"), false);
 });
 
 test("construye MIME texto plano RFC con base64URL e impide CRLF", () => {
@@ -355,7 +386,7 @@ test("descarga revalida mensaje, limita MIME/tamaño y fuerza attachment", async
   assert.match(route, /disposition.*inline/u);
 });
 
-test("UI ofrece lista/detalle responsive, compositor accesible y estados vacíos", async () => {
+test("UI ofrece tres zonas, lista/detalle responsive, compositor accesible y estados vacíos", async () => {
   const [workspace, sidebar, page] = await Promise.all([
     readFile(new URL("../src/features/integrations/gmail/components/gmail-mailbox-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/layout/app-sidebar.tsx", import.meta.url), "utf8"),
@@ -363,16 +394,42 @@ test("UI ofrece lista/detalle responsive, compositor accesible y estados vacíos
   ]);
   assert.match(sidebar, /label: "Correo"[\s\S]*permission: "gmail\.mailbox\.view"/u);
   assert.match(page, /gmail\.mailbox\.view/u);
-  assert.match(workspace, /lg:grid-cols-/u);
-  assert.match(workspace, /hidden lg:block/u);
+  assert.match(workspace, /Navegación de correo/u);
+  assert.match(workspace, /xl:grid-cols-/u);
+  assert.match(workspace, /md:grid-cols-/u);
+  assert.match(workspace, /hidden md:block/u);
   assert.match(workspace, /Volver a conversaciones/u);
-  assert.match(workspace, /Redactar correo/u);
+  assert.match(workspace, /Nuevo mensaje/u);
+  assert.match(workspace, /Buscar en esta página/u);
   assert.match(workspace, /Sin correos recibidos permitidos/u);
+  assert.match(workspace, /label="Actualizar bandeja" tooltipSide="bottom"/u);
+  assert.match(workspace, /label="Redactar correo" tooltipSide="bottom"/u);
   assert.match(workspace, /Sin correos enviados/u);
   assert.match(workspace, /Gmail requiere reconexión/u);
   assert.match(workspace, /role="tablist"/u);
   assert.match(workspace, /focus-visible:ring/u);
+  assert.match(workspace, /aria-live="polite"/u);
+  assert.match(workspace, /motion-reduce:/u);
+  assert.match(workspace, /Mensaje recibido/u);
+  assert.match(workspace, /Respuesta enviada/u);
+  assert.match(workspace, /No leído/u);
+  assert.match(workspace, /thread\.isUnread/u);
+  assert.match(workspace, /<span>Ver<\/span>/u);
   assert.doesNotMatch(workspace, /dangerouslySetInnerHTML/u);
+});
+
+test("UI cancela solicitudes obsoletas, conserva caché segura y separa scrolls", async () => {
+  const workspace = await readFile(
+    new URL("../src/features/integrations/gmail/components/gmail-mailbox-workspace.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(workspace, /new AbortController\(\)/u);
+  assert.match(workspace, /mailboxAbortRef\.current\?\.abort\(\)/u);
+  assert.match(workspace, /threadAbortRef\.current\?\.abort\(\)/u);
+  assert.match(workspace, /threadCacheRef/u);
+  assert.match(workspace, /data-mail-scroll="list"/u);
+  assert.match(workspace, /data-mail-scroll="thread"/u);
+  assert.match(workspace, /submittingRef\.current/u);
 });
 
 test("bundle cliente no importa googleapis, cifrado, service role ni secretos", async () => {

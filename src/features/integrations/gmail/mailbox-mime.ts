@@ -19,10 +19,20 @@ import {
 const CONTROL_CHARACTERS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu;
 
 export function decodeBase64Url(value: string) {
-  if (!/^[A-Za-z0-9_-]*$/u.test(value) || value.length % 4 === 1) {
+  const match = value.match(/^([A-Za-z0-9_-]*)(={0,2})$/u);
+  if (!match) {
     throw new Error("BASE64URL_INVALID");
   }
-  const normalized = value.replace(/-/gu, "+").replace(/_/gu, "/");
+
+  const [, encoded, suppliedPadding] = match;
+  if (
+    encoded.length % 4 === 1 ||
+    (suppliedPadding.length > 0 && (encoded.length + suppliedPadding.length) % 4 !== 0)
+  ) {
+    throw new Error("BASE64URL_INVALID");
+  }
+
+  const normalized = encoded.replace(/-/gu, "+").replace(/_/gu, "/");
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
   return Buffer.from(padded, "base64");
 }
@@ -155,8 +165,8 @@ export function sanitizeAttachmentFileName(value: string) {
   return (decoded || "adjunto").slice(0, 180);
 }
 
-function inlineAttachmentId(path: number[], part: GmailApiPart) {
-  return `inline_${createHash("sha256")
+function attachmentLocatorId(path: number[], part: GmailApiPart) {
+  return `part_${createHash("sha256")
     .update(JSON.stringify([path, part.partId ?? "", part.filename ?? "", part.mimeType ?? ""]))
     .digest("base64url")}`;
 }
@@ -164,6 +174,7 @@ function inlineAttachmentId(path: number[], part: GmailApiPart) {
 export type GmailAttachmentPart = GmailAttachmentSummary & {
   data: string | null;
   external: boolean;
+  gmailAttachmentId: string | null;
 };
 
 export function findGmailAttachmentPart(
@@ -179,8 +190,9 @@ export function findGmailAttachmentPart(
     visited += 1;
     const hasAttachmentBody = Boolean(part.body?.attachmentId || part.body?.data);
     if (part.filename && hasAttachmentBody) {
-      const id = part.body?.attachmentId || inlineAttachmentId(path, part);
-      if (id === requestedId) {
+      const id = attachmentLocatorId(path, part);
+      const gmailAttachmentId = part.body?.attachmentId ?? null;
+      if (id === requestedId || gmailAttachmentId === requestedId) {
         const mimeType = part.mimeType?.trim().toLowerCase() || "application/octet-stream";
         return {
           id,
@@ -190,7 +202,8 @@ export function findGmailAttachmentPart(
           size: Math.max(0, part.body?.size ?? 0),
           previewable: GMAIL_PREVIEWABLE_MIME_TYPES.has(mimeType),
           data: part.body?.data ?? null,
-          external: Boolean(part.body?.attachmentId),
+          external: Boolean(gmailAttachmentId),
+          gmailAttachmentId,
         };
       }
     }
@@ -216,7 +229,7 @@ export function extractAttachmentSummaries(
       const mimeType = part.mimeType?.trim().toLowerCase() || "application/octet-stream";
       if (GMAIL_ALLOWED_ATTACHMENT_MIME_TYPES.has(mimeType)) {
         summaries.push({
-          id: part.body?.attachmentId || inlineAttachmentId(path, part),
+          id: attachmentLocatorId(path, part),
           messageId,
           fileName: sanitizeAttachmentFileName(part.filename),
           mimeType,
@@ -249,6 +262,7 @@ export function mapGmailMessage(
     ? internalDate
     : Number.isFinite(headerDate) ? headerDate : 0;
   const body = extractSafeMessageBody(message.payload);
+  const isUnread = (message.labelIds ?? []).includes("UNREAD");
   return {
     id: message.id,
     threadId: message.threadId,
@@ -262,6 +276,7 @@ export function mapGmailMessage(
     referencesHeader: getHeader(message, "References")?.trim() || null,
     attachments: extractAttachmentSummaries(message.id, message.payload),
     direction: isAllowedIncomingMessage(message, allowedSenders) ? "RECEIVED" : "SENT",
+    isUnread,
   };
 }
 

@@ -44,11 +44,40 @@ test("encuentra recursivamente adjuntos externos e inline", () => {
   };
   const summaries = extractAttachmentSummaries("mensaje_1", payload);
   const inline = summaries.find((item) => item.fileName === "foto.png");
+  const external = summaries.find((item) => item.fileName === "factura.pdf");
   assert.ok(inline);
+  assert.ok(external);
+  assert.match(inline.id, /^part_[A-Za-z0-9_-]+$/u);
+  assert.match(external.id, /^part_[A-Za-z0-9_-]+$/u);
   assert.equal(findGmailAttachmentPart("mensaje_1", payload, inline.id).external, false);
   assert.equal(findGmailAttachmentPart("mensaje_1", payload, inline.id).data, encodeBase64Url(PNG));
+  assert.equal(findGmailAttachmentPart("mensaje_1", payload, external.id).external, true);
+  assert.equal(findGmailAttachmentPart("mensaje_1", payload, external.id).gmailAttachmentId, longId);
   assert.equal(findGmailAttachmentPart("mensaje_1", payload, longId).external, true);
   assert.equal(findGmailAttachmentPart("mensaje_1", payload, "ajeno"), null);
+});
+
+test("el localizador MIME permanece estable si Gmail cambia el attachmentId externo", () => {
+  const part = {
+    partId: "1",
+    filename: "factura.pdf",
+    mimeType: "application/pdf",
+    body: { attachmentId: "attachment_version_uno", size: PDF.length },
+  };
+  const firstPayload = { mimeType: "multipart/mixed", parts: [part] };
+  const refreshedPayload = {
+    mimeType: "multipart/mixed",
+    parts: [{
+      ...part,
+      body: { ...part.body, attachmentId: "attachment_version_dos" },
+    }],
+  };
+  const firstLocator = extractAttachmentSummaries("mensaje_1", firstPayload)[0].id;
+  const refreshedLocator = extractAttachmentSummaries("mensaje_1", refreshedPayload)[0].id;
+  const currentPart = findGmailAttachmentPart("mensaje_1", refreshedPayload, firstLocator);
+
+  assert.equal(firstLocator, refreshedLocator);
+  assert.equal(currentPart.gmailAttachmentId, "attachment_version_dos");
 });
 
 test("mensajes recibidos y enviados muestran adjuntos obtenidos del MIME real", () => {
@@ -81,8 +110,30 @@ test("mensajes recibidos y enviados muestran adjuntos obtenidos del MIME real", 
   }, ["permitido@example.com"]);
   assert.equal(received.direction, "RECEIVED");
   assert.equal(sent.direction, "SENT");
+  assert.equal(received.isUnread, false);
   assert.equal(received.attachments[0].fileName, "factura.pdf");
   assert.equal(sent.attachments[0].fileName, "factura.pdf");
+});
+
+test("detecta no leídos mediante la etiqueta UNREAD sin modificar Gmail", () => {
+  const base = {
+    id: "mensaje_no_leido",
+    threadId: "hilo_no_leido",
+    internalDate: "1",
+    payload: {
+      mimeType: "text/plain",
+      body: { data: encodeBase64Url("Pendiente") },
+      headers: [
+        { name: "From", value: "permitido@example.com" },
+        { name: "To", value: "usuario@pro.com.gt" },
+      ],
+    },
+  };
+  const unread = mapGmailMessage({ ...base, labelIds: ["INBOX", "UNREAD"] }, ["permitido@example.com"]);
+  const read = mapGmailMessage({ ...base, labelIds: ["INBOX"] }, ["permitido@example.com"]);
+
+  assert.equal(unread.isUnread, true);
+  assert.equal(read.isUnread, false);
 });
 
 test("valida extensión, MIME, magic bytes, nombre y tamaño", async () => {
@@ -188,6 +239,7 @@ test("rutas no decodifican dos veces, conservan auth y mapean errores", async ()
   assert.doesNotMatch(route, /decodeURIComponent/u);
   assert.match(service, /isSafeGmailAttachmentId\(input\.attachmentId\)/u);
   assert.match(service, /findGmailAttachmentPart/u);
+  assert.match(service, /id: attachmentPart\.gmailAttachmentId/u);
   assert.match(service, /getAuthorizedGmailClient\(user\.id\)/u);
   assert.match(service, /ATTACHMENT_UNAVAILABLE", 404/u);
   assert.match(service, /ATTACHMENT_TOO_LARGE", 413/u);
@@ -208,10 +260,18 @@ test("UI prepara, previsualiza, elimina y libera object URLs", async () => {
   assert.match(picker, /Preparando adjuntos/u);
   assert.match(picker, /onDrop/u);
   assert.match(picker, /Eliminar \$\{attachment\.file\.name\}/u);
+  assert.match(picker, /aria-roledescription="carrusel"/u);
+  assert.match(picker, /snap-x snap-mandatory/u);
+  assert.match(picker, /Adjuntos anteriores/u);
+  assert.match(picker, /Adjuntos siguientes/u);
+  assert.match(picker, /prefers-reduced-motion: reduce/u);
   assert.match(workspace, /new FormData\(\)/u);
   assert.match(workspace, /appendAttachments/u);
   assert.match(workspace, /Enviando…/u);
   assert.match(workspace, /MessageAttachments/u);
+  assert.match(workspace, /FilePreviewDialog/u);
+  assert.match(workspace, /onClick=\{\(\) => setPreview\(attachment\)\}/u);
+  assert.doesNotMatch(workspace, /target="_blank"/u);
   assert.match(workspace, /sm:flex-row/u);
   assert.doesNotMatch(workspace, /Content-Type": "multipart\/form-data"/u);
 });

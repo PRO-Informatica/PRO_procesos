@@ -46,6 +46,7 @@ import {
   buildPlainTextMime,
   buildReplyReferences,
   decodeBase64Url,
+  extractAttachmentSummaries,
   findGmailAttachmentPart,
   hashSendContent,
   isSafeMessageIdHeader,
@@ -61,6 +62,12 @@ export class GmailMailboxError extends Error {
     super(code);
     this.name = "GmailMailboxError";
   }
+}
+
+function logAttachmentFailure(stage: string, status?: number) {
+  console.warn(
+    `[gmail-mailbox] attachment_unavailable stage=${stage}${status ? ` status=${status}` : ""}`,
+  );
 }
 
 async function requireMailboxActor(
@@ -167,6 +174,9 @@ function summarizeThread(input: {
     sentAt: latest.sentAt,
     messageCount: visible.length,
     hasAttachments: visible.some((message) => message.attachments.length > 0),
+    isUnread: visible.some(
+      (message) => message.direction === "RECEIVED" && message.isUnread,
+    ),
   };
 }
 
@@ -318,6 +328,7 @@ export async function downloadOperationalAttachment(input: {
     }));
     const rawMessage = messageResult.data as GmailApiMessage;
     if (!isAllowedConversationMessage(rawMessage, environment.allowedSenders, environment.recipientEmails)) {
+      logAttachmentFailure("message_not_allowed");
       throw new GmailMailboxError("ATTACHMENT_NOT_ALLOWED", 404);
     }
     const attachmentPart = findGmailAttachmentPart(
@@ -325,7 +336,14 @@ export async function downloadOperationalAttachment(input: {
       rawMessage.payload,
       input.attachmentId,
     );
-    if (!attachmentPart) throw new GmailMailboxError("ATTACHMENT_UNAVAILABLE", 404);
+    if (!attachmentPart) {
+      const candidateCount = extractAttachmentSummaries(
+        input.messageId,
+        rawMessage.payload,
+      ).length;
+      logAttachmentFailure(`mime_part_not_found candidates=${candidateCount}`);
+      throw new GmailMailboxError("ATTACHMENT_UNAVAILABLE", 404);
+    }
     if (attachmentPart.size > environment.attachmentMaxBytes) {
       throw new GmailMailboxError("ATTACHMENT_TOO_LARGE", 413);
     }
@@ -333,14 +351,18 @@ export async function downloadOperationalAttachment(input: {
       ? (await withReadRetry(() => gmail.users.messages.attachments.get({
           userId: "me",
           messageId: input.messageId,
-          id: input.attachmentId,
+          id: attachmentPart.gmailAttachmentId!,
         }))).data.data
       : attachmentPart.data;
-    if (!encodedData) throw new GmailMailboxError("ATTACHMENT_UNAVAILABLE", 404);
+    if (!encodedData) {
+      logAttachmentFailure("attachment_data_missing");
+      throw new GmailMailboxError("ATTACHMENT_UNAVAILABLE", 404);
+    }
     let bytes: Buffer;
     try {
       bytes = decodeBase64Url(encodedData);
     } catch {
+      logAttachmentFailure("attachment_data_invalid");
       throw new GmailMailboxError("ATTACHMENT_UNAVAILABLE", 404);
     }
     if (bytes.byteLength > environment.attachmentMaxBytes) {
@@ -373,7 +395,10 @@ export async function downloadOperationalAttachment(input: {
           (error as { code?: unknown }).code ?? 0
         : 0,
     );
-    if (googleStatus === 404) throw new GmailMailboxError("ATTACHMENT_UNAVAILABLE", 404);
+    if (googleStatus === 404) {
+      logAttachmentFailure("google_attachment_not_found", googleStatus);
+      throw new GmailMailboxError("ATTACHMENT_UNAVAILABLE", 404);
+    }
     publicErrorFromGoogle(error);
   } finally {
     authorized.oauth.setCredentials({});
