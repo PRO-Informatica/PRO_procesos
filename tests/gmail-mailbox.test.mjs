@@ -295,7 +295,7 @@ test("reintenta solo lecturas ante cuotas/5xx y respeta Retry-After", () => {
 });
 
 test("la migración 103 propone RBAC e idempotencia server-only sin cuerpos ni tokens", async () => {
-  const migration = await readFile(new URL("../supabase/migrations/103_gmail_operational_mailbox.sql", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../supabase/migrations/106_gmail_operational_mailbox.sql", import.meta.url), "utf8");
   assert.match(migration, /^begin;/mu);
   assert.match(migration, /gmail\.mailbox\.view/u);
   assert.match(migration, /gmail\.mail\.send/u);

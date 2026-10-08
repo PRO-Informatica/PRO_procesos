@@ -27,6 +27,7 @@ function rowErrors(row: BulkProgrammingPreviewRow, today: string) {
   if (!Number.isFinite(Number(row.quantity)) || Number(row.quantity) <= 0) errors.push("Volumen inválido");
   if (!row.unitCode) errors.push("Falta unidad");
   if (!row.supplierId) errors.push("Selecciona un proveedor");
+  if (!row.orderNumber.trim()) errors.push("Falta Pedido No.");
   if (!row.concreteType.trim()) errors.push("Falta tipo de concreto");
   if (!row.placementElement.trim()) errors.push("Falta elemento a fundir");
   return errors;
@@ -34,8 +35,8 @@ function rowErrors(row: BulkProgrammingPreviewRow, today: string) {
 
 function notesFor(row: BulkProgrammingPreviewRow) {
   return [
-    row.concreteType && `Tipo de concreto: ${row.concreteType}`,
     row.placementElement && `Elemento a fundir: ${row.placementElement}`,
+    row.additions && `Adicionales al concreto: ${row.additions}`,
     row.truckInterval && `Tiempo entre camiones: ${row.truckInterval}`,
   ].filter(Boolean).join("\n");
 }
@@ -69,6 +70,7 @@ export function BulkProgrammingDialog({
   );
   const [editedRows, setEditedRows] = useState<BulkProgrammingPreviewRow[] | null>(null);
   const notifiedBatch = useRef<string | null>(null);
+  const [workbookFile, setWorkbookFile] = useState<File | null>(null);
   const rows = useMemo(
     () => editedRows ?? extractState.rows ?? [],
     [editedRows, extractState.rows],
@@ -98,6 +100,10 @@ export function BulkProgrammingDialog({
       return rebuildNotes ? { ...next, notes: notesFor(next) } : next;
     }));
   };
+  const submitBatch = (formData: FormData) => {
+    if (workbookFile) formData.set("workbook", workbookFile);
+    batchAction(formData);
+  };
 
   if (!open) return null;
   return (
@@ -106,7 +112,7 @@ export function BulkProgrammingDialog({
               {!rows.length ? (
                 <form action={extractAction} className="mx-auto max-w-2xl">
                   <input type="hidden" name="projectId" value={projectId} />
-                  <FileDropField name="workbook" accept=".xlsx" maxBytes={10 * 1024 * 1024} disabled={pending} />
+                  <FileDropField name="workbook" accept=".xlsx" maxBytes={10 * 1024 * 1024} disabled={pending} onFileChange={setWorkbookFile} />
                   <div className="mt-4 rounded-xl border border-border bg-muted/20 p-4 text-xs leading-5 text-foreground-muted">
                     Se validarán la hoja <strong>Solicitud de Concreto</strong>, el correo de Mixto Listo, la sección Datos para la Fundición y sus encabezados. No se usa OCR.
                   </div>
@@ -117,7 +123,7 @@ export function BulkProgrammingDialog({
                   <div className="mt-5 flex justify-end"><LoadingButton loadingLabel="Extrayendo datos…">Vista previa</LoadingButton></div>
                 </form>
               ) : (
-                <form action={batchAction}>
+                <form action={submitBatch}>
                   <input type="hidden" name="projectId" value={projectId} />
                   <input type="hidden" name="rows" value={JSON.stringify(validatedRows)} />
                   {extractState.warnings?.map((warning) => (
@@ -132,7 +138,7 @@ export function BulkProgrammingDialog({
                   <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h3 className="text-sm font-semibold text-foreground">Vista previa obligatoria</h3>
-                      <p className="mt-1 text-xs text-foreground-muted">{validatedRows.length} filas encontradas en {extractState.fileName}. Corrige cualquier fila marcada.</p>
+                      <p className="mt-1 text-xs text-foreground-muted">{validatedRows.length} filas aprobadas encontradas en {extractState.fileName}. La fecha, pedido, concreto y volumen se vuelven a leer del Excel original al guardar.</p>
                     </div>
                     <button type="button" onClick={onClose} disabled={pending} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-semibold text-foreground-muted hover:bg-muted"><Trash2 className="size-4" /> Cambiar archivo</button>
                   </div>
@@ -141,12 +147,14 @@ export function BulkProgrammingDialog({
                       <section key={`${row.sourceRow}-${index}`} className={`rounded-xl border p-4 ${row.errors.length ? "border-destructive/30 bg-destructive-soft/25" : "border-border"}`}>
                         <div className="mb-3 flex items-center justify-between gap-3"><h4 className="text-sm font-semibold text-foreground">Fila Excel {row.sourceRow}</h4><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${row.errors.length ? "bg-destructive-soft text-destructive" : "bg-success-soft text-success"}`}>{row.errors.length ? `${row.errors.length} por corregir` : "Lista"}</span></div>
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                          <label className="text-xs font-semibold text-foreground-muted">Fecha y hora<input type="datetime-local" className="form-input mt-1" value={row.scheduledAt} onChange={(event) => update(index, { scheduledAt: event.target.value })} /></label>
+                          <label className="text-xs font-semibold text-foreground-muted">Fecha y hora aprobadas<input type="datetime-local" className="form-input mt-1 disabled:bg-muted" value={row.scheduledAt} disabled /></label>
                           <label className="text-xs font-semibold text-foreground-muted">Proveedor<select className="form-input mt-1" value={row.supplierId} onChange={(event) => update(index, { supplierId: event.target.value })}><option value="">Selecciona</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.code} · {supplier.name}</option>)}</select></label>
-                          <label className="text-xs font-semibold text-foreground-muted">Tipo de concreto<input className="form-input mt-1" value={row.concreteType} onChange={(event) => update(index, { concreteType: event.target.value }, true)} /></label>
-                          <label className="text-xs font-semibold text-foreground-muted">Volumen<div className="mt-1 flex gap-2"><input type="number" min="0.001" step="0.001" className="form-input" value={row.quantity} onChange={(event) => update(index, { quantity: event.target.value })} /><span className="flex min-h-11 items-center rounded-lg border border-border bg-muted/30 px-3 text-sm font-semibold">{row.unitCode}</span></div></label>
-                          <label className="text-xs font-semibold text-foreground-muted md:col-span-1 xl:col-span-2">Elemento a fundir<input className="form-input mt-1" value={row.placementElement} onChange={(event) => update(index, { placementElement: event.target.value }, true)} /></label>
-                          <label className="text-xs font-semibold text-foreground-muted md:col-span-1 xl:col-span-2">Tiempo entre camiones<input className="form-input mt-1" value={row.truckInterval} onChange={(event) => update(index, { truckInterval: event.target.value }, true)} /></label>
+                          <label className="text-xs font-semibold text-foreground-muted">Pedido No.<input className="form-input mt-1 disabled:bg-muted" value={row.orderNumber} disabled /></label>
+                          <label className="text-xs font-semibold text-foreground-muted">Tipo de concreto<input className="form-input mt-1 disabled:bg-muted" value={row.concreteType} disabled /></label>
+                          <label className="text-xs font-semibold text-foreground-muted">Volumen<div className="mt-1 flex gap-2"><input type="number" className="form-input disabled:bg-muted" value={row.quantity} disabled /><span className="flex min-h-11 items-center rounded-lg border border-border bg-muted/30 px-3 text-sm font-semibold">{row.unitCode}</span></div></label>
+                          <label className="text-xs font-semibold text-foreground-muted">Elemento a fundir<input className="form-input mt-1 disabled:bg-muted" value={row.placementElement} disabled /></label>
+                          <label className="text-xs font-semibold text-foreground-muted">Adicionales al concreto<input className="form-input mt-1 disabled:bg-muted" value={row.additions} disabled /></label>
+                          <label className="text-xs font-semibold text-foreground-muted md:col-span-1 xl:col-span-2">Tiempo entre camiones<input className="form-input mt-1 disabled:bg-muted" value={row.truckInterval} disabled /></label>
                           <label className="text-xs font-semibold text-foreground-muted md:col-span-2 xl:col-span-4">Notas<textarea rows={3} maxLength={1000} className="form-input mt-1 resize-y" value={row.notes} onChange={(event) => update(index, { notes: event.target.value })} /></label>
                         </div>
                         {row.errors.length > 0 && <ul className="mt-3 list-disc pl-5 text-xs font-medium text-destructive">{row.errors.map((error) => <li key={error}>{error}</li>)}</ul>}

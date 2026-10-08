@@ -1,4 +1,4 @@
--- 100_gmail_connections.sql
+-- 103_gmail_connections.sql
 -- Server-only Gmail OAuth credentials and single-use OAuth state records.
 
 begin;

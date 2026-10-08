@@ -33,6 +33,7 @@ export type ProgrammingLine = {
   id: string;
   quantity: number;
   unitCode: string;
+  concreteType: string | null;
   position: number;
 };
 
@@ -42,6 +43,7 @@ export type ProgrammingItem = {
   projectId: string;
   supplierId: string;
   supplierName: string;
+  orderNumber: string | null;
   scheduledAt: string;
   requestedQuantity: number;
   confirmedQuantity: number | null;
@@ -67,6 +69,7 @@ export type ProgrammingRevision = {
   action: string;
   status: ProgrammingStatus;
   supplierName: string;
+  orderNumber: string | null;
   scheduledAt: string;
   requestedQuantity: number;
   confirmedQuantity: number | null;
@@ -142,7 +145,8 @@ export type CreateProgrammingState = {
   fields?: {
     supplierId?: string;
     scheduledAt?: string;
-    lines?: Array<{ quantity: string; unitCode: string }>;
+    orderNumber?: string;
+    lines?: Array<{ quantity: string; unitCode: string; concreteType: string }>;
     notes?: string;
   };
 };
@@ -150,10 +154,12 @@ export type CreateProgrammingState = {
 export type BulkProgrammingPreviewRow = {
   sourceRow: number;
   scheduledAt: string;
+  orderNumber: string;
   concreteType: string;
   quantity: string;
   unitCode: string;
   placementElement: string;
+  additions: string;
   truckInterval: string;
   supplierId: string;
   notes: string;

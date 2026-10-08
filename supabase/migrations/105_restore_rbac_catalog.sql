@@ -1,4 +1,4 @@
--- 102_restore_rbac_catalog.sql
+-- 105_restore_rbac_catalog.sql
 -- Restores the canonical RBAC configuration omitted by structure-only clones.
 -- This migration inserts only missing permissions and role assignments. It does
 -- not remove roles, permissions, assignments, memberships, users, or operational data.

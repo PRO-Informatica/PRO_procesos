@@ -1,4 +1,4 @@
--- 101_gmail_connection_identity_scopes.sql
+-- 104_gmail_connection_identity_scopes.sql
 -- Keep Gmail API access plus the minimum OIDC scopes required to verify identity.
 
 begin;

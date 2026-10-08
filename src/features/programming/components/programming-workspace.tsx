@@ -82,11 +82,13 @@ export function ProgrammingWorkspace({
   project,
   canCreate,
   canConfirm,
+  canModify,
   initialData,
 }: {
   project: ProjectSummary;
   canCreate: boolean;
   canConfirm: boolean;
+  canModify: boolean;
   initialData: ProgrammingPageData;
 }) {
   const [view, setView] = useState<ViewMode>("calendar");
@@ -405,6 +407,9 @@ export function ProgrammingWorkspace({
         item={selected}
         timezone={project.timezone}
         canConfirm={canConfirm}
+        canModify={canModify}
+        suppliers={initialData.suppliers}
+        units={initialData.units}
         onUpdated={() => {
           setSelected(null);
           reload(range);

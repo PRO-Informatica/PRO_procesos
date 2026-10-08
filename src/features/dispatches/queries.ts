@@ -22,6 +22,7 @@ import type {
 type ProgrammingRow = {
   id: string;
   supplier_id: string;
+  order_number: string | null;
   status: ProgrammingDispatchStatus;
   scheduled_at: string;
   requested_quantity: number | string;
@@ -145,7 +146,7 @@ export async function getDispatchPageData(
     supabase
       .from("programming")
       .select(
-        "id, supplier_id, status, scheduled_at, requested_quantity, confirmed_quantity, unit_code",
+        "id, supplier_id, order_number, status, scheduled_at, requested_quantity, confirmed_quantity, unit_code",
       )
       .eq("project_id", projectId)
       .in("status", ["CONFIRMED", "IN_EXECUTION"])
@@ -169,8 +170,9 @@ export async function getDispatchPageData(
   const programming = (programmingResult.data ?? []) as ProgrammingRow[];
   const dispatches = (dispatchResult.data ?? []) as DispatchRow[];
   const dispatchIds = dispatches.map((row) => row.id);
+  const programmingIds = programming.map((row) => row.id);
   const supplierIds = [...new Set(programming.map((row) => row.supplier_id))];
-  const [guidesResult, suppliersResult] = await Promise.all([
+  const [guidesResult, suppliersResult, programmingLinesResult] = await Promise.all([
     dispatchIds.length
       ? supabase
           .from("dispatch_guides")
@@ -182,9 +184,22 @@ export async function getDispatchPageData(
     supplierIds.length
       ? supabase.from("suppliers").select("id, name").in("id", supplierIds)
       : Promise.resolve({ data: [], error: null }),
+    programmingIds.length
+      ? supabase.from("programming_lines").select("programming_id, concrete_type").in("programming_id", programmingIds).order("position")
+      : Promise.resolve({ data: [], error: null }),
   ]);
   assertNoError(guidesResult.error, "No fue posible cargar las guías.");
   assertNoError(suppliersResult.error, "No fue posible cargar los proveedores.");
+  assertNoError(programmingLinesResult.error, "No fue posible cargar los tipos de concreto.");
+  const concreteTypesByProgramming = new Map<string, string[]>();
+  for (const line of programmingLinesResult.data ?? []) {
+    const concreteType = optionalText(line.concrete_type);
+    if (!concreteType) continue;
+    concreteTypesByProgramming.set(line.programming_id, [
+      ...(concreteTypesByProgramming.get(line.programming_id) ?? []),
+      concreteType,
+    ]);
+  }
   const guideRows = (guidesResult.data ?? []) as GuideRow[];
   const guideIds = guideRows.map((row) => row.id);
   const linesResult = guideIds.length
@@ -224,6 +239,8 @@ export async function getDispatchPageData(
       scheduledAt: row.scheduled_at,
       supplierId: row.supplier_id,
       supplierName: supplierNames.get(row.supplier_id) ?? "Proveedor no disponible",
+      orderNumber: row.order_number,
+      concreteTypes: concreteTypesByProgramming.get(row.id) ?? [],
       programmedVolume:
         row.confirmed_quantity === null
           ? numberValue(row.requested_quantity)
@@ -271,12 +288,12 @@ export async function getDispatchDetail(
   if (!dispatchResult.data) return null;
   const dispatch = dispatchResult.data as DispatchRow;
 
-  const [programmingResult, supplierResult, guidesResult, incidentsResult, unitsResult, typesResult] =
+  const [programmingResult, supplierResult, guidesResult, incidentsResult, unitsResult, typesResult, programmingLinesResult] =
     await Promise.all([
       supabase
         .from("programming")
         .select(
-          "id, supplier_id, status, scheduled_at, requested_quantity, confirmed_quantity, unit_code",
+          "id, supplier_id, order_number, status, scheduled_at, requested_quantity, confirmed_quantity, unit_code",
         )
         .eq("project_id", projectId)
         .eq("id", dispatch.programming_id)
@@ -298,6 +315,7 @@ export async function getDispatchDetail(
         .order("created_at", { ascending: false }),
       supabase.from("units_of_measure").select("code, name").eq("active", true).order("code"),
       supabase.from("incident_types").select("id, name").eq("active", true).order("name"),
+      supabase.from("programming_lines").select("concrete_type, position").eq("programming_id", dispatch.programming_id).order("position"),
     ]);
   const errors = [
     programmingResult.error,
@@ -306,10 +324,14 @@ export async function getDispatchDetail(
     incidentsResult.error,
     unitsResult.error,
     typesResult.error,
+    programmingLinesResult.error,
   ].find(Boolean);
   assertNoError(errors ?? null, "No fue posible resolver el detalle del despacho.");
   if (!programmingResult.data) return null;
   const programming = programmingResult.data as ProgrammingRow;
+  const programmingConcreteTypes = (programmingLinesResult.data ?? [])
+    .map((line) => optionalText(line.concrete_type))
+    .filter((value): value is string => Boolean(value));
   const guideRows = (guidesResult.data ?? []) as GuideRow[];
   const guideIds = guideRows.map((row) => row.id);
   const rawIncidents = incidentsResult.data ?? [];
@@ -580,6 +602,8 @@ export async function getDispatchDetail(
         ? numberValue(programming.requested_quantity)
         : numberValue(programming.confirmed_quantity),
     programmedUnitCode: programming.unit_code,
+    programmingOrderNumber: programming.order_number,
+    programmingConcreteTypes,
     status: dispatch.status,
     result: dispatch.result,
     version: dispatch.version,

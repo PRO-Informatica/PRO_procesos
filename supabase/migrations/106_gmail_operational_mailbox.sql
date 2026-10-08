@@ -1,4 +1,4 @@
--- 103_gmail_operational_mailbox.sql
+-- 106_gmail_operational_mailbox.sql
 -- Server-only send idempotency plus the minimum RBAC permissions for Gmail.
 
 begin;

@@ -578,7 +578,7 @@ test("rutas y servicio mantienen OAuth Gmail separado, server-only y sanitizado"
 test("101 reemplaza solo la restricción de scopes y admite scopes adicionales", async () => {
   const migration = await readFile(
     new URL(
-      "../supabase/migrations/101_gmail_connection_identity_scopes.sql",
+      "../supabase/migrations/104_gmail_connection_identity_scopes.sql",
       import.meta.url,
     ),
     "utf8",
@@ -604,7 +604,7 @@ test("101 reemplaza solo la restricción de scopes y admite scopes adicionales",
 
 test("la migración limita credenciales a backend y state de un solo uso", async () => {
   const migration = await readFile(
-    new URL("../supabase/migrations/100_gmail_connections.sql", import.meta.url),
+    new URL("../supabase/migrations/103_gmail_connections.sql", import.meta.url),
     "utf8",
   );
   assert.match(migration, /create table public\.gmail_connections/u);

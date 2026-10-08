@@ -45,7 +45,13 @@ export type AddressCandidateResolution = {
   }>;
 };
 
-const ADMINISTRATIVE_TOKENS = new Set(["DE", "DEL", "MUNICIPIO"]);
+const ADMINISTRATIVE_TOKENS = new Set([
+  "CIUDAD",
+  "DE",
+  "DEL",
+  "DEPARTAMENTO",
+  "MUNICIPIO",
+]);
 const ROUTE_TOKENS = new Set([
   "AVENIDA",
   "BOULEVARD",
@@ -88,16 +94,21 @@ const AMBIGUITY_MARGIN = 0.04;
 
 function canonicalAddressTokens(value: string | null | undefined) {
   const tokens = normalizeAddressIdentity(value).split(" ").filter(Boolean);
-  return tokens
+  const canonical = tokens
     .map((token, index) => {
       const alias = TOKEN_ALIASES[token];
       if (alias) return alias;
-      if (/^\d+A$/u.test(token) && ROUTE_TOKENS.has(TOKEN_ALIASES[tokens[index + 1]] ?? tokens[index + 1])) {
+      const nextToken = TOKEN_ALIASES[tokens[index + 1]] ?? tokens[index + 1];
+      if (/^\d+A$/u.test(token) && ROUTE_TOKENS.has(nextToken)) {
         return `${token.slice(0, -1)}RA`;
+      }
+      if (/^\d+$/u.test(token) && ["AVENIDA", "CALLE"].includes(nextToken)) {
+        return `${token}RA`;
       }
       return token;
     })
     .filter((token) => !ADMINISTRATIVE_TOKENS.has(token));
+  return canonical.filter((token, index) => token !== canonical[index - 1]);
 }
 
 function sorted(values: string[]) {

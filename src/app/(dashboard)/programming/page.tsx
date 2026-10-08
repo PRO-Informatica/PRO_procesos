@@ -40,6 +40,7 @@ export default async function ProgrammingPage() {
       project={context.activeProject}
       canCreate={context.permissions.includes("programming.create")}
       canConfirm={context.permissions.includes("programming.confirm")}
+      canModify={context.permissions.includes("programming.modify")}
       initialData={data}
     />
   );
