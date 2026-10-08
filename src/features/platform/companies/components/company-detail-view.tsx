@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   Building2,
   CalendarDays,
+  FileSpreadsheet,
   FolderKanban,
   ShieldCheck,
   Users,
@@ -221,10 +222,19 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
                       {formatDate(project.estimatedEndDate)}
                     </td>
                     <td className="px-6 py-4 text-right sm:px-8">
-                      <EditProjectDialog
-                        companyId={company.id}
-                        project={project}
-                      />
+                      <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={`/platform/companies/${company.id}/projects/${project.id}/catalogs`}
+                          className="secondary-button"
+                        >
+                          <FileSpreadsheet aria-hidden="true" className="size-4" />
+                          Catálogos
+                        </Link>
+                        <EditProjectDialog
+                          companyId={company.id}
+                          project={project}
+                        />
+                      </div>
                     </td>
                   </tr>
                 ))}
