@@ -8,6 +8,7 @@ import type { ProgrammingUnit } from "../types";
 type EditableLine = {
   quantity: string;
   unitCode: string;
+  concreteType: string;
 };
 
 export function ProgrammingLinesFields({
@@ -21,7 +22,7 @@ export function ProgrammingLinesFields({
 }) {
   const nextId = useRef(2);
   const [lines, setLines] = useState(() =>
-    (initialLines?.length ? initialLines : [{ quantity: "", unitCode: "" }]).map(
+    (initialLines?.length ? initialLines : [{ quantity: "", unitCode: "", concreteType: "" }]).map(
       (line, index) => ({ ...line, id: `programming-line-${index + 1}` }),
     ),
   );
@@ -44,7 +45,7 @@ export function ProgrammingLinesFields({
             const id = `programming-line-${Date.now()}-${nextId.current++}`;
             setLines((current) => [
               ...current,
-              { id, quantity: "", unitCode: inheritedUnit },
+              { id, quantity: "", unitCode: inheritedUnit, concreteType: "" },
             ]);
           }}
           disabled={disabled}
@@ -66,7 +67,7 @@ export function ProgrammingLinesFields({
         {lines.map((line, index) => (
           <div
             key={line.id}
-            className="grid min-w-0 grid-cols-[minmax(0,1fr)_6.5rem] gap-3 rounded-xl border border-border bg-muted/25 p-3 sm:grid-cols-[2rem_minmax(0,1fr)_9rem_2.75rem] sm:items-end sm:gap-2"
+            className="grid min-w-0 grid-cols-[minmax(0,1fr)_6.5rem] gap-3 rounded-xl border border-border bg-muted/25 p-3 sm:grid-cols-[2rem_minmax(0,1fr)_7rem_minmax(0,1fr)_2.75rem] sm:items-end sm:gap-2"
           >
             <span className="col-start-1 row-start-1 self-center text-xs font-semibold text-foreground sm:grid sm:size-8 sm:place-items-center sm:rounded-full sm:bg-surface sm:text-foreground-muted">
               <span className="sm:hidden">Producto </span>
@@ -129,6 +130,26 @@ export function ProgrammingLinesFields({
                 ))}
               </select>
             </div>
+            <div className="col-span-2 row-start-3 min-w-0 sm:col-span-1 sm:col-start-4 sm:row-start-1">
+              <label htmlFor={`${line.id}-concrete-type`} className="form-label">
+                Tipo de concreto
+              </label>
+              <input
+                id={`${line.id}-concrete-type`}
+                name="lineConcreteType"
+                required
+                maxLength={160}
+                value={line.concreteType}
+                onChange={(event) => {
+                  const concreteType = event.target.value;
+                  setLines((current) => current.map((candidate) =>
+                    candidate.id === line.id ? { ...candidate, concreteType } : candidate,
+                  ));
+                }}
+                disabled={disabled}
+                className="form-input"
+              />
+            </div>
             <button
               type="button"
               onClick={() =>
@@ -137,7 +158,7 @@ export function ProgrammingLinesFields({
                 )
               }
               disabled={disabled || lines.length === 1}
-              className="col-start-2 row-start-1 ml-auto grid size-9 place-items-center rounded-lg border border-border text-foreground-muted hover:border-destructive/30 hover:bg-destructive-soft hover:text-destructive disabled:cursor-not-allowed disabled:opacity-35 sm:col-start-4 sm:row-start-1 sm:size-11"
+              className="col-start-2 row-start-1 ml-auto grid size-9 place-items-center rounded-lg border border-border text-foreground-muted hover:border-destructive/30 hover:bg-destructive-soft hover:text-destructive disabled:cursor-not-allowed disabled:opacity-35 sm:col-start-5 sm:row-start-1 sm:size-11"
               aria-label={`Eliminar producto ${index + 1}`}
             >
               <Trash2 aria-hidden="true" className="size-4" />

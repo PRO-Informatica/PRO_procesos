@@ -61,3 +61,4 @@ Thumbs.db
 # Markdown and local documentation
 *.md
 /docs/
+!CARGA_MASIVA_PROGRAMACIONES_EXCEL.md

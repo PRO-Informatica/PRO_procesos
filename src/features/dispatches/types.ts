@@ -33,6 +33,8 @@ export type ProgrammingDispatchItem = {
   scheduledAt: string;
   supplierId: string;
   supplierName: string;
+  orderNumber: string | null;
+  concreteTypes: string[];
   programmedVolume: number;
   unitCode: string;
   dispatchId: string | null;
@@ -118,6 +120,8 @@ export type DispatchDetail = {
   supplierName: string;
   programmedVolume: number;
   programmedUnitCode: string;
+  programmingOrderNumber: string | null;
+  programmingConcreteTypes: string[];
   status: DispatchStatus;
   result: DispatchResult | null;
   version: number;

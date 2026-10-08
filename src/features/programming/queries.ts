@@ -23,6 +23,7 @@ type ProgrammingRow = {
   version: number;
   project_id: string;
   supplier_id: string;
+  order_number: string | null;
   created_by: string;
   scheduled_at: string;
   requested_quantity: number | string;
@@ -63,6 +64,7 @@ type ProgrammingLineRow = {
   programming_id: string;
   quantity: number | string;
   unit_code: string;
+  concrete_type: string | null;
   position: number;
 };
 
@@ -162,7 +164,7 @@ export async function getProgrammingItems(
   let programmingQuery = supabase
     .from("programming")
     .select(
-      "id, version, project_id, supplier_id, created_by, scheduled_at, requested_quantity, confirmed_quantity, unit_code, placement_group, requires_pumping, estimated_work_item_id, status, notes, confirmed_at, confirmed_by",
+      "id, version, project_id, supplier_id, order_number, created_by, scheduled_at, requested_quantity, confirmed_quantity, unit_code, placement_group, requires_pumping, estimated_work_item_id, status, notes, confirmed_at, confirmed_by",
     )
     .eq("project_id", projectId)
     .gte("scheduled_at", range.start)
@@ -219,7 +221,7 @@ export async function getProgrammingItems(
         .order("created_at", { ascending: false }),
       supabase
         .from("programming_lines")
-        .select("id, programming_id, quantity, unit_code, position")
+        .select("id, programming_id, quantity, unit_code, concrete_type, position")
         .in("programming_id", programmingIds)
         .order("position"),
     ]);
@@ -308,6 +310,7 @@ export async function getProgrammingItems(
     projectId: row.project_id,
     supplierId: row.supplier_id,
     supplierName: supplierNames.get(row.supplier_id) ?? "Proveedor no disponible",
+    orderNumber: row.order_number,
     scheduledAt: row.scheduled_at,
     requestedQuantity: numeric(row.requested_quantity) ?? 0,
     confirmedQuantity: numeric(row.confirmed_quantity),
@@ -338,6 +341,7 @@ export async function getProgrammingItems(
       id: line.id,
       quantity: numeric(line.quantity) ?? 0,
       unitCode: line.unit_code,
+      concreteType: line.concrete_type,
       position: line.position,
     })),
     dispatches: rowDispatches.map((dispatch) => ({
@@ -426,6 +430,7 @@ type ProgrammingRevisionRow = {
   programming_version: number;
   scheduled_at: string;
   supplier_id: string;
+  order_number: string | null;
   requested_quantity: number | string;
   confirmed_quantity: number | string | null;
   unit_code: string;
@@ -451,7 +456,7 @@ export async function getProgrammingDetailPageData(
   const { data: programmingData, error: programmingError } = await supabase
     .from("programming")
     .select(
-      "id, project_id, supplier_id, created_by, scheduled_at, requested_quantity, confirmed_quantity, unit_code, placement_group, requires_pumping, estimated_work_item_id, status, notes, confirmed_at, confirmed_by, version, created_at, updated_at",
+      "id, project_id, supplier_id, order_number, created_by, scheduled_at, requested_quantity, confirmed_quantity, unit_code, placement_group, requires_pumping, estimated_work_item_id, status, notes, confirmed_at, confirmed_by, version, created_at, updated_at",
     )
     .eq("id", programmingId)
     .eq("project_id", projectId)
@@ -466,13 +471,13 @@ export async function getProgrammingDetailPageData(
   const [linesResult, revisionsResult, dispatchesResult, catalogs] = await Promise.all([
     supabase
       .from("programming_lines")
-      .select("id, programming_id, quantity, unit_code, position")
+      .select("id, programming_id, quantity, unit_code, concrete_type, position")
       .eq("programming_id", programmingId)
       .order("position"),
     supabase
       .from("programming_revisions")
       .select(
-        "id, programming_id, revision_no, programming_version, scheduled_at, supplier_id, requested_quantity, confirmed_quantity, unit_code, status, notes, change_reason, action, created_by, created_at",
+        "id, programming_id, revision_no, programming_version, scheduled_at, supplier_id, order_number, requested_quantity, confirmed_quantity, unit_code, status, notes, change_reason, action, created_by, created_at",
       )
       .eq("programming_id", programmingId)
       .order("revision_no", { ascending: false }),
@@ -519,7 +524,7 @@ export async function getProgrammingDetailPageData(
       revisionIds.length
         ? supabase
             .from("programming_revision_lines")
-            .select("id, programming_id, revision_id, quantity, unit_code, position")
+            .select("id, programming_id, revision_id, quantity, unit_code, concrete_type, position")
             .in("revision_id", revisionIds)
             .order("position")
         : Promise.resolve({ data: [], error: null }),
@@ -615,6 +620,7 @@ export async function getProgrammingDetailPageData(
     projectId: row.project_id,
     supplierId: row.supplier_id,
     supplierName: supplierNames.get(row.supplier_id) ?? "Proveedor no disponible",
+    orderNumber: row.order_number,
     scheduledAt: row.scheduled_at,
     requestedQuantity: numeric(row.requested_quantity) ?? 0,
     confirmedQuantity: numeric(row.confirmed_quantity),
@@ -640,6 +646,7 @@ export async function getProgrammingDetailPageData(
       id: line.id,
       quantity: numeric(line.quantity) ?? 0,
       unitCode: line.unit_code,
+      concreteType: line.concrete_type,
       position: line.position,
     })),
     dispatches: mappedDispatches,
@@ -655,6 +662,7 @@ export async function getProgrammingDetailPageData(
       action: revision.action,
       status: revision.status,
       supplierName: supplierNames.get(revision.supplier_id) ?? "Proveedor no disponible",
+      orderNumber: revision.order_number,
       scheduledAt: revision.scheduled_at,
       requestedQuantity: numeric(revision.requested_quantity) ?? 0,
       confirmedQuantity: numeric(revision.confirmed_quantity),
@@ -667,6 +675,7 @@ export async function getProgrammingDetailPageData(
         id: line.id,
         quantity: numeric(line.quantity) ?? 0,
         unitCode: line.unit_code,
+        concreteType: line.concrete_type,
         position: line.position,
       })),
     })),

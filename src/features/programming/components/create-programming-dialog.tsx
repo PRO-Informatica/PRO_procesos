@@ -108,7 +108,7 @@ export function CreateProgrammingDialog({
                   )}
                 </div>
 
-                <div className="grid min-w-0 grid-cols-1 gap-3 min-[460px]:grid-cols-2">
+                <div className="grid min-w-0 grid-cols-1 gap-3 min-[460px]:grid-cols-3 sm:col-span-2">
                   <div className="min-w-0">
                     <label htmlFor="programming-scheduled-date" className="form-label">
                       Fecha
@@ -133,6 +133,19 @@ export function CreateProgrammingDialog({
                       required
                       value={scheduledTime}
                       onChange={(event) => setScheduledTime(event.target.value)}
+                      className="form-input"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label htmlFor="programming-order-number" className="form-label">
+                      Pedido No.
+                    </label>
+                    <input
+                      id="programming-order-number"
+                      name="orderNumber"
+                      required
+                      maxLength={120}
+                      defaultValue={state.fields?.orderNumber ?? ""}
                       className="form-input"
                     />
                   </div>

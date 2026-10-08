@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, CheckCircle2, ExternalLink, PackageOpen, Truck, X } from "lucide-react";
+import { CalendarClock, CheckCircle2, ExternalLink, PackageOpen, Pencil, Truck, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
@@ -11,6 +11,7 @@ import { notifications } from "@/lib/notification-messages";
 import { formatStatusLabel } from "@/lib/status-labels";
 
 import { mutateProgrammingAction } from "../actions";
+import { canEditProgramming } from "../availability";
 
 import {
   formatProgrammingDateTime,
@@ -18,7 +19,13 @@ import {
   formatProgrammingStatus,
   programmingStatusTone,
 } from "../formatters";
-import { initialProgrammingMutationState, type ProgrammingItem } from "../types";
+import {
+  initialProgrammingMutationState,
+  type ProgrammingItem,
+  type ProgrammingSupplier,
+  type ProgrammingUnit,
+} from "../types";
+import { ProgrammingEditDialog } from "./programming-edit-dialog";
 
 function Detail({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -35,19 +42,35 @@ export function ProgrammingPreviewDrawer({
   item,
   timezone,
   canConfirm,
+  canModify,
+  suppliers,
+  units,
   onUpdated,
   onClose,
 }: {
   item: ProgrammingItem | null;
   timezone: string;
   canConfirm: boolean;
+  canModify: boolean;
+  suppliers: ProgrammingSupplier[];
+  units: ProgrammingUnit[];
   onUpdated: () => void;
   onClose: () => void;
 }) {
   const [availabilityNow] = useState(() => Date.now());
+  const [editOpen, setEditOpen] = useState(false);
   const canDirectConfirm = Boolean(
     item && item.status === "PENDING_CONFIRMATION" &&
     new Date(item.scheduledAt).valueOf() >= availabilityNow,
+  );
+  const canEdit = Boolean(
+    item && canEditProgramming({
+      status: item.status,
+      scheduledAt: item.scheduledAt,
+      operationStarted: item.dispatches.length > 0,
+      timezone,
+      hasPermission: canModify,
+    }, availabilityNow),
   );
   const [state, confirmAction, pending] = useActionState(
     mutateProgrammingAction,
@@ -67,7 +90,8 @@ export function ProgrammingPreviewDrawer({
     }
   }, [item, onUpdated, pending, state.status]);
   return (
-    <AnimatePresence>
+    <>
+      <AnimatePresence>
       {item && (
         <>
           <motion.button
@@ -245,6 +269,15 @@ export function ProgrammingPreviewDrawer({
                 <Link href={`/programming/${item.id}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted">
                   Ver detalle <ExternalLink aria-hidden="true" className="size-4" />
                 </Link>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditOpen(true)}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted"
+                  >
+                    <Pencil aria-hidden="true" className="size-4" /> Editar programación
+                  </button>
+                ) : null}
                 {canDirectConfirm && canConfirm ? (
                   <form action={confirmAction}>
                     <input type="hidden" name="intent" value="confirm" />
@@ -260,6 +293,20 @@ export function ProgrammingPreviewDrawer({
           </motion.aside>
         </>
       )}
-    </AnimatePresence>
+      </AnimatePresence>
+      {item && editOpen && (
+        <ProgrammingEditDialog
+          item={item}
+          suppliers={suppliers}
+          units={units}
+          timezone={timezone}
+          onClose={() => setEditOpen(false)}
+          onUpdated={() => {
+            setEditOpen(false);
+            onUpdated();
+          }}
+        />
+      )}
+    </>
   );
 }

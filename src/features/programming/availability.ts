@@ -62,6 +62,25 @@ export function canCreateDispatchForProgramming(
   return effectiveStatus === "CONFIRMED" || effectiveStatus === "IN_EXECUTION";
 }
 
+export function canEditProgramming(
+  programming: ProgrammingAvailabilityInput & { hasPermission: boolean },
+  now = Date.now(),
+) {
+  if (!programming.hasPermission || programming.operationStarted) return false;
+  if (!["PENDING_CONFIRMATION", "CONFIRMED"].includes(programming.status)) {
+    return false;
+  }
+
+  const scheduledAt = new Date(programming.scheduledAt);
+  if (!Number.isFinite(scheduledAt.valueOf())) return false;
+
+  const timezone = programming.timezone ?? DEFAULT_TIMEZONE;
+  return (
+    localDateKey(scheduledAt, timezone) >
+    localDateKey(new Date(now), timezone)
+  );
+}
+
 export function isActiveProgramming(
   programming: ProgrammingScopeInput,
 ) {

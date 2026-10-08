@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  canEditProgramming,
   getEffectiveProgrammingStatus,
   isActiveProgramming,
   isHistoricalProgramming,
@@ -97,4 +98,68 @@ test("una pendiente del día actual no se cancela por haber pasado su hora", () 
   );
 
   assert.equal(effectiveStatus, "PENDING_CONFIRMATION");
+});
+
+test("una programación confirmada futura y sin despacho puede editarse", () => {
+  assert.equal(
+    canEditProgramming(
+      {
+        status: "CONFIRMED",
+        scheduledAt: "2026-10-09T08:00:00-06:00",
+        operationStarted: false,
+        timezone: "America/Guatemala",
+        hasPermission: true,
+      },
+      new Date("2026-10-07T12:00:00-06:00").valueOf(),
+    ),
+    true,
+  );
+});
+
+test("una programación pendiente futura también puede editarse", () => {
+  assert.equal(
+    canEditProgramming(
+      {
+        status: "PENDING_CONFIRMATION",
+        scheduledAt: "2026-10-09T08:00:00-06:00",
+        operationStarted: false,
+        timezone: "America/Guatemala",
+        hasPermission: true,
+      },
+      new Date("2026-10-07T12:00:00-06:00").valueOf(),
+    ),
+    true,
+  );
+});
+
+test("una programación con despacho iniciado no puede editarse", () => {
+  assert.equal(
+    canEditProgramming(
+      {
+        status: "CONFIRMED",
+        scheduledAt: "2026-10-09T08:00:00-06:00",
+        operationStarted: true,
+        timezone: "America/Guatemala",
+        hasPermission: true,
+      },
+      new Date("2026-10-07T12:00:00-06:00").valueOf(),
+    ),
+    false,
+  );
+});
+
+test("la edición se cierra al llegar el día programado", () => {
+  assert.equal(
+    canEditProgramming(
+      {
+        status: "CONFIRMED",
+        scheduledAt: "2026-10-07T18:00:00-06:00",
+        operationStarted: false,
+        timezone: "America/Guatemala",
+        hasPermission: true,
+      },
+      new Date("2026-10-07T08:00:00-06:00").valueOf(),
+    ),
+    false,
+  );
 });

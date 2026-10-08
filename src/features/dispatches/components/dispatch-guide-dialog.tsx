@@ -36,6 +36,7 @@ export function DispatchGuideDialog({
   dispatchId,
   expectedVersion,
   programmedUnitCode,
+  defaultProductDescription,
   units,
   guide,
   onClose,
@@ -45,6 +46,7 @@ export function DispatchGuideDialog({
   dispatchId: string;
   expectedVersion: number;
   programmedUnitCode: string;
+  defaultProductDescription?: string | null;
   units: DispatchUnit[];
   guide?: DispatchGuide;
   onClose: () => void;
@@ -76,7 +78,7 @@ export function DispatchGuideDialog({
           quantity: "",
           unitCode: programmedUnitCode,
           productCode: "",
-          productDescription: "",
+          productDescription: defaultProductDescription ?? "",
         }],
   );
   useEffect(() => {

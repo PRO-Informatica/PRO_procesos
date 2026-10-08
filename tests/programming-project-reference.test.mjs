@@ -68,6 +68,27 @@ test("Excel acepta ADO con diferencias de escritura y explica la coincidencia", 
   assert.match(reference.warnings.join(" "), /Dirección detectada/u);
 });
 
+test("Excel acepta municipio y departamento cuando coinciden calle, nomenclatura, zona y localidad", () => {
+  const reference = validateMixtoProjectReference({
+    projectId: "cer",
+    projectLabel: "CER · CER-PRO",
+    projectAddress: "9 CALLE 5A-62, ZONA 9, QUETZALTENANGO CIUDAD GUATEMALA",
+    workbookAddress: "9a. Calle 5A-62 zona 9 Municipio de Quetzaltenango, departamento de Quetzaltenango",
+    billingLegalName: "INMOBILIARIA LOS ANTURIOS, S.A.",
+    invoiceRecipient: "INMOBILIARIA LOS ANTURIOS, S.A.",
+    candidateProjects: [{
+      id: "cer",
+      label: "CER · CER-PRO",
+      address: "9 CALLE 5A-62, ZONA 9, QUETZALTENANGO CIUDAD GUATEMALA",
+      billingLegalName: "INMOBILIARIA LOS ANTURIOS, S.A.",
+    }],
+  });
+
+  assert.equal(reference.comparison.result, "MATCH");
+  assert.equal(reference.comparison.criticalComponentsMatch, true);
+  assert.match(reference.warnings.join(" "), /pequeñas diferencias de escritura/u);
+});
+
 test("Excel no elige el primer proyecto cuando hay candidatos ambiguos", () => {
   assert.throws(() => validateMixtoProjectReference({
     projectId: "project-a",

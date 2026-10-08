@@ -27,6 +27,7 @@ import { formatStatusLabel } from "@/lib/status-labels";
 
 import { mutateProgrammingAction } from "../actions";
 import {
+  canEditProgramming,
   canCreateDispatchForProgramming,
   getEffectiveProgrammingStatus,
 } from "../availability";
@@ -42,21 +43,16 @@ import {
   type ProgrammingDetailPermissions,
   type ProgrammingMutationIntent,
 } from "../types";
-import { ProgrammingLinesFields } from "./programming-lines-fields";
+import { ProgrammingEditDialog } from "./programming-edit-dialog";
 import { StartDispatchDialog } from "@/features/dispatches/components/register-dispatch-dialog";
 
-type DialogIntent = Exclude<ProgrammingMutationIntent, "confirm">;
+type ActionIntent = Exclude<ProgrammingMutationIntent, "confirm">;
+type MutationDialogIntent = Exclude<ActionIntent, "edit">;
 
 const actionCopy: Record<
-  DialogIntent,
+  MutationDialogIntent,
   { title: string; label: string; loading: string; description: string }
 > = {
-  edit: {
-    title: "Editar programación",
-    label: "Guardar cambios",
-    loading: "Guardando cambios…",
-    description: "Actualizando la programación y creando una revisión inmutable.",
-  },
   cancel: {
     title: "Cancelar programación",
     label: "Cancelar programación",
@@ -84,25 +80,9 @@ const revisionLabels: Record<string, string> = {
 };
 
 const actionNotification = {
-  edit: notifications.programmingUpdated,
   cancel: notifications.programmingCancelled,
   close: notifications.statusUpdated,
 } as const;
-
-function zonedInputValue(value: string, timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-    timeZone: timezone,
-  }).formatToParts(new Date(value));
-  const get = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? "";
-  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
-}
 
 function Metric({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
@@ -118,12 +98,10 @@ function Metric({ label, value, accent }: { label: string; value: string; accent
 function MutationDialog({
   intent,
   data,
-  timezone,
   onClose,
 }: {
-  intent: DialogIntent;
+  intent: MutationDialogIntent;
   data: ProgrammingDetailPageData;
-  timezone: string;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -155,61 +133,6 @@ function MutationDialog({
           <input type="hidden" name="expectedVersion" value={detail.version} />
 
           <div className="grid gap-5 p-5 sm:p-6">
-            {intent === "edit" && (
-              <>
-                <div>
-                  <label htmlFor="detail-supplier" className="form-label">Proveedor</label>
-                  <select
-                    id="detail-supplier"
-                    name="supplierId"
-                    defaultValue={detail.supplierId}
-                    required
-                    className="form-input"
-                    disabled={pending}
-                  >
-                    {data.suppliers.map((supplier) => (
-                      <option key={supplier.id} value={supplier.id}>
-                        {supplier.code} · {supplier.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="detail-scheduled" className="form-label">Fecha y hora</label>
-                  <input
-                    id="detail-scheduled"
-                    name="scheduledAt"
-                    type="datetime-local"
-                    required
-                    defaultValue={zonedInputValue(detail.scheduledAt, timezone)}
-                    className="form-input"
-                    disabled={pending}
-                  />
-                  <p className="mt-1 text-xs text-foreground-muted">Zona horaria: {timezone}</p>
-                </div>
-                <ProgrammingLinesFields
-                  units={data.units}
-                  initialLines={detail.lines.map((line) => ({
-                    quantity: String(line.quantity),
-                    unitCode: line.unitCode,
-                  }))}
-                  disabled={pending}
-                />
-                <div>
-                  <label htmlFor="detail-notes" className="form-label">Notas</label>
-                  <textarea
-                    id="detail-notes"
-                    name="notes"
-                    rows={3}
-                    maxLength={1000}
-                    defaultValue={detail.notes ?? ""}
-                    className="form-input resize-y"
-                    disabled={pending}
-                  />
-                </div>
-              </>
-            )}
-
             {intent === "cancel" && (
               <div>
                 <label htmlFor="cancel-reason" className="form-label">Motivo de cancelación *</label>
@@ -292,7 +215,7 @@ export function ProgrammingDetailView({
   permissions: ProgrammingDetailPermissions;
   receiverName: string;
 }) {
-  const [intent, setIntent] = useState<DialogIntent | null>(null);
+  const [intent, setIntent] = useState<ActionIntent | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [availabilityNow] = useState(() => Date.now());
   const detail = data.detail;
@@ -304,9 +227,13 @@ export function ProgrammingDetailView({
     timezone: project.timezone,
   }, availabilityNow);
   const scheduleIsFuture = new Date(detail.scheduledAt).valueOf() >= availabilityNow;
-  const todayKey = zonedInputValue(new Date(availabilityNow).toISOString(), project.timezone).slice(0, 10);
-  const scheduledDateKey = zonedInputValue(detail.scheduledAt, project.timezone).slice(0, 10);
-  const editWindowOpen = scheduledDateKey > todayKey;
+  const canEdit = canEditProgramming({
+    status: detail.status,
+    scheduledAt: detail.scheduledAt,
+    operationStarted,
+    timezone: project.timezone,
+    hasPermission: permissions.canModify,
+  }, availabilityNow);
   const canRegisterDispatch = canCreateDispatchForProgramming({
     status: detail.status,
     scheduledAt: detail.scheduledAt,
@@ -324,8 +251,8 @@ export function ProgrammingDetailView({
   );
   const revisionCountLabel = `${relevantRevisions.length} ${relevantRevisions.length === 1 ? "evento" : "eventos"}`;
   const actions = useMemo(() => {
-    const result: Array<{ intent: DialogIntent; label: string; icon: typeof Pencil }> = [];
-    if (detail.status === "PENDING_CONFIRMATION" && permissions.canModify && editWindowOpen) {
+    const result: Array<{ intent: ActionIntent; label: string; icon: typeof Pencil }> = [];
+    if (canEdit) {
       result.push({ intent: "edit", label: "Editar", icon: Pencil });
     }
     if (detail.status === "IN_EXECUTION" && permissions.canClose) {
@@ -333,7 +260,7 @@ export function ProgrammingDetailView({
     }
     if (canCancel) result.push({ intent: "cancel", label: "Cancelar", icon: XCircle });
     return result;
-  }, [canCancel, detail.status, editWindowOpen, permissions.canClose, permissions.canModify]);
+  }, [canCancel, canEdit, detail.status, permissions.canClose]);
 
   return (
     <>
@@ -400,6 +327,7 @@ export function ProgrammingDetailView({
               <dl className="mt-5 grid gap-3 min-[420px]:grid-cols-2 sm:gap-5">
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Proveedor</dt><dd className="break-words text-sm text-foreground">{detail.supplierName}</dd></div>
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Fecha programada</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.scheduledAt, project.timezone)}</dd></div>
+                <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Pedido No.</dt><dd className="text-sm text-foreground">{detail.orderNumber ?? "—"}</dd></div>
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Creada por</dt><dd className="break-words text-sm text-foreground">{detail.createdByName}</dd></div>
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Creada</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.createdAt, project.timezone)}</dd></div>
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Persona que confirmó</dt><dd className="break-words text-sm text-foreground">{detail.confirmedByName ?? "Sin confirmar"}</dd></div>
@@ -414,9 +342,10 @@ export function ProgrammingDetailView({
               </div>
               <ol className="divide-y divide-border">
                 {detail.lines.map((line) => (
-                  <li key={line.id} className="grid grid-cols-[2.5rem_minmax(0,1fr)_4rem] items-center gap-3 px-5 py-4 text-sm sm:px-6">
+                  <li key={line.id} className="grid grid-cols-[2.5rem_minmax(0,1fr)_4rem] items-center gap-3 px-5 py-4 text-sm sm:grid-cols-[2.5rem_minmax(0,1fr)_minmax(8rem,1fr)_4rem] sm:px-6">
                     <span className="font-mono text-xs text-foreground-muted">{line.position}</span>
                     <span className="font-semibold text-foreground">{formatProgrammingQuantity(line.quantity)}</span>
+                    <span className="col-span-3 text-foreground-muted sm:col-span-1">{line.concreteType ?? "—"}</span>
                     <span className="font-semibold text-foreground">{line.unitCode}</span>
                   </li>
                 ))}
@@ -487,12 +416,22 @@ export function ProgrammingDetailView({
       </div>
 
       <AnimatePresence>
-        {intent && (
+        {intent === "edit" && (
+          <ProgrammingEditDialog
+            key={`edit-${detail.version}`}
+            item={detail}
+            suppliers={data.suppliers}
+            units={data.units}
+            timezone={project.timezone}
+            onClose={() => setIntent(null)}
+            onUpdated={() => setIntent(null)}
+          />
+        )}
+        {intent && intent !== "edit" && (
           <MutationDialog
             key={`${intent}-${detail.version}`}
             intent={intent}
             data={data}
-            timezone={project.timezone}
             onClose={() => setIntent(null)}
           />
         )}
@@ -508,6 +447,8 @@ export function ProgrammingDetailView({
           scheduledAt: detail.scheduledAt,
           supplierId: detail.supplierId,
           supplierName: detail.supplierName,
+          orderNumber: detail.orderNumber,
+          concreteTypes: detail.lines.flatMap((line) => line.concreteType ? [line.concreteType] : []),
           programmedVolume: detail.confirmedQuantity ?? detail.requestedQuantity,
           unitCode: detail.unitCode,
           dispatchId: null,

@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProgrammingCatalogs, getProgrammingItems } from "./queries";
 import {
   extractMixtoProgrammingWorkbook,
+  isApprovedProgrammingDayAllowed,
   MIXTO_WORKBOOK_ERROR,
 } from "./mixto-listo-workbook";
 import {
@@ -129,7 +130,16 @@ function databaseErrorMessage(error: { code?: string; message: string }) {
     return "Esta programación solo podía editarse hasta un día antes de la fecha programada.";
   }
   if (message.includes("PROGRAMMING_NOT_EDITABLE")) {
-    return "Solo las programaciones pendientes de confirmación pueden editarse.";
+    return "Solo pueden editarse programaciones pendientes o confirmadas que aún no tengan despacho.";
+  }
+  if (message.includes("PROGRAMMING_EDIT_HAS_DISPATCHES")) {
+    return "No se puede editar porque el despacho ya fue iniciado.";
+  }
+  if (message.includes("PROGRAMMING_EDIT_REASON_REQUIRED")) {
+    return "Ingresa el motivo de la edición.";
+  }
+  if (message.includes("PROGRAMMING_EDIT_REASON_TOO_LONG")) {
+    return "El motivo de la edición no puede superar 1000 caracteres.";
   }
   if (message.includes("PROGRAMMING_NOT_PENDING_CONFIRMATION")) {
     return "La programación ya no está pendiente de confirmación.";
@@ -175,6 +185,15 @@ function databaseErrorMessage(error: { code?: string; message: string }) {
   }
   if (message.includes("PROGRAMMING_REQUIRES_LINE")) {
     return "Agrega al menos un producto a la programación.";
+  }
+  if (message.includes("PROGRAMMING_ORDER_NUMBER_REQUIRED")) {
+    return "Pedido No. es obligatorio antes de confirmar la programación.";
+  }
+  if (message.includes("PROGRAMMING_CONCRETE_TYPE_REQUIRED")) {
+    return "Tipo de concreto es obligatorio en todos los productos.";
+  }
+  if (message.includes("PROGRAMMING_BATCH_ROW_INVALID")) {
+    return "Una fila del lote aprobado no cumple las reglas de programación.";
   }
   if (message.includes("INVALID_PROGRAMMING_LINE")) {
     return "Revisa las cantidades y unidades de los productos.";
@@ -239,28 +258,41 @@ export async function mutateProgrammingAction(
     const scheduledAt = readText(formData, "scheduledAt");
     const quantities = readTexts(formData, "lineQuantity");
     const unitCodes = readTexts(formData, "lineUnitCode");
+    const concreteTypes = readTexts(formData, "lineConcreteType");
+    const orderNumber = readText(formData, "orderNumber");
+    const reason = readText(formData, "reason");
     const notes = readText(formData, "notes");
     const lines = quantities.map((quantity, index) => ({
       quantity: Number(quantity),
       unit_code: unitCodes[index] ?? "",
+      concrete_type: concreteTypes[index] ?? "",
     }));
 
     if (
       !UUID_PATTERN.test(supplierId) ||
       !lines.length ||
       quantities.length !== unitCodes.length ||
+      quantities.length !== concreteTypes.length ||
+      !orderNumber ||
+      !reason ||
+      reason.length > 1000 ||
       lines.some(
         (line) =>
           !Number.isFinite(line.quantity) ||
           line.quantity <= 0 ||
           !line.unit_code ||
+          !line.concrete_type ||
           line.unit_code.length > 32,
       )
     ) {
       return {
         status: "error",
         intent,
-        message: "Revisa el proveedor y las líneas de productos.",
+        message: !reason
+          ? "Ingresa el motivo de la edición."
+          : reason.length > 1000
+            ? "El motivo de la edición no puede superar 1000 caracteres."
+            : "Revisa el proveedor y las líneas de productos.",
       };
     }
 
@@ -291,13 +323,15 @@ export async function mutateProgrammingAction(
       };
     }
 
-    ({ error } = await supabase.rpc("update_programming_with_lines", {
+    ({ error } = await supabase.rpc("update_programming_with_details", {
       p_programming_id: programmingId,
       p_expected_version: expectedVersion,
       p_supplier_id: supplierId,
       p_scheduled_at: scheduledAtIso,
       p_lines: lines,
       p_notes: notes || null,
+      p_order_number: orderNumber,
+      p_reason: reason,
     }));
   } else if (intent === "confirm") {
     const confirmedQuantity = Number(readText(formData, "confirmedQuantity"));
@@ -405,14 +439,18 @@ export async function createProgrammingAction(
   const scheduledAt = readText(formData, "scheduledAt");
   const quantities = readTexts(formData, "lineQuantity");
   const unitCodes = readTexts(formData, "lineUnitCode");
+  const concreteTypes = readTexts(formData, "lineConcreteType");
+  const orderNumber = readText(formData, "orderNumber");
   const notes = readText(formData, "notes");
   const lines = quantities.map((quantity, index) => ({
     quantity,
     unitCode: unitCodes[index] ?? "",
+    concreteType: concreteTypes[index] ?? "",
   }));
   const fields = {
     supplierId,
     scheduledAt,
+    orderNumber,
     lines,
     notes,
   };
@@ -420,13 +458,16 @@ export async function createProgrammingAction(
   if (!UUID_PATTERN.test(projectId) || !UUID_PATTERN.test(supplierId)) {
     return { status: "error", message: "Selecciona un proyecto y proveedor válidos.", fields };
   }
-  if (!lines.length || quantities.length !== unitCodes.length) {
+  if (!orderNumber || orderNumber.length > 120) {
+    return { status: "error", message: "Ingresa un Pedido No. válido.", fields };
+  }
+  if (!lines.length || quantities.length !== unitCodes.length || quantities.length !== concreteTypes.length) {
     return { status: "error", message: "Agrega al menos un producto válido.", fields };
   }
   if (
-    lines.some(({ quantity, unitCode }) => {
+    lines.some(({ quantity, unitCode, concreteType }) => {
       const parsedQuantity = Number(quantity);
-      return !Number.isFinite(parsedQuantity) || parsedQuantity <= 0 || !unitCode || unitCode.length > 32;
+      return !Number.isFinite(parsedQuantity) || parsedQuantity <= 0 || !unitCode || unitCode.length > 32 || !concreteType || concreteType.length > 160;
     })
   ) {
     return {
@@ -470,15 +511,17 @@ export async function createProgrammingAction(
     };
   }
 
-  const { data, error } = await supabase.rpc("create_programming_with_lines", {
+  const { data, error } = await supabase.rpc("create_programming_with_details", {
     p_project_id: projectId,
     p_supplier_id: supplierId,
     p_scheduled_at: scheduledAtIso,
-    p_lines: lines.map(({ quantity, unitCode }) => ({
+    p_lines: lines.map(({ quantity, unitCode, concreteType }) => ({
       quantity: Number(quantity),
       unit_code: unitCode,
+      concrete_type: concreteType,
     })),
     p_notes: notes || null,
+    p_order_number: orderNumber,
   });
 
   if (error) {
@@ -578,46 +621,72 @@ export async function createProgrammingBatchAction(
 ): Promise<CreateProgrammingBatchState> {
   const projectId = readText(formData, "projectId");
   const rawRows = readText(formData, "rows");
-  if (!UUID_PATTERN.test(projectId) || !rawRows) {
+  const file = formData.get("workbook");
+  if (!UUID_PATTERN.test(projectId) || !rawRows || !(file instanceof File) || file.size === 0) {
     return { status: "error", message: "La vista previa no es válida." };
   }
   const context = await authorizeProject(projectId, "programming.create");
   if (!context) {
     return { status: "error", message: "No tienes permiso para crear programaciones." };
   }
-  let rows: Array<{
-    scheduledAt: string;
-    quantity: string;
-    unitCode: string;
+  let submittedRows: Array<{
+    sourceRow: number;
     supplierId: string;
     notes: string;
   }>;
   try {
-    rows = JSON.parse(rawRows);
+    submittedRows = JSON.parse(rawRows);
   } catch {
     return { status: "error", message: "La vista previa no es válida." };
   }
-  if (!Array.isArray(rows) || !rows.length || rows.length > 250) {
+  if (!Array.isArray(submittedRows) || !submittedRows.length || submittedRows.length > 250) {
     return { status: "error", message: "La carga debe contener entre 1 y 250 filas." };
   }
   const timezone = context.activeProject?.timezone || "America/Guatemala";
   const today = localDateKey(new Date(), timezone);
+  let workbook;
+  try {
+    workbook = await extractMixtoProgrammingWorkbook(file, {
+      id: context.activeProject?.id,
+      label: context.activeProject ? `${context.activeProject.code} · ${context.activeProject.name}` : undefined,
+      billingLegalName: context.activeProject?.billingLegalName?.trim() ?? "",
+      address: context.activeProject?.address?.trim() ?? "",
+      candidateProjects: context.projects.filter((project) => project.status === "ACTIVE").map((project) => ({
+        id: project.id,
+        label: `${project.code} · ${project.name}`,
+        address: project.address,
+        billingLegalName: project.billingLegalName,
+      })),
+    });
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : MIXTO_WORKBOOK_ERROR };
+  }
+  const submittedBySourceRow = new Map(submittedRows.map((row) => [Number(row.sourceRow), row]));
+  if (workbook.rows.length !== submittedRows.length) {
+    return { status: "error", message: "El archivo original no coincide con la vista previa." };
+  }
+  const catalogs = await getProgrammingCatalogs(projectId);
+  const m3Unit = catalogs.units.find((unit) => unit.code.trim().toUpperCase() === "M3");
+  if (!m3Unit) return { status: "error", message: "La unidad M3 no está activa." };
   const items = [];
-  for (const [index, row] of rows.entries()) {
+  for (const row of workbook.rows) {
+    const submitted = submittedBySourceRow.get(row.sourceRow);
+    if (!submitted) return { status: "error", message: `La fila Excel ${row.sourceRow} no coincide con la vista previa.` };
     const quantity = Number(row.quantity);
     const scheduledAt = localDateTimeToIso(row.scheduledAt, timezone);
     if (
-      !scheduledAt || row.scheduledAt.slice(0, 10) < today ||
+      !scheduledAt || !isApprovedProgrammingDayAllowed(row.scheduledAt, today) ||
       !Number.isFinite(quantity) || quantity <= 0 ||
-      !UUID_PATTERN.test(row.supplierId) || !row.unitCode
+      !UUID_PATTERN.test(submitted.supplierId) || !row.orderNumber || !row.concreteType
     ) {
-      return { status: "error", message: `Revisa la fila ${index + 1} de la vista previa.` };
+      return { status: "error", message: `Revisa la fila Excel ${row.sourceRow}; la fecha aprobada debe ser de hoy o posterior y los campos obligatorios deben estar completos.` };
     }
     items.push({
-      supplier_id: row.supplierId,
+      supplier_id: submitted.supplierId,
       scheduled_at: scheduledAt,
-      lines: [{ quantity, unit_code: row.unitCode }],
-      notes: row.notes || null,
+      order_number: row.orderNumber,
+      lines: [{ quantity, unit_code: m3Unit.code, concrete_type: row.concreteType }],
+      notes: submitted.notes?.trim() || row.notes || null,
     });
   }
   const supabase = await createClient();
@@ -634,6 +703,6 @@ export async function createProgrammingBatchAction(
   return {
     status: "success",
     programmingIds,
-    message: `${programmingIds.length} programaciones creadas pendientes de confirmación.`,
+    message: `${programmingIds.length} programaciones aprobadas y listas para despachar.`,
   };
 }
