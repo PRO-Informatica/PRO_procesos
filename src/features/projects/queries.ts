@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 
 import {
   hasUniversalOperationalViewRole,
+  mergePlatformAdminProjectAccess,
   PLATFORM_ADMIN_VIEW_SOURCE_ROLES,
   selectOperationalViewPermissions,
 } from "./access-policy";
@@ -248,7 +249,6 @@ async function resolveRolesAndPermissionsForAccess(
   project: ProjectSummary,
   platformAdminAccess: PlatformAdminOperationalViewAccess | null,
 ) {
-  if (platformAdminAccess) return platformAdminAccess;
   const supabase = await createClient();
 
   const [projectMembershipResult, companyMembershipResult] = await Promise.all([
@@ -302,7 +302,11 @@ async function resolveRolesAndPermissionsForAccess(
   ];
 
   if (roleIds.length === 0) {
-    return { roleCodes: [], permissions: [], isCompanyAdmin: false };
+    return mergePlatformAdminProjectAccess(platformAdminAccess, {
+      roleCodes: [],
+      permissions: [],
+      isCompanyAdmin: false,
+    });
   }
 
   const [rolesResult, rolePermissionsResult] = await Promise.all([
@@ -339,11 +343,11 @@ async function resolveRolesAndPermissionsForAccess(
     ...new Set(permissionsResult.data.map((permission) => permission.code as string)),
   ];
 
-  return {
+  return mergePlatformAdminProjectAccess(platformAdminAccess, {
     roleCodes,
     permissions,
     isCompanyAdmin: roleCodes.includes("COMPANY_ADMIN"),
-  };
+  });
 }
 
 export async function resolveRolesAndPermissions(

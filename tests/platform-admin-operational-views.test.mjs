@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   hasUniversalOperationalViewRole,
+  mergePlatformAdminProjectAccess,
   PLATFORM_ADMIN_VIEW_SOURCE_ROLES,
   selectOperationalViewPermissions,
 } from "../src/features/projects/access-policy.ts";
@@ -43,6 +44,46 @@ test("PLATFORM_ADMIN participa en vistas universales de solo lectura", () => {
   assert.equal(hasUniversalOperationalViewRole(["RECEPTION"]), false);
 });
 
+test("PLATFORM_ADMIN conserva los permisos explícitos de su rol en el proyecto", () => {
+  assert.deepEqual(
+    mergePlatformAdminProjectAccess(
+      {
+        roleCodes: ["PLATFORM_ADMIN"],
+        permissions: ["programming.view", "dispatch.view"],
+        isCompanyAdmin: false,
+      },
+      {
+        roleCodes: ["RESIDENT"],
+        permissions: ["programming.view", "programming.create"],
+        isCompanyAdmin: false,
+      },
+    ),
+    {
+      roleCodes: ["PLATFORM_ADMIN", "RESIDENT"],
+      permissions: ["programming.view", "dispatch.view", "programming.create"],
+      isCompanyAdmin: false,
+    },
+  );
+});
+
+test("PLATFORM_ADMIN sin rol en el proyecto continúa con acceso de solo lectura", () => {
+  assert.deepEqual(
+    mergePlatformAdminProjectAccess(
+      {
+        roleCodes: ["PLATFORM_ADMIN"],
+        permissions: ["programming.view", "dispatch.view"],
+        isCompanyAdmin: false,
+      },
+      { roleCodes: [], permissions: [], isCompanyAdmin: false },
+    ),
+    {
+      roleCodes: ["PLATFORM_ADMIN"],
+      permissions: ["programming.view", "dispatch.view"],
+      isCompanyAdmin: false,
+    },
+  );
+});
+
 test("el alcance global se resuelve en servidor sin conceder escrituras", async () => {
   const [queries, actions, batches, reports, userDetail, dashboard] = await Promise.all(
     [
@@ -59,6 +100,7 @@ test("el alcance global se resuelve en servidor sin conceder escrituras", async 
   assert.match(queries, /\.from\("projects"\)\.select\(PROJECT_COLUMNS\)/u);
   assert.match(queries, /roleCodes: \["PLATFORM_ADMIN"\]/u);
   assert.match(queries, /selectOperationalViewPermissions/u);
+  assert.match(queries, /mergePlatformAdminProjectAccess/u);
   assert.deepEqual(
     selectOperationalViewPermissions([
       "programming.create",
