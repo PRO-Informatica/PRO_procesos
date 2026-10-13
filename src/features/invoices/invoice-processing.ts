@@ -14,6 +14,7 @@ import {
   C14_EXCEPTION_MESSAGE,
   evaluateInvoiceRecipientPolicy,
 } from "./invoice-recipient-policy";
+import type { ReconciliationQuantitySource } from "./reconciliation-quantity";
 
 export type ProcessedInvoiceType = "PRODUCT" | "SERVICE" | "UNKNOWN";
 
@@ -27,8 +28,10 @@ export type InvoiceProcessingContext = {
   billingTaxId: string | null;
   projectAddress: string | null;
   accountingPeriod: string;
+  expectedQuantity: number | null;
+  expectedUnitCode: string | null;
+  expectedQuantitySource: ReconciliationQuantitySource;
   realVolume: number | null;
-  realUnitCode: string | null;
 };
 
 export type InvoiceProcessingPayload = {
@@ -64,6 +67,10 @@ export type InvoiceProcessingPayload = {
   invoiced_quantity: number;
   normalized_unit: string | null;
   expected_real_volume: number | null;
+  comparison_quantity: number | null;
+  comparison_unit_code: string | null;
+  comparison_basis: ReconciliationQuantitySource;
+  expected_quantity_source?: ReconciliationQuantitySource;
   difference: number | null;
   recipient_policy: {
     detected_identity: string | null;
@@ -186,10 +193,13 @@ export function processExtractedInvoice(
     series: extracted.series,
     invoiceNumber: extracted.invoice_number,
   });
-  const expectedUnit = normalizeInvoiceUnit(context.realUnitCode);
-  const difference = context.realVolume === null || detectedType !== "PRODUCT"
+  const expectedUnit = normalizeInvoiceUnit(context.expectedUnitCode);
+  const difference = context.expectedQuantity === null || detectedType !== "PRODUCT"
     ? null
-    : Number((invoicedQuantity - context.realVolume).toFixed(3));
+    : Number((invoicedQuantity - context.expectedQuantity).toFixed(3));
+  const expectedQuantityLabel = context.expectedQuantitySource === "PROGRAMMED_QUANTITY"
+    ? "la cantidad programada"
+    : "el Volumen Real";
   const warnings: string[] = [];
   if (projectValid && addressComparison.matchMethod !== "EXACT") {
     warnings.push(
@@ -204,9 +214,9 @@ export function processExtractedInvoice(
     warnings.push("La dirección corresponde al proyecto, pero la razón social receptora es diferente.");
   }
   if (detectedType === "PRODUCT" && invoiceUnit !== expectedUnit)
-    warnings.push("La unidad facturada no coincide con la unidad del Volumen Real.");
+    warnings.push(`La unidad facturada no coincide con ${expectedQuantityLabel}.`);
   if (difference !== null && Math.abs(difference) >= 0.001)
-    warnings.push(`La cantidad facturada difiere del Volumen Real en ${difference}.`);
+    warnings.push(`La cantidad facturada difiere de ${expectedQuantityLabel} en ${difference}.`);
 
   const validations = {
     document_valid: true,
@@ -276,6 +286,9 @@ export function processExtractedInvoice(
       invoiced_quantity: invoicedQuantity,
       normalized_unit: invoiceUnit,
       expected_real_volume: context.realVolume,
+      comparison_quantity: context.expectedQuantity,
+      comparison_unit_code: context.expectedUnitCode,
+      comparison_basis: context.expectedQuantitySource,
       difference,
       recipient_policy: {
         detected_identity: recipientPolicy.detectedIdentity,

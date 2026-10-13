@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import type { NotificationMessage } from "@/lib/notification-messages";
+import { notifications, type NotificationMessage } from "@/lib/notification-messages";
 import { notify } from "@/lib/notify";
 
 export function useActionNotification({
@@ -30,7 +30,7 @@ export function useActionNotification({
       notify.success(success);
       handled.current = true;
     } else if (status === "error") {
-      if (error) notify.error(error);
+      notify.error(error ?? notifications.actionFailed);
       handled.current = true;
     }
   }, [error, pending, status, success]);

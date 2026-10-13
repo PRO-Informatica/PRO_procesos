@@ -1,17 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { buildTrustedUrl } from "@/features/auth/security";
+import { getPublicEnvironment } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 
 async function handleSignOut(request: NextRequest) {
   const supabase = await createClient();
   await supabase.auth.signOut();
 
-  const loginUrl = new URL("/login", request.url);
+  const environment = getPublicEnvironment();
+  const loginUrl = buildTrustedUrl(environment.appUrl, "/login");
   if (request.nextUrl.searchParams.get("reason") === "inactive") {
-    loginUrl.searchParams.set(
-      "error",
-      "Tu usuario no tiene acceso activo. Comunícate con el administrador de tu empresa.",
-    );
+    loginUrl.searchParams.set("error", "access_denied");
   }
 
   return NextResponse.redirect(loginUrl);

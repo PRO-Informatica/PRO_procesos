@@ -8,6 +8,7 @@ import { cn } from "@/lib/class-names";
 import { motionTokens } from "@/lib/motion/tokens";
 
 import { buttonVariantClass, type ButtonVariant } from "@/components/ui/button";
+import { useDelayedPending } from "./use-delayed-pending";
 
 export function LoadingButton({
   children,
@@ -27,6 +28,7 @@ export function LoadingButton({
 }) {
   const { pending: formPending } = useFormStatus();
   const pending = loading || formPending;
+  const showLoading = useDelayedPending(pending);
   const reduceMotion = useReducedMotion();
 
   return (
@@ -43,15 +45,15 @@ export function LoadingButton({
         <span aria-hidden="true" className="invisible col-start-1 row-start-1 inline-flex items-center justify-center gap-2"><span className="size-4" />{loadingLabel}</span>
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
-            key={pending ? "loading" : "idle"}
+            key={showLoading ? "loading" : "idle"}
             className="col-start-1 row-start-1 inline-flex items-center justify-center gap-2"
             initial={reduceMotion ? false : { opacity: 0, y: 3 }}
             animate={{ opacity: 1, y: 0 }}
             exit={reduceMotion ? undefined : { opacity: 0, y: -3 }}
             transition={reduceMotion ? { duration: 0 } : { duration: motionTokens.duration.instant }}
           >
-            {pending && <LoaderCircle aria-hidden="true" className={`size-4 ${reduceMotion ? "" : "animate-spin"}`} />}
-            {pending ? loadingLabel : children}
+            {showLoading && <LoaderCircle aria-hidden="true" className={`size-4 ${reduceMotion ? "" : "animate-spin"}`} />}
+            {showLoading ? loadingLabel : children}
           </motion.span>
         </AnimatePresence>
       </span>

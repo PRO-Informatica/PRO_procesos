@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { classifyInvoiceLines } from "@/features/invoices/invoice-classification";
 import { normalizeOperationalOrder, processInvoicePdf, type InvoiceProcessingContext } from "@/features/invoices/invoice-processing";
+import { resolveReconciliationQuantityBasis, selectValidProgrammedQuantity } from "@/features/invoices/reconciliation-quantity";
 import { resolveInvoiceUploadSlot } from "@/features/invoices/reinvoicing";
 import { decideInvoiceRecipientException, type RecipientExceptionDecision } from "@/features/invoices/recipient-exception-service";
 import { getOperationalProjectAccessForProject } from "@/features/projects/queries";
@@ -77,18 +78,32 @@ type DispatchInvoiceContext = InvoiceProcessingContext & { projectId: string; ba
 async function invoiceContext(projectId: string, batchId: string, dispatchId: string): Promise<DispatchInvoiceContext | null> {
   const admin = createAdminClient();
   const [dispatchResult, batchResult, projectResult, reconciliationResult] = await Promise.all([
-    admin.from("dispatches").select("id, project_id, supplier_id, order_number, real_volume, real_unit_code, status").eq("id", dispatchId).eq("project_id", projectId).maybeSingle(),
+    admin.from("dispatches").select("id, project_id, programming_id, supplier_id, order_number, real_volume, real_unit_code, status, result").eq("id", dispatchId).eq("project_id", projectId).maybeSingle(),
     admin.from("batches").select("id, project_id, accounting_period").eq("id", batchId).eq("project_id", projectId).maybeSingle(),
     admin.from("projects").select("id, company_id, address, billing_legal_name, billing_tax_id").eq("id", projectId).maybeSingle(),
     admin.from("dispatch_reconciliations").select("status, current_product_invoice_id, current_service_invoice_id").eq("dispatch_id", dispatchId).eq("project_id", projectId).maybeSingle(),
   ]);
   if (!dispatchResult.data || !batchResult.data || !projectResult.data) return null;
-  const [relationResult, supplierResult, companyResult] = await Promise.all([
+  const [relationResult, supplierResult, companyResult, programmingResult, incidentsResult] = await Promise.all([
     admin.from("batch_dispatches").select("id").eq("batch_id", batchId).eq("dispatch_id", dispatchId).is("removed_at", null).maybeSingle(),
     admin.from("suppliers").select("name, tax_id").eq("id", dispatchResult.data.supplier_id).maybeSingle(),
     admin.from("companies").select("code").eq("id", projectResult.data.company_id).maybeSingle(),
+    admin.from("programming").select("requested_quantity, confirmed_quantity, unit_code").eq("id", dispatchResult.data.programming_id).eq("project_id", projectId).maybeSingle(),
+    admin.from("dispatch_incidents").select("id", { count: "exact", head: true }).eq("dispatch_id", dispatchId).eq("project_id", projectId),
   ]);
-  if (!relationResult.data || !supplierResult.data || !companyResult.data) return null;
+  if (!relationResult.data || !supplierResult.data || !companyResult.data || !programmingResult.data || incidentsResult.error) return null;
+  const programmedQuantity = selectValidProgrammedQuantity(
+    programmingResult.data.confirmed_quantity === null ? null : Number(programmingResult.data.confirmed_quantity),
+    programmingResult.data.requested_quantity === null ? null : Number(programmingResult.data.requested_quantity),
+  );
+  const quantityBasis = resolveReconciliationQuantityBasis({
+    dispatchResult: dispatchResult.data.result,
+    incidentCount: incidentsResult.count ?? 0,
+    realVolume: dispatchResult.data.real_volume === null ? null : Number(dispatchResult.data.real_volume),
+    realUnitCode: dispatchResult.data.real_unit_code,
+    programmedQuantity: programmedQuantity === null ? null : Number(programmedQuantity),
+    programmedUnitCode: programmingResult.data.unit_code,
+  });
   return {
     projectId, batchId, dispatchId,
     operationalStatus: dispatchResult.data.status,
@@ -100,8 +115,10 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
     billingTaxId: projectResult.data.billing_tax_id,
     projectAddress: projectResult.data.address,
     accountingPeriod: batchResult.data.accounting_period,
+    expectedQuantity: quantityBasis.quantity,
+    expectedUnitCode: quantityBasis.unitCode,
+    expectedQuantitySource: quantityBasis.source,
     realVolume: dispatchResult.data.real_volume === null ? null : Number(dispatchResult.data.real_volume),
-    realUnitCode: dispatchResult.data.real_unit_code,
     productInvoiceId: reconciliationResult.data?.current_product_invoice_id ?? null,
     serviceInvoiceId: reconciliationResult.data?.current_service_invoice_id ?? null,
     reconciliationStatus: reconciliationResult.data?.status ?? "NOT_STARTED",

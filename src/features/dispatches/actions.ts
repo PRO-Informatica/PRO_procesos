@@ -8,6 +8,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 import type {
+  DispatchCatalogOption,
+  DispatchCatalogSearchResult,
+  DispatchCatalogType,
   DispatchMutationState,
   IncidentMutationState,
   UploadActionResult,
@@ -91,7 +94,17 @@ function dispatchError(message: string) {
   if (value.includes("DISPATCH_GUIDE_HAS_EVIDENCE"))
     return "Quita primero la evidencia vinculada a esta guía.";
   if (value.includes("DISPATCH_PROGRAMMING_UNIT_MISMATCH"))
-    return "La unidad debe coincidir con la programación.";
+    return "Las líneas de producto deben usar la misma UM de la programación.";
+  if (value.includes("DISPATCH_CATALOG_SELECTION_REQUIRED"))
+    return "Selecciona un producto o servicio del catálogo en cada línea nueva.";
+  if (value.includes("DISPATCH_CATALOG_ITEM_NOT_FOUND"))
+    return "El producto o servicio seleccionado ya no está disponible en el catálogo de este proyecto.";
+  if (value.includes("DISPATCH_CATALOG_TYPE_INVALID"))
+    return "Selecciona una categoría de catálogo válida.";
+  if (value.includes("DISPATCH_GUIDE_OPERATIONAL_PRODUCT_REQUIRED"))
+    return "La guía necesita al menos una línea de producto para registrar el volumen operativo.";
+  if (value.includes("INVALID_OR_INACTIVE_UNIT_OF_MEASURE"))
+    return "Selecciona una UM válida: KM, M3 o UN.";
   if (value.includes("NOT_DISPATCHED_INCIDENT_REQUIRED"))
     return "Un despacho no realizado debe tener al menos una incidencia.";
   if (value.includes("DISPATCH_RESULT_REQUIRED"))
@@ -209,18 +222,77 @@ export async function saveDispatchAction(
 }
 
 function guideLines(formData: FormData) {
+  const lineIds = formData.getAll("lineId").map((value) => String(value).trim());
   const quantities = formData.getAll("lineQuantity").map(Number);
   const units = formData.getAll("lineUnitCode").map(String);
-  const codes = formData.getAll("lineProductCode").map((value) => String(value).trim());
+  const catalogTypes = formData
+    .getAll("lineCatalogType")
+    .map((value) => String(value).trim().toUpperCase());
+  const catalogItemIds = formData
+    .getAll("lineCatalogItemId")
+    .map((value) => String(value).trim());
   const descriptions = formData
     .getAll("lineProductDescription")
     .map((value) => String(value).trim());
   return quantities.map((quantity, index) => ({
+    line_id: lineIds[index] || null,
     quantity,
-    unit_code: units[index]?.trim(),
-    product_code: codes[index] || null,
+    unit_code: units[index]?.trim().toUpperCase(),
+    catalog_type: (["PRODUCT", "SERVICE"] as string[]).includes(catalogTypes[index])
+      ? catalogTypes[index] as DispatchCatalogType
+      : null,
+    catalog_item_id: catalogItemIds[index] || null,
     product_description: descriptions[index] || null,
   }));
+}
+
+export async function searchDispatchCatalogAction(
+  projectId: string,
+  catalogType: DispatchCatalogType,
+  query: string,
+): Promise<DispatchCatalogSearchResult> {
+  if (!validId(projectId) || !["PRODUCT", "SERVICE"].includes(catalogType)) {
+    return { status: "error", message: "La búsqueda del catálogo no es válida.", items: [] };
+  }
+  if (!(await authorize(projectId, "dispatch.view"))) {
+    return { status: "error", message: "No tienes permiso para consultar este catálogo.", items: [] };
+  }
+
+  const { data, error } = await (await createClient()).rpc(
+    "search_project_dispatch_catalog",
+    {
+      p_project_id: projectId,
+      p_catalog_type: catalogType,
+      p_query: query.trim().slice(0, 120),
+      p_limit: 50,
+    },
+  );
+  if (error) {
+    return { status: "error", message: dispatchError(error.message), items: [] };
+  }
+
+  const rawItems = data && typeof data === "object" && !Array.isArray(data)
+    ? (data as { items?: unknown }).items
+    : [];
+  const items = Array.isArray(rawItems)
+    ? rawItems.flatMap<DispatchCatalogOption>((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+        const row = item as Record<string, unknown>;
+        const id = String(row.id ?? "");
+        const code = String(row.code ?? "");
+        const price = Number(row.price);
+        if (!validId(id) || !code || !Number.isFinite(price) || price < 0) return [];
+        return [{
+          id,
+          type: catalogType,
+          code,
+          reference: typeof row.reference === "string" ? row.reference : null,
+          price,
+          currency: "GTQ",
+        }];
+      })
+    : [];
+  return { status: "success", items };
 }
 
 export async function saveDispatchGuideAction(

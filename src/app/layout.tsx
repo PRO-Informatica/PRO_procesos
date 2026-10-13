@@ -5,6 +5,8 @@ import { AppToaster } from "@/components/feedback/app-toaster";
 import { GlobalLoadingProvider } from "@/components/feedback/global-loading-provider";
 import { MotionProvider } from "@/components/providers/motion-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { EnvironmentBadge } from "@/components/shared/environment-badge";
+import { getPublicEnvironment } from "@/lib/env";
 
 import "@schedule-x/theme-default/dist/index.css";
 import "sileo/styles.css";
@@ -28,6 +30,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const environment = getPublicEnvironment();
+
   return (
     <html
       lang="es"
@@ -40,6 +44,7 @@ export default function RootLayout({
             <GlobalLoadingProvider>
               {children}
               <AppToaster />
+              <EnvironmentBadge environment={environment.appEnvironment} />
             </GlobalLoadingProvider>
           </MotionProvider>
         </ThemeProvider>

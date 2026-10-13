@@ -120,36 +120,49 @@ test("finalizar exige evidencia y horas del día de la programación", () => {
   assert.match(completionValidationMigration, /public\.finalize_dispatch/u);
 });
 
-test("una línea de guía admite cualquier combinación de etiquetas opcionales", () => {
-  for (const [product_code, product_description] of [
-    ["CON-01", "Concreto"],
-    [null, "Concreto"],
-    ["CON-01", null],
-    [null, null],
-  ]) {
-    assert.equal(
-      validateDispatchGuideLines([
-        { quantity: 12.5, unit_code: "M3", product_code, product_description },
-      ]),
-      null,
-    );
-  }
+test("una línea nueva exige selección de catálogo y una histórica puede conservarse", () => {
+  assert.equal(validateDispatchGuideLines([{
+    line_id: null,
+    quantity: 12.5,
+    unit_code: "M3",
+    catalog_type: "PRODUCT",
+    catalog_item_id: "78f495d6-d721-4b65-94f0-fdc94a03b8df",
+    product_description: "CON.3003",
+  }]), null);
+  assert.equal(validateDispatchGuideLines([{
+    line_id: "78f495d6-d721-4b65-94f0-fdc94a03b8df",
+    quantity: 12.5,
+    unit_code: "M3",
+    catalog_type: null,
+    catalog_item_id: null,
+    product_description: "Concreto histórico",
+  }]), null);
+  assert.match(validateDispatchGuideLines([{
+    line_id: null,
+    quantity: 12.5,
+    unit_code: "M3",
+    catalog_type: null,
+    catalog_item_id: null,
+    product_description: null,
+  }]), /Selecciona/u);
 });
 
-test("el formulario y la acción envían las etiquetas vacías como NULL", () => {
-  assert.doesNotMatch(guideDialog, /name="lineProductCode" required/u);
-  assert.doesNotMatch(guideDialog, /name="lineProductDescription" required/u);
-  assert.match(guideDialog, /Código[\s\S]*\(opcional\)/u);
-  assert.match(guideDialog, /Descripción[\s\S]*\(opcional\)/u);
-  assert.match(dispatchActions, /product_code: codes\[index\] \|\| null/u);
-  assert.match(dispatchActions, /product_description: descriptions\[index\] \|\| null/u);
+test("el formulario envía identidad de catálogo y no permite código libre", () => {
+  assert.match(guideDialog, /name="lineCatalogType"/u);
+  assert.match(guideDialog, /name="lineCatalogItemId"/u);
+  assert.doesNotMatch(guideDialog, /name="lineProductCode"/u);
+  assert.match(guideDialog, /DispatchCatalogPickerDialog/u);
+  assert.match(dispatchActions, /catalog_type:/u);
+  assert.match(dispatchActions, /catalog_item_id:/u);
 });
 
 test("cantidad y UM continúan siendo obligatorias en cada línea de guía", () => {
   const base = {
+    line_id: null,
     quantity: 12.5,
     unit_code: "M3",
-    product_code: null,
+    catalog_type: "PRODUCT",
+    catalog_item_id: "78f495d6-d721-4b65-94f0-fdc94a03b8df",
     product_description: null,
   };
   assert.match(validateDispatchGuideLines([{ ...base, quantity: 0 }]), /cantidad/u);

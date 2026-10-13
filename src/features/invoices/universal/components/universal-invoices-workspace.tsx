@@ -1,13 +1,16 @@
 "use client";
 
-import { Building2, FileText, Globe2, Package, Trash2, Upload, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { Building2, CheckCircle2, Circle, FileText, Globe2, LoaderCircle, Package, Trash2, Upload, X } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useMemo, useRef, useState } from "react";
 
 import { LoadingButton } from "@/components/feedback/loading-button";
+import { useDelayedPending } from "@/components/feedback/use-delayed-pending";
 import { MotionPage } from "@/components/motion/motion-page";
+import { MotionSection } from "@/components/motion/motion-section";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { fadeUp } from "@/lib/motion/variants";
 import { notify } from "@/lib/notify";
 
 import type { UniversalCommitResult, UniversalInvoiceResult } from "../types";
@@ -24,6 +27,16 @@ type Entry = {
 const MAX_FILES = 100;
 const MAX_BYTES = 10 * 1024 * 1024;
 const CONCURRENCY = Math.max(1, Math.min(8, Number(process.env.NEXT_PUBLIC_UNIVERSAL_INVOICE_CONCURRENCY ?? 3)));
+const SUCCESS_STATUSES = new Set(["READY", "SAVED"]);
+const ATTENTION_STATUSES = new Set([
+  "READY_WITH_DIFFERENCES",
+  "REQUIRES_RECIPIENT_EXCEPTION",
+  "REQUIRES_REINVOICING",
+  "PROJECT_AMBIGUOUS",
+  "DISPATCH_AMBIGUOUS",
+  "DUPLICATE",
+  "NO_ACTIVE_BATCH",
+]);
 
 const toneByStatus: Record<string, BadgeTone> = {
   READY: "success",
@@ -95,18 +108,20 @@ function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending }: {
   decisionPending: boolean;
 }) {
   const pending = entry.phase === "CLASSIFYING" || entry.phase === "SAVING";
+  const showPending = useDelayedPending(pending);
   const status = entry.phase === "SAVED" ? "SAVED" : entry.result?.status;
   const exceptionStatus = entry.result && "recipientExceptionStatus" in entry.result
     ? entry.result.recipientExceptionStatus
     : null;
   return (
-    <motion.article layout className="rounded-xl border border-border bg-surface p-3 sm:p-4" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}>
+    <article className="rounded-xl border border-border bg-surface p-3 sm:p-4" aria-busy={pending}>
       <div className="flex min-w-0 items-start gap-3">
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand-strong sm:size-10"><FileText className="size-4.5 sm:size-5" /></span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="min-w-0 break-all text-sm font-semibold">{entry.file.name}</p>
             {status && <Badge tone={toneByStatus[status] ?? "danger"}>{labelByStatus[status] ?? status}</Badge>}
+            {!status && showPending && <Badge tone="info"><LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" />{entry.phase === "SAVING" ? "Guardando" : "Clasificando"}</Badge>}
           </div>
           <p className="mt-1 text-xs text-foreground-muted">{sizeLabel(entry.file.size)}{entry.result?.invoiceNumber ? ` · Factura ${entry.result.invoiceNumber}` : ""}{entry.result?.detectedType && entry.result.detectedType !== "UNKNOWN" ? ` · ${entry.result.detectedType === "PRODUCT" ? "Producto" : "Servicio"}` : ""}</p>
           {entry.result?.status === "REQUIRES_RECIPIENT_EXCEPTION" && (
@@ -148,21 +163,39 @@ function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending }: {
         </div>
         <button type="button" onClick={onRemove} disabled={pending} className="icon-button size-10 shrink-0" aria-label={`Quitar ${entry.file.name}`}><Trash2 className="size-4" /></button>
       </div>
-    </motion.article>
+    </article>
   );
 }
 
 export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedProjects: Array<{ id: string; code: string; name: string }> }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const reduceMotion = useReducedMotion();
   const [entries, setEntries] = useState<Entry[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [decisionPendingId, setDecisionPendingId] = useState<string | null>(null);
-  const busy = entries.some((entry) => entry.phase === "CLASSIFYING" || entry.phase === "SAVING");
+  const [activeOperation, setActiveOperation] = useState<"classify" | "resolve" | "commit" | null>(null);
+  const operationPendingRef = useRef(false);
+  const busy = activeOperation !== null || entries.some((entry) => entry.phase === "CLASSIFYING" || entry.phase === "SAVING");
   const ready = entries.filter((entry) => entry.phase !== "SAVED" && entry.result && ["READY", "READY_WITH_DIFFERENCES", "REQUIRES_RECIPIENT_EXCEPTION", "REQUIRES_REINVOICING"].includes(entry.result.status));
   const needsResolution = entries.filter((entry) =>
     (entry.result?.status === "PROJECT_AMBIGUOUS" && entry.projectId) ||
     (entry.result?.status === "DISPATCH_AMBIGUOUS" && entry.dispatchId),
   );
+  const phaseCounts = useMemo(() => entries.reduce((counts, entry) => {
+    if (entry.phase === "SELECTED") counts.pending += 1;
+    if (entry.phase === "CLASSIFYING" || entry.phase === "SAVING") counts.processing += 1;
+    if (entry.phase === "CLASSIFIED") counts.classified += 1;
+    if (entry.phase === "SAVED") counts.saved += 1;
+    return counts;
+  }, { pending: 0, processing: 0, classified: 0, saved: 0 }), [entries]);
+  const outcomeCounts = useMemo(() => entries.reduce((counts, entry) => {
+    const status = entry.phase === "SAVED" ? "SAVED" : entry.result?.status;
+    if (!status) return counts;
+    if (SUCCESS_STATUSES.has(status)) counts.success += 1;
+    else if (ATTENTION_STATUSES.has(status)) counts.attention += 1;
+    else counts.error += 1;
+    return counts;
+  }, { success: 0, attention: 0, error: 0 }), [entries]);
 
   const projectGroups = useMemo(() => {
     const map = new Map<string, {
@@ -212,36 +245,65 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
     if (files.length > available) notify.warning("Límite alcanzado", `Máximo ${MAX_FILES} PDFs por carga.`);
   };
 
-  const classify = async (targets = entries.filter((entry) => entry.phase !== "SAVED")) => {
-    if (!targets.length) return;
-    await runPool(targets, async (target) => {
-      setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "CLASSIFYING" } : entry));
-      try {
-        const latest = entries.find((entry) => entry.id === target.id) ?? target;
-        const result = await requestResult("classify", latest);
-        setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "CLASSIFIED", result, projectId: result.projectId ?? entry.projectId, dispatchId: result.dispatchId ?? entry.dispatchId } : entry));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "No fue posible clasificar el archivo.";
-        setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "CLASSIFIED", result: { status: "ERROR", message, fileName: entry.file.name, fileSize: entry.file.size, detectedType: "UNKNOWN", invoiceNumber: null, detectedBillingLegalName: null, orderNumber: null, projectId: null, projectLabel: null, dispatchId: null, dispatchLabel: null, batchId: null, batchLabel: null, candidateProjects: [], candidateDispatches: [], warnings: [], operation: "NEW", replacesInvoiceId: null, replacesInvoiceNumber: null } } : entry));
-      }
-    });
+  const classify = async (targets = entries.filter((entry) => entry.phase !== "SAVED"), operation: "classify" | "resolve" = "classify") => {
+    if (!targets.length || operationPendingRef.current) return;
+    operationPendingRef.current = true;
+    setActiveOperation(operation);
+    try {
+      await runPool(targets, async (target) => {
+        setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "CLASSIFYING" } : entry));
+        try {
+          const latest = entries.find((entry) => entry.id === target.id) ?? target;
+          const result = await requestResult("classify", latest);
+          setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "CLASSIFIED", result, projectId: result.projectId ?? entry.projectId, dispatchId: result.dispatchId ?? entry.dispatchId } : entry));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "No fue posible clasificar el archivo.";
+          setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "CLASSIFIED", result: { status: "ERROR", message, fileName: entry.file.name, fileSize: entry.file.size, detectedType: "UNKNOWN", invoiceNumber: null, detectedBillingLegalName: null, orderNumber: null, projectId: null, projectLabel: null, dispatchId: null, dispatchLabel: null, batchId: null, batchLabel: null, candidateProjects: [], candidateDispatches: [], warnings: [], operation: "NEW", replacesInvoiceId: null, replacesInvoiceNumber: null } } : entry));
+        }
+      });
+    } finally {
+      operationPendingRef.current = false;
+      setActiveOperation(null);
+    }
   };
 
-  const resolveSelections = async () => classify(needsResolution);
+  const resolveSelections = async () => classify(needsResolution, "resolve");
 
   const commit = async () => {
+    if (operationPendingRef.current) return;
     const targets = entries.filter((entry) => entry.phase !== "SAVED" && entry.result && ["READY", "READY_WITH_DIFFERENCES", "REQUIRES_RECIPIENT_EXCEPTION", "REQUIRES_REINVOICING"].includes(entry.result.status));
-    await runPool(targets, async (target) => {
-      setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "SAVING" } : entry));
-      try {
-        const result = await requestResult("commit", target) as UniversalCommitResult;
-        setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: result.saved ? "SAVED" : "CLASSIFIED", result } : entry));
-      } catch (error) {
-        notify.error("Error al procesar", error instanceof Error ? error.message : "Intenta nuevamente.");
-        setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "CLASSIFIED" } : entry));
-      }
-    });
-    notify.success("Proceso finalizado", "Revisa el resultado por archivo.");
+    if (!targets.length) return;
+    operationPendingRef.current = true;
+    setActiveOperation("commit");
+    let saved = 0;
+    let attention = 0;
+    let failed = 0;
+    try {
+      await runPool(targets, async (target) => {
+        setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "SAVING" } : entry));
+        try {
+          const result = await requestResult("commit", target) as UniversalCommitResult;
+          if (result.saved) {
+            saved += 1;
+            if (result.reconciliationStatus === "WITH_DIFFERENCES" || result.recipientExceptionStatus === "PENDING" || result.warnings.length > 0) attention += 1;
+          } else {
+            failed += 1;
+          }
+          setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: result.saved ? "SAVED" : "CLASSIFIED", result } : entry));
+        } catch (error) {
+          failed += 1;
+          const message = error instanceof Error ? error.message : "No fue posible procesar la factura.";
+          setEntries((current) => current.map((entry) => entry.id === target.id && entry.result ? { ...entry, phase: "CLASSIFIED", result: { ...entry.result, status: "ERROR", message } } : entry));
+        }
+      });
+      const description = `${saved} ${saved === 1 ? "factura guardada" : "facturas guardadas"}${attention ? `, ${attention} requieren atención` : ""}${failed ? ` y ${failed} con error` : ""}.`;
+      if (saved === 0) notify.error("No se procesaron las facturas", "Revisa los archivos marcados e inténtalo nuevamente.");
+      else if (attention || failed) notify.warning("Carga finalizada con observaciones", description);
+      else notify.success("Carga finalizada", description);
+    } finally {
+      operationPendingRef.current = false;
+      setActiveOperation(null);
+    }
   };
 
   const decideException = async (entry: Entry, decision: "APPROVE" | "REQUEST_REINVOICE") => {
@@ -275,74 +337,100 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
 
   return (
     <MotionPage className="mx-auto max-w-[1500px] space-y-5 pb-10">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <MotionSection className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Gestión multi‑proyecto</p><h1 className="mt-2 text-2xl font-bold sm:text-3xl">Facturas Universal</h1><p className="mt-2 max-w-3xl text-sm leading-5 text-foreground-muted">Clasifica PDFs por proyecto, pedido y despacho. Producto se concilia y Servicio queda como documento independiente.</p></div>
         <span className="w-fit"><Badge tone="info">{authorizedProjects.length} proyecto(s) autorizado(s)</Badge></span>
-      </header>
+      </MotionSection>
 
-      <section className="rounded-xl border border-border bg-surface p-3 sm:p-5">
+      <MotionSection className="rounded-xl border border-border bg-surface p-3 sm:p-5">
         <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple className="sr-only" onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} />
         <motion.button type="button" disabled={busy || entries.length >= MAX_FILES} onClick={() => inputRef.current?.click()} onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragActive(false)} onDrop={(event) => { event.preventDefault(); setDragActive(false); addFiles(Array.from(event.dataTransfer.files).filter((file) => file.size <= MAX_BYTES)); }} animate={{ scale: dragActive ? 1.004 : 1 }} className={`flex min-h-32 w-full flex-col items-center justify-center rounded-xl border border-dashed px-4 py-5 text-center transition-colors sm:min-h-40 ${dragActive ? "border-brand bg-brand-soft/50" : "border-border bg-muted/20 hover:border-brand/50 hover:bg-brand-soft/25"}`}>
           <Upload className="size-7 text-brand-strong" /><span className="mt-3 text-sm font-semibold"><span className="sm:hidden">Selecciona tus facturas PDF</span><span className="hidden sm:inline">Selecciona o arrastra tus facturas PDF</span></span><span className="mt-1 text-xs leading-5 text-foreground-muted">Hasta {MAX_FILES} archivos · 10 MiB por PDF · concurrencia {CONCURRENCY}</span>
         </motion.button>
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
           {entries.length > 0 && <Button className="w-full sm:w-auto" variant="ghost" onClick={() => setEntries([])} disabled={busy}><X className="size-4" /> Limpiar</Button>}
-          {needsResolution.length > 0 && <LoadingButton className="w-full sm:w-auto" type="button" variant="secondary" loading={busy} onClick={resolveSelections} loadingLabel="Resolviendo…"><Globe2 className="size-4" /> Resolver selección</LoadingButton>}
-          <LoadingButton className="w-full sm:w-auto" type="button" variant="secondary" loading={busy} disabled={!entries.length} onClick={() => classify()} loadingLabel="Clasificando…">Clasificar facturas</LoadingButton>
-          <LoadingButton className="w-full sm:w-auto" type="button" loading={busy} disabled={!ready.length} onClick={commit} loadingLabel="Conciliando…">Conciliar ({ready.length})</LoadingButton>
+          {needsResolution.length > 0 && <LoadingButton className="w-full sm:w-auto" type="button" variant="secondary" loading={activeOperation === "resolve"} disabled={busy} onClick={resolveSelections} loadingLabel="Resolviendo…"><Globe2 className="size-4" /> Resolver selección</LoadingButton>}
+          <LoadingButton className="w-full sm:w-auto" type="button" variant="secondary" loading={activeOperation === "classify"} disabled={busy || !entries.length} onClick={() => classify()} loadingLabel="Clasificando…">Clasificar facturas</LoadingButton>
+          <LoadingButton className="w-full sm:w-auto" type="button" loading={activeOperation === "commit"} disabled={busy || !ready.length} onClick={commit} loadingLabel="Conciliando…">Conciliar ({ready.length})</LoadingButton>
         </div>
-      </section>
+        {entries.length > 0 && (
+          <div className="mt-4 rounded-xl border border-border bg-muted/20 p-3 sm:p-4" role="status" aria-live="polite" aria-busy={busy}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold">{busy ? "Procesando facturas" : "Resumen de archivos"}</p>
+              <span className="text-xs font-medium text-foreground-muted">{phaseCounts.classified + phaseCounts.saved} de {entries.length} procesadas</span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <span className="flex items-center gap-2 rounded-lg bg-surface px-3 py-2 text-xs"><Circle className="size-3.5 text-foreground-muted" /><strong>{phaseCounts.pending}</strong> pendientes</span>
+              <span className="flex items-center gap-2 rounded-lg bg-surface px-3 py-2 text-xs"><LoaderCircle className={`size-3.5 text-brand-strong ${phaseCounts.processing > 0 ? "animate-spin motion-reduce:animate-none" : ""}`} /><strong>{phaseCounts.processing}</strong> procesando</span>
+              <span className="flex items-center gap-2 rounded-lg bg-surface px-3 py-2 text-xs"><CheckCircle2 className="size-3.5 text-success" /><strong>{phaseCounts.classified}</strong> clasificadas</span>
+              <span className="flex items-center gap-2 rounded-lg bg-surface px-3 py-2 text-xs"><CheckCircle2 className="size-3.5 text-success" /><strong>{phaseCounts.saved}</strong> guardadas</span>
+            </div>
+            <p className="mt-3 text-xs text-foreground-muted"><span className="font-semibold text-success">{outcomeCounts.success} listas</span> · <span className="font-semibold text-warning">{outcomeCounts.attention} requieren atención</span> · <span className="font-semibold text-destructive">{outcomeCounts.error} con error</span></p>
+          </div>
+        )}
+      </MotionSection>
 
       <AnimatePresence initial={false}>
-        {projectGroups.map((project) => {
-          const fileCount = project.orders.reduce((total, order) => total + order.entries.length, 0);
-          return (
-            <motion.section layout key={project.key} className="overflow-hidden rounded-xl border border-border bg-surface" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <div className="flex flex-col gap-2 border-b border-border px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand-strong">
-                    {project.resolved ? <Building2 className="size-4.5" /> : <FileText className="size-4.5" />}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-foreground-muted">{project.resolved ? "Proyecto" : "Por organizar"}</p>
-                    <h2 className="truncate text-sm font-semibold sm:text-base">{project.label}</h2>
-                  </div>
-                </div>
-                <Badge tone="info">{project.resolved
-                  ? countLabel(project.orders.length, "pedido", "pedidos")
-                  : countLabel(fileCount, "archivo", "archivos")}</Badge>
-              </div>
-
-              <div className="space-y-3 bg-muted/20 p-3 sm:p-4">
-                {project.orders.map((order) => (
-                  <section key={order.key} className="overflow-hidden rounded-xl border border-border bg-muted/25">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface px-3.5 py-2.5 sm:px-4">
-                      <div className="flex min-w-0 items-center gap-2">
-                        {project.resolved
-                          ? <Package className="size-4 shrink-0 text-brand-strong" />
-                          : <FileText className="size-4 shrink-0 text-brand-strong" />}
-                        <h3 className="truncate text-sm font-semibold">{order.label}</h3>
+        {projectGroups.length > 0 && (
+          <motion.div
+            key="invoice-results"
+            className="space-y-5"
+            variants={fadeUp}
+            initial={reduceMotion ? false : "hidden"}
+            animate="visible"
+            exit={reduceMotion ? undefined : "exit"}
+          >
+            {projectGroups.map((project) => {
+              const fileCount = project.orders.reduce((total, order) => total + order.entries.length, 0);
+              return (
+                <section key={project.key} className="overflow-hidden rounded-xl border border-border bg-surface">
+                  <div className="flex flex-col gap-2 border-b border-border px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand-strong">
+                        {project.resolved ? <Building2 className="size-4.5" /> : <FileText className="size-4.5" />}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-foreground-muted">{project.resolved ? "Proyecto" : "Por organizar"}</p>
+                        <h2 className="truncate text-sm font-semibold sm:text-base">{project.label}</h2>
                       </div>
-                      <span className="shrink-0 text-xs font-medium text-foreground-muted">{countLabel(order.entries.length, "factura", "facturas")}</span>
                     </div>
-                    <div className="grid gap-3 p-3 lg:grid-cols-2">
-                      {order.entries.map((entry) => (
-                        <EntryCard
-                          key={entry.id}
-                          entry={entry}
-                          onChange={(next) => setEntries((current) => current.map((item) => item.id === next.id ? next : item))}
-                          onRemove={() => setEntries((current) => current.filter((item) => item.id !== entry.id))}
-                          onDecision={(decision) => void decideException(entry, decision)}
-                          decisionPending={decisionPendingId === entry.id}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            </motion.section>
-          );
-        })}
+                    <Badge tone="info">{project.resolved
+                      ? countLabel(project.orders.length, "pedido", "pedidos")
+                      : countLabel(fileCount, "archivo", "archivos")}</Badge>
+                  </div>
+
+                  <div className="space-y-3 bg-muted/20 p-3 sm:p-4">
+                    {project.orders.map((order) => (
+                      <section key={order.key} className="overflow-hidden rounded-xl border border-border bg-muted/25">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface px-3.5 py-2.5 sm:px-4">
+                          <div className="flex min-w-0 items-center gap-2">
+                            {project.resolved
+                              ? <Package className="size-4 shrink-0 text-brand-strong" />
+                              : <FileText className="size-4 shrink-0 text-brand-strong" />}
+                            <h3 className="truncate text-sm font-semibold">{order.label}</h3>
+                          </div>
+                          <span className="shrink-0 text-xs font-medium text-foreground-muted">{countLabel(order.entries.length, "factura", "facturas")}</span>
+                        </div>
+                        <div className="grid gap-3 p-3 lg:grid-cols-2">
+                          {order.entries.map((entry) => (
+                            <EntryCard
+                              key={entry.id}
+                              entry={entry}
+                              onChange={(next) => setEntries((current) => current.map((item) => item.id === next.id ? next : item))}
+                              onRemove={() => setEntries((current) => current.filter((item) => item.id !== entry.id))}
+                              onDecision={(decision) => void decideException(entry, decision)}
+                              decisionPending={decisionPendingId === entry.id}
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </motion.div>
+        )}
       </AnimatePresence>
     </MotionPage>
   );

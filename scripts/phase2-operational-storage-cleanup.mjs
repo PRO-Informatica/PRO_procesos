@@ -2,6 +2,8 @@ import { loadEnvFile } from "node:process";
 
 import { createClient } from "@supabase/supabase-js";
 
+import { getScriptSupabaseEnvironment } from "./supabase-environment.mjs";
+
 try {
   loadEnvFile(".env");
 } catch {
@@ -9,11 +11,9 @@ try {
 }
 
 const execute = process.argv.includes("--execute");
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!url || !key) throw new Error("Faltan NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY.");
+const { url, serviceRoleKey } = getScriptSupabaseEnvironment();
 
-const supabase = createClient(url, key, {
+const supabase = createClient(url, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 const sources = [

@@ -47,6 +47,8 @@ export type ReconciliationAttempt = {
   id: string; attemptNumber: number; productInvoiceId: string;
   expectedOrderNumber: string; detectedOrderNumber: string | null;
   expectedRealVolume: number; expectedUnitCode: string;
+  comparisonQuantity: number; comparisonUnitCode: string | null;
+  comparisonBasis: "REAL_VOLUME" | "PROGRAMMED_QUANTITY";
   invoicedQuantity: number; invoiceUnitCode: string | null;
   difference: number | null; validations: Record<string, boolean>;
   result: "MATCHED" | "WITH_DIFFERENCES"; executedAt: string;

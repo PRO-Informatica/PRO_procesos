@@ -8,6 +8,8 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import { EmptyState } from "@/components/feedback/empty-state";
 import { useGlobalPending } from "@/components/feedback/global-loading-provider";
 import { LoadingButton } from "@/components/feedback/loading-button";
+import { SkeletonBlock } from "@/components/feedback/skeletons";
+import { useDelayedPending } from "@/components/feedback/use-delayed-pending";
 import { useActionNotification } from "@/components/feedback/use-action-notification";
 import { MotionPage } from "@/components/motion/motion-page";
 import { MotionSection } from "@/components/motion/motion-section";
@@ -177,8 +179,10 @@ export function BatchDetailView({ detail, project, permissions, embedded = false
   const [message, setMessage] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(!embedded);
   const [secondaryPending, setSecondaryPending] = useState(false);
+  const [secondaryOperation, setSecondaryOperation] = useState<"history" | "rollover" | null>(null);
   const [secondaryData, setSecondaryData] = useState<BatchSecondaryData | null>(detail.secondaryLoaded ? { removedRelations: detail.removedRelations, preview: detail.preview, loadMetrics: detail.loadMetrics } : null);
   const [pending, startTransition] = useTransition();
+  const showSecondaryPending = useDelayedPending(secondaryPending);
   const editable = detail.status === "OPEN";
   const resolvedSecondary = loadSecondary ? secondaryData : { removedRelations: detail.removedRelations, preview: detail.preview, loadMetrics: detail.loadMetrics };
 
@@ -189,10 +193,11 @@ export function BatchDetailView({ detail, project, permissions, embedded = false
     else router.refresh();
   }
 
-  async function ensureSecondary() {
+  async function ensureSecondary(operation: "history" | "rollover") {
     if (secondaryData) return secondaryData;
     if (!loadSecondary) return { removedRelations: detail.removedRelations, preview: detail.preview, loadMetrics: detail.loadMetrics };
     setSecondaryPending(true);
+    setSecondaryOperation(operation);
     try {
       const data = await loadSecondary();
       setSecondaryData(data);
@@ -204,6 +209,7 @@ export function BatchDetailView({ detail, project, permissions, embedded = false
       return null;
     } finally {
       setSecondaryPending(false);
+      setSecondaryOperation(null);
     }
   }
 
@@ -212,12 +218,13 @@ export function BatchDetailView({ detail, project, permissions, embedded = false
       setHistoryOpen(false);
       return;
     }
-    const data = await ensureSecondary();
+    setHistoryOpen(true);
+    const data = await ensureSecondary("history");
     if (data) setHistoryOpen(true);
   }
 
   async function openRollover() {
-    const data = await ensureSecondary();
+    const data = await ensureSecondary("rollover");
     if (data) setRolloverOpen(true);
   }
 
@@ -244,7 +251,7 @@ export function BatchDetailView({ detail, project, permissions, embedded = false
         <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
           {permissions.canModify && editable && <button type="button" onClick={() => setAddOpen(true)} className="secondary-button w-full gap-2 sm:w-auto"><Plus className="size-4" /> Agregar despacho</button>}
           {permissions.canCreateInvoice && editable && <button type="button" onClick={() => setBulkOpen(true)} className="secondary-button w-full gap-2 sm:w-auto"><Files className="size-4" /> Carga masiva de facturas</button>}
-          {permissions.canModify && editable && <button type="button" onClick={() => void openRollover()} disabled={secondaryPending} className="primary-button w-full gap-2 sm:w-auto disabled:opacity-60">{secondaryPending ? <LoaderCircle className="size-4 animate-spin" /> : <RotateCcw className="size-4" />} Cerrar semana y preparar siguiente</button>}
+          {permissions.canModify && editable && <button type="button" onClick={() => void openRollover()} disabled={secondaryPending} aria-busy={secondaryPending && secondaryOperation === "rollover"} className="primary-button w-full gap-2 sm:w-auto disabled:opacity-60">{showSecondaryPending && secondaryOperation === "rollover" ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /> : <RotateCcw className="size-4" />} Cerrar semana y preparar siguiente</button>}
         </div>
       </div>
       {message && <p className="mt-4 rounded-xl bg-muted px-4 py-3 text-sm">{message}</p>}
@@ -266,7 +273,7 @@ export function BatchDetailView({ detail, project, permissions, embedded = false
       <div className="divide-y divide-border lg:hidden">{detail.activeRelations.map((relation) => <article key={relation.relationId} className="p-3.5 sm:p-4"><div className="flex min-w-0 flex-col gap-3 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between"><div className="min-w-0"><DispatchDetailLink dispatchId={relation.dispatchId} projectId={project.id} className="block truncate font-semibold text-brand-strong disabled:cursor-wait disabled:opacity-60">{relation.programmingCode}</DispatchDetailLink><p className="mt-1 break-words text-sm font-medium text-foreground">{relation.supplierName}</p><p className="mt-1 text-xs text-foreground-muted">Pedido {relation.orderNumber ?? "Pendiente"} · {relation.guideCount} guía(s)</p></div><span className="w-fit"><StatusBadge label={relation.operationalStatus === "IN_EXECUTION" ? "Despacho en ejecución" : formatStatusLabel(relation.reconciliationStatus)} tone={relation.operationalStatus === "IN_EXECUTION" ? "info" : reconciliationTone(relation.reconciliationStatus)} /></span></div><dl className="mt-4 grid grid-cols-1 gap-3 rounded-lg bg-muted/45 p-3 text-xs min-[380px]:grid-cols-2"><div><dt className="text-foreground-muted">Volumen Real</dt><dd className="mt-1 font-semibold">{relation.realVolume === null ? "Pendiente" : `${formatBatchQuantity(relation.realVolume)} ${relation.realUnitCode ?? ""}`}</dd></div><div><dt className="text-foreground-muted">Estado operativo</dt><dd className="mt-1 font-semibold">{relation.operationalStatus === "COMPLETED" ? "Completado" : "En ejecución"}</dd></div><div><dt className="text-foreground-muted">Factura Producto</dt><dd className="mt-1"><InvoiceCell relation={relation} type="PRODUCT" /></dd></div><div><dt className="text-foreground-muted">Factura Servicio</dt><dd className="mt-1"><InvoiceCell relation={relation} type="SERVICE" /></dd></div></dl>{relation.latestAttempt && <p className="mt-3 text-xs leading-5 text-foreground-muted">Intento {relation.latestAttempt.attemptNumber}: diferencia {relation.latestAttempt.difference === null ? "no comparable" : formatBatchQuantity(relation.latestAttempt.difference)}</p>}<div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2"><DispatchDetailLink dispatchId={relation.dispatchId} projectId={project.id} className="secondary-button w-full text-xs disabled:cursor-wait disabled:opacity-60">Ver despacho</DispatchDetailLink>{editable && relation.operationalStatus === "COMPLETED" && permissions.canCreateInvoice && !relation.productInvoice && <button type="button" onClick={() => setInvoice({ relation, type: "PRODUCT" })} className="secondary-button w-full text-xs">Cargar producto</button>}{editable && relation.operationalStatus === "COMPLETED" && permissions.canCreateInvoice && !relation.serviceInvoice && <button type="button" onClick={() => setInvoice({ relation, type: "SERVICE" })} className="secondary-button w-full text-xs">Cargar servicio</button>}{relation.operationalStatus === "COMPLETED" && relation.reconciliationStatus === "PENDING_RECONCILIATION" && relation.productInvoice?.recipientException?.status !== "PENDING" && permissions.canMatchInvoice && <LoadingButton type="button" loading={pending} disabled={pending} onClick={() => reconcile(relation)} loadingLabel="Conciliando…" className="w-full text-xs">Conciliar</LoadingButton>}{relation.reconciliationStatus === "WITH_DIFFERENCES" && permissions.canReviewInvoice && <button type="button" onClick={() => setReinvoicing(relation)} className="secondary-button w-full text-xs">Solicitar refacturación</button>}{permissions.canReviewInvoice && <RecipientExceptionButtons relation={relation} onSelect={setRecipientExceptionInvoice} mobile />}{editable && relation.reconciliationStatus === "PENDING_REINVOICING" && permissions.canCreateInvoice && <button type="button" onClick={() => setInvoice({ relation, type: "PRODUCT", replacement: true })} className="primary-button w-full text-xs">Cargar factura refacturada</button>}{editable && permissions.canModify && <button type="button" onClick={() => setRemove(relation)} className="destructive-button w-full gap-2 text-xs"><Trash2 className="size-4" /> Remover despacho</button>}</div></article>)}</div></> : <div className="p-4 sm:p-6"><EmptyState title="Sin despachos en el lote" description="Agrega un despacho en ejecución o completado del proyecto actual." /></div>}
     </MotionSection>
 
-    <MotionSection disableMotion={embedded} className="overflow-hidden rounded-xl border border-border bg-surface"><button type="button" onClick={() => void toggleHistory()} disabled={secondaryPending} className="flex min-h-14 w-full cursor-pointer items-center justify-between gap-3 border-b border-border px-4 py-3.5 text-left disabled:cursor-wait sm:px-5 sm:py-4"><span className="flex min-w-0 items-center gap-2"><History className="size-4 shrink-0 text-brand-strong" /><span className="break-words font-semibold">Historial de relaciones removidas</span></span>{secondaryPending ? <LoaderCircle className="size-4 shrink-0 animate-spin text-foreground-muted" /> : <ChevronDown className={`size-4 shrink-0 text-foreground-muted transition-transform ${historyOpen ? "rotate-180" : ""}`} />}</button>{historyOpen && ((resolvedSecondary?.removedRelations ?? []).length ? <div className="divide-y divide-border">{(resolvedSecondary?.removedRelations ?? []).map((relation) => <div key={relation.relationId} className="flex flex-col gap-2 px-4 py-4 text-sm sm:flex-row sm:justify-between sm:px-5"><div className="min-w-0"><strong className="break-all">{relation.programmingCode}</strong> · <span className="break-words">{relation.supplierName}</span><p className="text-xs leading-5 text-foreground-muted">{relation.removalReason ?? "Sin motivo"}{relation.rolledToBatchId ? " · trasladado al siguiente lote" : ""}</p></div><span className="text-xs text-foreground-muted">{relation.removedAt ? formatBatchDateTime(relation.removedAt, project.timezone) : "—"}</span></div>)}</div> : <p className="px-4 py-8 text-center text-sm text-foreground-muted sm:px-5">No hay relaciones removidas.</p>)}</MotionSection>
+    <MotionSection disableMotion={embedded} className="overflow-hidden rounded-xl border border-border bg-surface"><button type="button" onClick={() => void toggleHistory()} disabled={secondaryPending} aria-busy={secondaryPending && secondaryOperation === "history"} className="flex min-h-14 w-full cursor-pointer items-center justify-between gap-3 border-b border-border px-4 py-3.5 text-left disabled:cursor-wait sm:px-5 sm:py-4"><span className="flex min-w-0 items-center gap-2"><History className="size-4 shrink-0 text-brand-strong" /><span className="break-words font-semibold">Historial de relaciones removidas</span></span>{showSecondaryPending && secondaryOperation === "history" ? <LoaderCircle className="size-4 shrink-0 animate-spin text-foreground-muted motion-reduce:animate-none" /> : <ChevronDown className={`size-4 shrink-0 text-foreground-muted transition-transform ${historyOpen ? "rotate-180" : ""}`} />}</button>{historyOpen && (secondaryPending && !resolvedSecondary ? (showSecondaryPending ? <div className="space-y-3 px-4 py-5" aria-busy="true"><span className="sr-only">Cargando historial…</span><SkeletonBlock className="h-4 w-2/3" /><SkeletonBlock className="h-3 w-1/2" /></div> : <div className="min-h-20" aria-busy="true"><span className="sr-only">Cargando historial…</span></div>) : (resolvedSecondary?.removedRelations ?? []).length ? <div className="divide-y divide-border">{(resolvedSecondary?.removedRelations ?? []).map((relation) => <div key={relation.relationId} className="flex flex-col gap-2 px-4 py-4 text-sm sm:flex-row sm:justify-between sm:px-5"><div className="min-w-0"><strong className="break-all">{relation.programmingCode}</strong> · <span className="break-words">{relation.supplierName}</span><p className="text-xs leading-5 text-foreground-muted">{relation.removalReason ?? "Sin motivo"}{relation.rolledToBatchId ? " · trasladado al siguiente lote" : ""}</p></div><span className="text-xs text-foreground-muted">{relation.removedAt ? formatBatchDateTime(relation.removedAt, project.timezone) : "—"}</span></div>)}</div> : <p className="px-4 py-8 text-center text-sm text-foreground-muted sm:px-5">No hay relaciones removidas.</p>)}</MotionSection>
 
     {addOpen && <AddDispatchDialog projectId={project.id} batchId={detail.id} dispatches={detail.eligibleDispatches} onClose={() => setAddOpen(false)} onSuccess={refreshData} />}
     {bulkOpen && <BulkInvoiceDialog projectId={project.id} batchId={detail.id} onClose={() => setBulkOpen(false)} onSuccess={refreshData} />}

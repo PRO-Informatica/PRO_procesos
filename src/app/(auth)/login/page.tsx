@@ -1,5 +1,6 @@
 import { AuthCard } from "@/features/auth/components/auth-card";
 import { LoginForm } from "@/features/auth/components/login-form";
+import { getAuthErrorMessage, safeInternalPath } from "@/features/auth/security";
 
 export const metadata = { title: "Ingresar | PRO Procesos" };
 
@@ -9,7 +10,8 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string; next?: string }>;
 }) {
   const { error, next } = await searchParams;
-  const safeNext = next?.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const safeNext = safeInternalPath(next);
+  const errorMessage = getAuthErrorMessage(error);
 
   return (
     <AuthCard
@@ -20,7 +22,7 @@ export default async function LoginPage({
       <LoginForm
         nextPath={safeNext}
         initialState={
-          error ? { status: "error", message: error } : undefined
+          errorMessage ? { status: "error", message: errorMessage } : undefined
         }
       />
     </AuthCard>

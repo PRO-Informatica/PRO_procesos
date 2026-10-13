@@ -3,8 +3,10 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-import { formatIdentifier } from "./formatters";
+import { formatIdentifier, normalizeCatalogReference } from "./formatters";
 import type {
+  DispatchCatalogOption,
+  DispatchEstimate,
   DispatchBatchRelation,
   DispatchDetail,
   DispatchDocument,
@@ -64,6 +66,20 @@ type LineRow = {
   product_description: string | null;
   quantity: number | string;
   unit_code: string;
+  catalog_type: "PRODUCT" | "SERVICE" | null;
+  product_price_id: string | null;
+  service_price_id: string | null;
+  catalog_reference: string | null;
+  unit_price: number | string | null;
+  estimated_subtotal: number | string | null;
+  currency: string | null;
+};
+type CatalogProductRow = {
+  id: string;
+  code: string;
+  reference: string;
+  price: number | string;
+  normalized_reference: string;
 };
 type InvoiceRow = {
   id: string;
@@ -119,6 +135,20 @@ function buildGuides(guides: GuideRow[], lines: LineRow[]) {
       productDescription: line.product_description,
       quantity: numberValue(line.quantity),
       unitCode: line.unit_code,
+      catalogType: line.catalog_type,
+      catalogItemId:
+        line.catalog_type === "PRODUCT"
+          ? line.product_price_id
+          : line.catalog_type === "SERVICE"
+            ? line.service_price_id
+            : null,
+      catalogReference: line.catalog_reference,
+      unitPrice: line.unit_price === null ? null : numberValue(line.unit_price),
+      estimatedSubtotal:
+        line.estimated_subtotal === null
+          ? null
+          : numberValue(line.estimated_subtotal),
+      currency: line.currency,
     });
     linesByGuide.set(line.guide_id, values);
   }
@@ -132,10 +162,46 @@ function buildGuides(guides: GuideRow[], lines: LineRow[]) {
       guideDate: guide.guide_date,
       quantity: numberValue(guide.quantity),
       unitCode: guide.unit_code,
-      productCount: guideLines.length,
+      productCount: guideLines.filter((line) => line.catalogType !== "SERVICE").length,
+      serviceCount: guideLines.filter((line) => line.catalogType === "SERVICE").length,
       lines: guideLines,
     };
   });
+}
+
+function estimateFor(
+  guides: DispatchGuide[],
+  type: "PRODUCT" | "SERVICE",
+): DispatchEstimate {
+  const lines = guides.flatMap((guide) => guide.lines).filter((line) =>
+    type === "PRODUCT"
+      ? line.catalogType === "PRODUCT" || line.catalogType === null
+      : line.catalogType === "SERVICE",
+  );
+  return {
+    amount: lines.reduce(
+      (total, line) => total + (line.estimatedSubtotal ?? 0),
+      0,
+    ),
+    complete: lines.every((line) => line.estimatedSubtotal !== null),
+    lineCount: lines.length,
+    currency: "GTQ",
+  };
+}
+
+function uniqueCatalogProduct(
+  matches: CatalogProductRow[] | undefined,
+): DispatchCatalogOption | null {
+  if (!matches || matches.length !== 1) return null;
+  const match = matches[0];
+  return {
+    id: match.id,
+    type: "PRODUCT",
+    code: match.code,
+    reference: match.reference,
+    price: numberValue(match.price),
+    currency: "GTQ",
+  };
 }
 
 export async function getDispatchPageData(
@@ -161,6 +227,7 @@ export async function getDispatchPageData(
       .from("units_of_measure")
       .select("code, name")
       .eq("active", true)
+      .in("code", ["KM", "M3", "UN"])
       .order("code"),
   ]);
   assertNoError(programmingResult.error, "No fue posible cargar las programaciones.");
@@ -200,13 +267,37 @@ export async function getDispatchPageData(
       concreteType,
     ]);
   }
+  const normalizedReferences = [...new Set(
+    [...concreteTypesByProgramming.values()]
+      .flat()
+      .map(normalizeCatalogReference)
+      .filter(Boolean),
+  )];
+  const catalogMatchesResult = normalizedReferences.length
+    ? await supabase
+        .from("project_product_prices")
+        .select("id, code, reference, price, normalized_reference")
+        .eq("project_id", projectId)
+        .in("normalized_reference", normalizedReferences)
+    : { data: [], error: null };
+  assertNoError(
+    catalogMatchesResult.error,
+    "No fue posible relacionar el tipo de concreto con el catálogo.",
+  );
+  const catalogProductsByReference = new Map<string, CatalogProductRow[]>();
+  for (const row of (catalogMatchesResult.data ?? []) as CatalogProductRow[]) {
+    catalogProductsByReference.set(row.normalized_reference, [
+      ...(catalogProductsByReference.get(row.normalized_reference) ?? []),
+      row,
+    ]);
+  }
   const guideRows = (guidesResult.data ?? []) as GuideRow[];
   const guideIds = guideRows.map((row) => row.id);
   const linesResult = guideIds.length
     ? await supabase
         .from("dispatch_guide_lines")
         .select(
-          "id, guide_id, position, product_code, product_description, quantity, unit_code",
+          "id, guide_id, position, product_code, product_description, quantity, unit_code, catalog_type, product_price_id, service_price_id, catalog_reference, unit_price, estimated_subtotal, currency",
         )
         .eq("project_id", projectId)
         .in("guide_id", guideIds)
@@ -257,6 +348,13 @@ export async function getDispatchPageData(
       version: dispatch?.version ?? null,
       guideCount: guides.length,
       guideTotal: guides.reduce((total, guide) => total + guide.quantity, 0),
+      productEstimate: estimateFor(guides, "PRODUCT"),
+      serviceEstimate: estimateFor(guides, "SERVICE"),
+      defaultCatalogProduct: uniqueCatalogProduct(
+        catalogProductsByReference.get(
+          normalizeCatalogReference((concreteTypesByProgramming.get(row.id) ?? [])[0] ?? ""),
+        ),
+      ),
       guides,
     };
   });
@@ -313,7 +411,7 @@ export async function getDispatchDetail(
         .eq("project_id", projectId)
         .eq("dispatch_id", dispatchId)
         .order("created_at", { ascending: false }),
-      supabase.from("units_of_measure").select("code, name").eq("active", true).order("code"),
+      supabase.from("units_of_measure").select("code, name").eq("active", true).in("code", ["KM", "M3", "UN"]).order("code"),
       supabase.from("incident_types").select("id, name").eq("active", true).order("name"),
       supabase.from("programming_lines").select("concrete_type, position").eq("programming_id", dispatch.programming_id).order("position"),
     ]);
@@ -332,6 +430,20 @@ export async function getDispatchDetail(
   const programmingConcreteTypes = (programmingLinesResult.data ?? [])
     .map((line) => optionalText(line.concrete_type))
     .filter((value): value is string => Boolean(value));
+  const normalizedConcreteReference = normalizeCatalogReference(
+    programmingConcreteTypes[0] ?? "",
+  );
+  const defaultCatalogResult = normalizedConcreteReference
+    ? await supabase
+        .from("project_product_prices")
+        .select("id, code, reference, price, normalized_reference")
+        .eq("project_id", projectId)
+        .eq("normalized_reference", normalizedConcreteReference)
+    : { data: [], error: null };
+  assertNoError(
+    defaultCatalogResult.error,
+    "No fue posible relacionar el tipo de concreto con el catálogo.",
+  );
   const guideRows = (guidesResult.data ?? []) as GuideRow[];
   const guideIds = guideRows.map((row) => row.id);
   const rawIncidents = incidentsResult.data ?? [];
@@ -343,7 +455,7 @@ export async function getDispatchDetail(
         ? supabase
             .from("dispatch_guide_lines")
             .select(
-              "id, guide_id, position, product_code, product_description, quantity, unit_code",
+              "id, guide_id, position, product_code, product_description, quantity, unit_code, catalog_type, product_price_id, service_price_id, catalog_reference, unit_price, estimated_subtotal, currency",
             )
             .eq("project_id", projectId)
             .in("guide_id", guideIds)
@@ -618,6 +730,11 @@ export async function getDispatchDetail(
     createdAt: dispatch.created_at,
     updatedAt: dispatch.updated_at,
     guideTotal: guides.reduce((total, guide) => total + guide.quantity, 0),
+    productEstimate: estimateFor(guides, "PRODUCT"),
+    serviceEstimate: estimateFor(guides, "SERVICE"),
+    defaultCatalogProduct: uniqueCatalogProduct(
+      (defaultCatalogResult.data ?? []) as CatalogProductRow[],
+    ),
     guides,
     incidents,
     documents,

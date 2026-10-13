@@ -1,9 +1,13 @@
-import type { DispatchResult } from "./types";
+import type { DispatchCatalogType, DispatchResult } from "./types";
+
+export const DISPATCH_GUIDE_UNIT_CODES = ["KM", "M3", "UN"] as const;
 
 export type DispatchGuideLineInput = {
+  line_id: string | null;
   quantity: number;
   unit_code: string;
-  product_code: string | null;
+  catalog_type: DispatchCatalogType | null;
+  catalog_item_id: string | null;
   product_description: string | null;
 };
 
@@ -49,20 +53,30 @@ export function validateDispatchGuideLines(lines: DispatchGuideLineInput[]) {
       (line) =>
         !Number.isFinite(line.quantity) ||
         line.quantity <= 0 ||
-        !line.unit_code,
+        !DISPATCH_GUIDE_UNIT_CODES.includes(
+          line.unit_code as (typeof DISPATCH_GUIDE_UNIT_CODES)[number],
+        ),
     )
   ) {
-    return "Cada producto necesita una cantidad mayor que cero y una UM.";
+    return "Cada línea necesita una cantidad mayor que cero y una UM válida.";
   }
 
   if (
     lines.some(
       (line) =>
-        (line.product_code?.length ?? 0) > 120 ||
         (line.product_description?.length ?? 0) > 500,
     )
   ) {
-    return "Revisa la longitud del código o la descripción del producto.";
+    return "Revisa la longitud de la descripción.";
+  }
+
+  if (
+    lines.some((line) => {
+      if (!line.catalog_type) return !line.line_id;
+      return !line.catalog_item_id && !line.line_id;
+    })
+  ) {
+    return "Selecciona un producto o servicio del catálogo en cada línea nueva.";
   }
 
   return null;

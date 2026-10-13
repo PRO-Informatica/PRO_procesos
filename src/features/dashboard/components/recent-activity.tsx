@@ -1,9 +1,10 @@
 "use client";
 
 import { ArrowRight, ChevronLeft, ChevronRight, History } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useState } from "react";
+
+import { MotionSwap } from "@/components/motion/motion-swap";
 
 import type { DashboardActivity } from "../types";
 import { formatDashboardActivity, formatDashboardDateTime } from "../formatters";
@@ -25,7 +26,6 @@ export function RecentActivity({
   items: DashboardActivity[];
   timezone: string;
 }) {
-  const reduceMotion = useReducedMotion();
   const [page, setPage] = useState(0);
   const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
   const visibleItems = items.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
@@ -38,17 +38,9 @@ export function RecentActivity({
       </header>
 
       <div className="overflow-hidden">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={page}
-            className="divide-y divide-border"
-            initial={reduceMotion ? false : { opacity: 0, x: 6 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={reduceMotion ? undefined : { opacity: 0, x: -6 }}
-            transition={{ duration: reduceMotion ? 0 : 0.16 }}
-          >
-            {visibleItems.length ? (
-              visibleItems.map((item) => (
+        <MotionSwap motionKey={page} className="divide-y divide-border">
+          {visibleItems.length ? (
+            visibleItems.map((item) => (
                 <Link
                   href={activityHref(item.entityType, item.entityId)}
                   key={item.id}
@@ -65,14 +57,13 @@ export function RecentActivity({
                   </span>
                   <ArrowRight className="size-4 shrink-0 text-foreground-muted" />
                 </Link>
-              ))
-            ) : (
-              <p className="p-6 text-center text-sm text-foreground-muted">
-                Sin actividad reciente.
-              </p>
-            )}
-          </motion.div>
-        </AnimatePresence>
+            ))
+          ) : (
+            <p className="p-6 text-center text-sm text-foreground-muted">
+              Sin actividad reciente.
+            </p>
+          )}
+        </MotionSwap>
       </div>
 
       {items.length > PAGE_SIZE && (

@@ -32,7 +32,7 @@ export async function switchProject(
     projectId,
   );
 
-  // Global platform visibility never makes a project operational.
+  // Platform administrators can select every project through their global read scope.
   if (!hasOperationalAccess) {
     return {
       status: "error",

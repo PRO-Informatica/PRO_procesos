@@ -4,6 +4,7 @@
 -- (or requested) programming quantity as its comparison basis.
 
 begin;
+
 do $$
 begin
   if to_regprocedure('public.reconcile_dispatch(uuid)') is null
@@ -24,10 +25,12 @@ begin
   end if;
 end;
 $$;
+
 alter table public.dispatch_reconciliation_attempts
   add column comparison_quantity numeric(14,3),
   add column comparison_unit_code text,
   add column comparison_basis text;
+
 -- Before 099 every attempt compared against the real dispatch volume. The
 -- existing expected_unit_code is the historical unit snapshot; it is NOT a
 -- new inferred unit. Nullable unit accommodates legacy rows without one.
@@ -35,6 +38,7 @@ update public.dispatch_reconciliation_attempts
 set comparison_quantity = expected_real_volume,
     comparison_unit_code = nullif(btrim(expected_unit_code), ''),
     comparison_basis = 'REAL_VOLUME';
+
 alter table public.dispatch_reconciliation_attempts
   alter column comparison_quantity set not null,
   alter column comparison_basis set not null,
@@ -44,6 +48,7 @@ alter table public.dispatch_reconciliation_attempts
     check (comparison_quantity >= 0),
   add constraint dispatch_reconciliation_attempts_comparison_unit_ck
     check (comparison_unit_code is null or nullif(btrim(comparison_unit_code), '') is not null);
+
 create or replace function public.reconcile_dispatch(p_dispatch_id uuid)
 returns public.dispatch_reconciliation_status
 language plpgsql
@@ -206,9 +211,12 @@ begin
   return v_next_status;
 end;
 $$;
+
 comment on function public.reconcile_dispatch(uuid) is
   'Reconciles Product against real volume, except NOT_DISPATCHED incidents use the programmed quantity.';
+
 alter function public.reconcile_dispatch(uuid) owner to postgres;
 revoke all on function public.reconcile_dispatch(uuid) from public, anon;
 grant execute on function public.reconcile_dispatch(uuid) to authenticated, service_role;
+
 commit;

@@ -8,6 +8,7 @@ const detailRoute = await read("../src/app/api/batches/universal/detail/route.ts
 const projectRoute = await read("../src/app/api/batches/universal/project/route.ts");
 const workspace = await read("../src/features/batches/components/universal-batches-workspace.tsx");
 const queries = await read("../src/features/batches/queries.ts");
+const accessPolicy = await read("../src/features/projects/access-policy.ts");
 const actions = await read("../src/features/batches/actions.ts");
 const projectQueries = await read("../src/features/projects/queries.ts");
 const sidebar = await read("../src/components/layout/app-sidebar.tsx");
@@ -23,9 +24,10 @@ test("Lotes Universal aparece como módulo adicional sin reemplazar Lotes", () =
   assert.match(sidebar, /label: "Lotes Universal"[\s\S]*href: "\/batches\/universal"/u);
 });
 
-test("el acceso exige Compras o Company Admin y batch.view por proyecto", () => {
+test("el acceso universal de lectura admite Compras, Company Admin o Platform Admin", () => {
   assert.match(queries, /permissions\.includes\("batch\.view"\)/u);
-  assert.match(queries, /\["PURCHASING", "COMPANY_ADMIN"\]\.includes\(role\)/u);
+  assert.match(queries, /hasUniversalOperationalViewRole\((?:roleCodes|scope\.roleCodes)\)/u);
+  assert.match(accessPolicy, /"PURCHASING", "COMPANY_ADMIN", "PLATFORM_ADMIN"/u);
   assert.match(detailRoute, /getUniversalBatchScope\(profile\.id, projectId\)/u);
   assert.match(projectRoute, /getUniversalBatchScope\(profile\.id, projectId\)/u);
 });
@@ -106,13 +108,15 @@ test("la vista conserva carrusel, scroll acotado, puntero y animación", () => {
   assert.match(workspace, /AnimatePresence mode="wait"/u);
 });
 
-test("el detalle embebido se renderiza nítido sin opacidades animadas anidadas", () => {
+test("el detalle embebido se renderiza nítido con un único reveal del bloque", () => {
   assert.match(motionPage, /disableMotion/u);
   assert.match(detail, /<MotionPage disableMotion=\{embedded\}/u);
   assert.match(motionSection, /disableMotion/u);
   assert.equal((detail.match(/<MotionSection disableMotion=\{embedded\}/gu) ?? []).length, 3);
-  assert.match(workspace, /selectedDetail\.id\} initial=\{false\}/u);
-  assert.doesNotMatch(workspace, /selectedDetail\.id\}[\s\S]{0,120}opacity:/u);
+  assert.match(workspace, /import \{ panelTransition \}/u);
+  assert.match(workspace, /selectedDetail\.id\}[\s\S]{0,120}variants=\{panelTransition\}/u);
+  assert.match(workspace, /exit=\{reduceMotion \? undefined : "exit"\}/u);
+  assert.doesNotMatch(detail, /staggerChildren|delayChildren/u);
 });
 
 test("abrir un despacho de otro proyecto cambia el contexto y conserva la ruta exacta", () => {

@@ -4,7 +4,13 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getPublicEnvironment } from "@/lib/env";
 
 const guestRoutes = ["/login", "/forgot-password"];
-const authUtilityRoutes = ["/auth/confirm", "/auth/signout", "/reset-password"];
+const authUtilityRoutes = [
+  "/auth/callback",
+  "/auth/confirm",
+  "/auth/signout",
+  "/api/integrations/gmail",
+  "/reset-password",
+];
 
 function copyCookies(source: NextResponse, target: NextResponse) {
   source.cookies.getAll().forEach((cookie) => target.cookies.set(cookie));
@@ -16,8 +22,8 @@ export async function updateSession(request: NextRequest) {
   const environment = getPublicEnvironment();
 
   const supabase = createServerClient(
-    environment.NEXT_PUBLIC_SUPABASE_URL,
-    environment.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    environment.supabaseUrl,
+    environment.supabasePublishableKey,
     {
       cookies: {
         getAll() {

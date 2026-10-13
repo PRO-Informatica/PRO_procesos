@@ -1,7 +1,7 @@
 "use client";
 
 import { RotateCcw, TriangleAlert } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 
 export function ErrorState({
   title = "No pudimos cargar la información",
@@ -12,11 +12,14 @@ export function ErrorState({
   description?: string;
   onRetry?: () => void;
 }) {
+  const reduceMotion = useReducedMotion();
+
   return (
     <motion.div
       className="rounded-xl border border-destructive/20 bg-destructive-soft px-6 py-10 text-center"
-      initial={{ opacity: 0, scale: 0.99 }}
+      initial={reduceMotion ? false : { opacity: 0, y: 4 }}
       animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: reduceMotion ? 0 : 0.18 }}
       role="alert"
     >
       <span className="mx-auto grid size-11 place-items-center rounded-xl bg-surface text-destructive">

@@ -44,6 +44,9 @@ function inspectionTone(status: InvoiceInspection["status"], duplicate = false) 
 }
 
 function InspectionSummary({ inspection }: { inspection: InvoiceInspection }) {
+  const expectedQuantityLabel = inspection.payload?.comparison_basis === "PROGRAMMED_QUANTITY"
+    ? "Cantidad programada"
+    : "Volumen Real";
   return (
     <div className={`rounded-xl p-4 text-sm ${inspectionTone(inspection.status, inspection.duplicate)}`}>
       <p className="font-semibold">{inspection.message}</p>
@@ -55,7 +58,8 @@ function InspectionSummary({ inspection }: { inspection: InvoiceInspection }) {
           <div><dt>Razón Social</dt><dd className="font-semibold">{inspection.payload.billing_legal_name ?? "—"}</dd></div>
           <div><dt>Estado</dt><dd className="font-semibold">{inspection.payload.recipient_exception_required ? "Decisión de Compras pendiente" : "Validada"}</dd></div>
           <div><dt>Cantidad conciliable</dt><dd className="font-semibold">{formatBatchQuantity(inspection.payload.invoiced_quantity)} {inspection.payload.normalized_unit ?? ""}</dd></div>
-          <div><dt>Volumen Real</dt><dd className="font-semibold">{inspection.payload.expected_real_volume === null ? "Pendiente" : formatBatchQuantity(inspection.payload.expected_real_volume)}</dd></div>
+          <div><dt>{expectedQuantityLabel}</dt><dd className="font-semibold">{inspection.payload.comparison_quantity === null ? "Pendiente" : `${formatBatchQuantity(inspection.payload.comparison_quantity)} ${inspection.payload.comparison_unit_code ?? ""}`}</dd></div>
+          {inspection.payload.comparison_basis === "PROGRAMMED_QUANTITY" && <div><dt>Volumen real</dt><dd className="font-semibold">{inspection.payload.expected_real_volume === null ? "Pendiente" : formatBatchQuantity(inspection.payload.expected_real_volume)}</dd></div>}
           <div><dt>Diferencia</dt><dd className="font-semibold">{inspection.payload.difference === null ? "No comparable" : formatBatchQuantity(inspection.payload.difference)}</dd></div>
         </dl>
       )}
@@ -120,7 +124,13 @@ export function DispatchInvoiceDialog({
       );
       setMessage(result.message);
       if (result.status === "success") {
-        notify.success(notifications.invoiceSaved);
+        if (inspection.status === "WITH_DIFFERENCES" || inspection.status === "REQUIRES_REINVOICING") {
+          notify.warning("Factura cargada con diferencias", "Revisa la conciliación y el estado de refacturación del despacho.");
+        } else if (inspection.status === "REQUIRES_RECIPIENT_EXCEPTION") {
+          notify.warning("Factura pendiente de decisión", "Compras debe aceptar la excepción C14 o solicitar refacturación.");
+        } else {
+          notify.success(notifications.invoiceSaved);
+        }
         if (onSuccess) await onSuccess();
         else router.refresh();
         onClose();
@@ -380,8 +390,12 @@ export function BulkInvoiceDialog({
       }
       setRows(next);
       setMessage(`${saved} factura(s) guardada(s). ${reconciled} conciliación(es) ejecutada(s). Los casos con error o duplicidad no fueron persistidos.`);
+      const failed = next.filter((row) => row.saveError).length;
+      const requiresReview = next.filter((row) => !row.saved && !row.saveError).length;
       if (saved > 0) {
-        notify.success(notifications.invoicesSaved, `${saved} ${saved === 1 ? "archivo procesado" : "archivos procesados"}.`);
+        const summary = `${saved} ${saved === 1 ? "factura guardada" : "facturas guardadas"}${failed ? `, ${failed} con error` : ""}${requiresReview ? ` y ${requiresReview} por revisar` : ""}.`;
+        if (failed || requiresReview) notify.warning("Carga finalizada con observaciones", summary);
+        else notify.success(notifications.invoicesSaved, summary);
         if (onSuccess) await onSuccess();
         else router.refresh();
       } else {

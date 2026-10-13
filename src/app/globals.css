@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: light;
   --canvas: #f3f4f6;
   --surface: #ffffff;
   --muted: #f8fafc;
@@ -23,6 +24,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --canvas: #101114;
   --surface: #17191d;
   --muted: #202228;
@@ -69,6 +71,11 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   font-weight: 400;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand) 18%, transparent);
+  color: var(--foreground);
 }
 
 h1,
@@ -226,6 +233,12 @@ details[open] > .menu-popover {
   outline: none;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .form-input:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--brand) 24%, var(--border));
+  }
+}
+
 .auth-card .form-label {
   margin-bottom: 0.625rem;
   font-size: 0.9375rem;
@@ -372,6 +385,7 @@ details[open] > .menu-popover {
 
 .primary-button:active:not(:disabled),
 .secondary-button:active:not(:disabled),
+.success-button:active:not(:disabled),
 .destructive-button:active:not(:disabled),
 .ghost-button:active:not(:disabled),
 .icon-button:active:not(:disabled) {

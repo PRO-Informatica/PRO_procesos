@@ -23,6 +23,14 @@ type DocumentActionsProps = {
   compact?: boolean;
 };
 
+type FilePreviewDialogProps = {
+  fileName: string;
+  mimeType: string;
+  url: string;
+  downloadUrl?: string;
+  onClose: () => void;
+};
+
 function isPdf(mimeType: string, fileName: string) {
   return mimeType.toLowerCase() === "application/pdf" || /\.pdf$/iu.test(fileName);
 }
@@ -30,6 +38,50 @@ function isPdf(mimeType: string, fileName: string) {
 function isImage(mimeType: string, fileName: string) {
   return ["image/jpeg", "image/png", "image/webp"].includes(mimeType.toLowerCase())
     || /\.(jpe?g|png|webp)$/iu.test(fileName);
+}
+
+export function FilePreviewDialog({
+  fileName,
+  mimeType,
+  url,
+  downloadUrl,
+  onClose,
+}: FilePreviewDialogProps) {
+  return (
+    <Dialog title={fileName} description="Vista previa privada" onClose={onClose} size="full">
+      <section className="flex h-[calc(100dvh-7rem)] max-h-[50rem] flex-col overflow-hidden">
+        {downloadUrl && (
+          <header className="flex shrink-0 justify-end border-b border-border px-4 py-3 sm:px-5">
+            <a
+              href={downloadUrl}
+              className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold text-foreground hover:bg-muted"
+            >
+              <Download aria-hidden="true" className="size-4" />
+              <span>Descargar</span>
+            </a>
+          </header>
+        )}
+        <div className="min-h-0 flex-1 overflow-auto bg-muted/40 p-2 sm:p-4">
+          {isPdf(mimeType, fileName) && (
+            <iframe
+              src={url}
+              title={`Vista previa de ${fileName}`}
+              className="h-full min-h-[70vh] w-full rounded-lg border-0 bg-white"
+            />
+          )}
+          {isImage(mimeType, fileName) && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={url} alt={`Vista previa de ${fileName}`} className="mx-auto max-h-full max-w-full rounded-lg object-contain" />
+          )}
+          {!isPdf(mimeType, fileName) && !isImage(mimeType, fileName) && (
+            <div className="grid h-full place-items-center px-6 text-center text-sm text-foreground-muted">
+              Este formato no admite vista previa. Usa Descargar para abrir el archivo.
+            </div>
+          )}
+        </div>
+      </section>
+    </Dialog>
+  );
 }
 
 export function DocumentActions({

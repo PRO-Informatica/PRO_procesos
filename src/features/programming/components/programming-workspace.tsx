@@ -4,8 +4,10 @@ import { CalendarDays, FileUp, History, KanbanSquare, LoaderCircle, Plus, Rotate
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { ErrorState } from "@/components/feedback/error-state";
+import { useDelayedPending } from "@/components/feedback/use-delayed-pending";
 import { MotionPage } from "@/components/motion/motion-page";
 import { MotionSection } from "@/components/motion/motion-section";
+import { MotionSwap } from "@/components/motion/motion-swap";
 import type { ProjectSummary } from "@/features/projects/types";
 
 import { loadProgrammingRange } from "../actions";
@@ -103,6 +105,7 @@ export function ProgrammingWorkspace({
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const showPending = useDelayedPending(pending);
   const filtersRef = useRef<ProgrammingFilters>({});
   const rangeRef = useRef(initialData.range);
   const itemsRef = useRef(initialData.items);
@@ -217,6 +220,7 @@ export function ProgrammingWorkspace({
             <button
               type="button"
               onClick={() => setScope("active")}
+              aria-pressed={scope === "active"}
               className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition sm:flex-none sm:px-4 ${
                 scope === "active" ? "bg-brand text-white" : "text-foreground-muted hover:bg-muted"
               }`}
@@ -226,6 +230,7 @@ export function ProgrammingWorkspace({
             <button
               type="button"
               onClick={() => setScope("history")}
+              aria-pressed={scope === "history"}
               className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition sm:flex-none sm:px-4 ${
                 scope === "history" ? "bg-sidebar text-white" : "text-foreground-muted hover:bg-muted"
               }`}
@@ -237,6 +242,7 @@ export function ProgrammingWorkspace({
             <button
               type="button"
               onClick={() => setView("calendar")}
+              aria-pressed={view === "calendar"}
               className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition sm:flex-none sm:px-4 ${
                 view === "calendar"
                   ? "bg-sidebar text-white shadow-sm"
@@ -249,6 +255,7 @@ export function ProgrammingWorkspace({
             <button
               type="button"
               onClick={() => setView("kanban")}
+              aria-pressed={view === "kanban"}
               className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition sm:flex-none sm:px-4 ${
                 view === "kanban"
                   ? "bg-sidebar text-white shadow-sm"
@@ -268,7 +275,7 @@ export function ProgrammingWorkspace({
             <SlidersHorizontal aria-hidden="true" className="size-4" />
             Filtros compartidos
           </div>
-          {pending && <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground-muted" role="status"><LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" /> Actualizando…</span>}
+          {showPending && <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground-muted" role="status" aria-live="polite"><LoaderCircle aria-hidden="true" className="size-3.5 animate-spin motion-reduce:animate-none" /> Actualizando…</span>}
         </div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(13rem,1fr)_minmax(13rem,1fr)_auto]">
           <div>
@@ -331,8 +338,9 @@ export function ProgrammingWorkspace({
             <span className="indeterminate-progress block h-full w-1/3 rounded-full bg-brand" />
           </div>
         )}
-        {view === "calendar" ? (
-          <div>
+        <MotionSwap motionKey={view}>
+          {view === "calendar" ? (
+            <div>
             <div className="mb-3 flex flex-col gap-3 rounded-xl border border-border bg-surface p-3.5 sm:flex-row sm:items-center sm:justify-between sm:p-4">
               <div>
                 <h2 className="text-sm font-semibold text-foreground">Calendario de programación</h2>
@@ -363,9 +371,9 @@ export function ProgrammingWorkspace({
                   : undefined
               }
             />
-          </div>
-        ) : (
-          <div>
+            </div>
+          ) : (
+            <div>
             <div className="mb-3 flex flex-col gap-3 rounded-xl border border-border bg-surface p-3.5 sm:flex-row sm:items-center sm:justify-between sm:p-4">
               <div>
                 <h2 className="text-sm font-semibold text-foreground">Kanban de programación</h2>
@@ -390,8 +398,9 @@ export function ProgrammingWorkspace({
               timezone={project.timezone}
               onSelect={handleSelectItem}
             />
-          </div>
-        )}
+            </div>
+          )}
+        </MotionSwap>
       </MotionSection>
 
       <ProgrammingPreviewDrawer

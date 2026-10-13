@@ -3,6 +3,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getOperationalProjectAccess } from "@/features/projects/queries";
+import { hasUniversalOperationalViewRole } from "@/features/projects/access-policy";
 import type { ProjectAccessScope } from "@/features/projects/types";
 
 import type { GuideReportData, GuideReportFilters, GuideReportRow, ProgrammingReportItem, ReportInvoice, ReportOption } from "./types";
@@ -32,7 +33,7 @@ export async function getUniversalReportScopes(userId: string): Promise<ProjectA
   return (await getOperationalProjectAccess(userId)).filter(({ project, roleCodes, permissions }) =>
     project.status === "ACTIVE" &&
     permissions.includes("dispatch.view") &&
-    roleCodes.some((role) => ["PURCHASING", "COMPANY_ADMIN"].includes(role)),
+    hasUniversalOperationalViewRole(roleCodes),
   );
 }
 

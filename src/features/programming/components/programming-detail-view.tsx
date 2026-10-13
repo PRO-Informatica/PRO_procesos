@@ -459,6 +459,9 @@ export function ProgrammingDetailView({
           version: null,
           guideCount: 0,
           guideTotal: 0,
+          productEstimate: { amount: 0, complete: true, lineCount: 0, currency: "GTQ" },
+          serviceEstimate: { amount: 0, complete: true, lineCount: 0, currency: "GTQ" },
+          defaultCatalogProduct: null,
           guides: [],
         }}
         onClose={() => setRegisterOpen(false)}

@@ -2,12 +2,12 @@
 
 import { Children, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+
+import { MotionSwap } from "@/components/motion/motion-swap";
 
 const PAGE_SIZE = 8;
 
 export function ReportResultsPagination({ children }: { children: React.ReactNode }) {
-  const reduceMotion = useReducedMotion();
   const [page, setPage] = useState(0);
   const items = Children.toArray(children);
   const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
@@ -18,18 +18,9 @@ export function ReportResultsPagination({ children }: { children: React.ReactNod
   return (
     <>
       <div className="overflow-hidden">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={currentPage}
-            className="space-y-3"
-            initial={reduceMotion ? false : { opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduceMotion ? undefined : { opacity: 0, y: -5 }}
-            transition={{ duration: reduceMotion ? 0 : 0.18 }}
-          >
-            {visibleItems}
-          </motion.div>
-        </AnimatePresence>
+        <MotionSwap motionKey={currentPage} className="space-y-3">
+          {visibleItems}
+        </MotionSwap>
       </div>
 
       {items.length > PAGE_SIZE && (

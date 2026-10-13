@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { DocumentActions } from "@/components/documents/document-preview-dialog";
 import { MotionPage } from "@/components/motion/motion-page";
 import { MotionCard } from "@/components/motion/motion-card";
+import { MotionSection } from "@/components/motion/motion-section";
 import { StatusBadge } from "@/components/ui/badge";
 import { getInvoiceDownloadUrl } from "@/features/batches/actions";
 import {
@@ -75,7 +76,7 @@ export function InvoicesWorkspace({
   );
   return (
     <MotionPage className="mx-auto max-w-[1600px] space-y-5 pb-10">
-      <header>
+      <MotionSection>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">
           Gestión global · {project.name}
         </p>
@@ -84,8 +85,8 @@ export function InvoicesWorkspace({
           Consulta documental global. La carga y conciliación se trabajan desde
           el despacho dentro de su lote.
         </p>
-      </header>
-      <section className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 lg:grid-cols-7">
+      </MotionSection>
+      <MotionSection className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 lg:grid-cols-7">
         <Metric label="Total" value={data.items.length} />
         <Metric
           label="Producto"
@@ -121,8 +122,8 @@ export function InvoicesWorkspace({
             ).length
           }
         />
-      </section>
-      <section className="rounded-xl border border-border bg-surface p-3.5 shadow-[0_1px_2px_rgba(16,24,40,0.02)] sm:p-4">
+      </MotionSection>
+      <MotionSection className="rounded-xl border border-border bg-surface p-3.5 shadow-[0_1px_2px_rgba(16,24,40,0.02)] sm:p-4">
         <div className="grid items-center gap-3 md:grid-cols-2 xl:grid-cols-12">
           <label className="relative xl:col-span-4">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" />
@@ -203,8 +204,8 @@ export function InvoicesWorkspace({
             <RefreshCcw className="size-3.5" /> Limpiar
           </button>
         </div>
-      </section>
-      <section className="overflow-hidden rounded-xl border border-border bg-surface">
+      </MotionSection>
+      <MotionSection className="overflow-hidden rounded-xl border border-border bg-surface">
         <div className="hidden overflow-x-auto lg:block">
           <table className="w-full min-w-[1280px] text-left text-sm">
             <thead className="bg-muted/60 text-[10px] uppercase text-foreground-muted">
@@ -338,7 +339,7 @@ export function InvoicesWorkspace({
             />
           )}
         </div>
-      </section>
+      </MotionSection>
     </MotionPage>
   );
 }
