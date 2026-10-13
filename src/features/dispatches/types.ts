@@ -6,6 +6,23 @@ export type DispatchResult = (typeof DISPATCH_RESULTS)[number];
 export type ProgrammingDispatchStatus = "CONFIRMED" | "IN_EXECUTION";
 export type DispatchUnit = { code: string; name: string };
 export type IncidentTypeOption = { id: string; name: string };
+export type DispatchCatalogType = "PRODUCT" | "SERVICE";
+
+export type DispatchCatalogOption = {
+  id: string;
+  type: DispatchCatalogType;
+  code: string;
+  reference: string | null;
+  price: number;
+  currency: "GTQ";
+};
+
+export type DispatchEstimate = {
+  amount: number;
+  complete: boolean;
+  lineCount: number;
+  currency: "GTQ";
+};
 
 export type DispatchGuideLine = {
   id: string;
@@ -14,6 +31,12 @@ export type DispatchGuideLine = {
   productDescription: string | null;
   quantity: number;
   unitCode: string;
+  catalogType: DispatchCatalogType | null;
+  catalogItemId: string | null;
+  catalogReference: string | null;
+  unitPrice: number | null;
+  estimatedSubtotal: number | null;
+  currency: string | null;
 };
 
 export type DispatchGuide = {
@@ -23,6 +46,7 @@ export type DispatchGuide = {
   quantity: number;
   unitCode: string;
   productCount: number;
+  serviceCount: number;
   lines: DispatchGuideLine[];
 };
 
@@ -45,6 +69,9 @@ export type ProgrammingDispatchItem = {
   version: number | null;
   guideCount: number;
   guideTotal: number;
+  productEstimate: DispatchEstimate;
+  serviceEstimate: DispatchEstimate;
+  defaultCatalogProduct: DispatchCatalogOption | null;
   guides: DispatchGuide[];
 };
 
@@ -136,6 +163,9 @@ export type DispatchDetail = {
   createdAt: string;
   updatedAt: string;
   guideTotal: number;
+  productEstimate: DispatchEstimate;
+  serviceEstimate: DispatchEstimate;
+  defaultCatalogProduct: DispatchCatalogOption | null;
   guides: DispatchGuide[];
   incidents: DispatchIncident[];
   documents: DispatchDocument[];
@@ -193,3 +223,7 @@ export type PreparedUpload = {
 export type UploadActionResult =
   | { status: "success"; upload: PreparedUpload }
   | { status: "error"; message: string };
+
+export type DispatchCatalogSearchResult =
+  | { status: "success"; items: DispatchCatalogOption[] }
+  | { status: "error"; message: string; items: [] };

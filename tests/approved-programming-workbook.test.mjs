@@ -176,8 +176,9 @@ test("despacho y guía consumen los campos estructurados", async () => {
   assert.match(detail, /Pedido No\./u);
   assert.match(detail, /Tipo de concreto/u);
   assert.match(detail, /detail\.orderNumber \?\? detail\.programmingOrderNumber/u);
-  assert.match(guide, /productDescription: defaultProductDescription \?\? ""/u);
-  assert.match(guide, /productCode: ""/u);
+  assert.match(guide, /initialLine\(programmedUnitCode, defaultProductDescription \?\? "", defaultCatalogProduct\)/u);
+  assert.match(guide, /catalogItemId: defaultProduct\.id/u);
+  assert.match(guide, /emptyLine\(crypto\.randomUUID\(\)\)/u);
 });
 
 test("editar una programación no iniciada exige motivo y vuelve a confirmación", async () => {

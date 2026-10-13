@@ -1,6 +1,8 @@
 import type { DispatchResult, DispatchStatus } from "./types";
 import { formatStatusLabel } from "@/lib/status-labels";
 
+export { formatDispatchMoney, normalizeCatalogReference } from "./catalog-estimates";
+
 export function formatDispatchStatus(status: DispatchStatus) {
   return formatStatusLabel(status);
 }
