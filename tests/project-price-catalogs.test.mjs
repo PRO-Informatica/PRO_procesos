@@ -60,7 +60,7 @@ test("detecta duplicados y precios inválidos antes de persistir", async () => {
   const result = await parseProjectPriceCatalog(file, "SERVICE");
   assert.equal(result.validCount, 0);
   assert.equal(result.errorCount, 4);
-  assert.match(result.rows[0].errors.join(" "), /duplicado/u);
+  assert.match(result.rows[0].errors.join(" "), /duplicada/u);
   assert.match(result.rows[1].errors.join(" "), /mayor o igual a cero/u);
   assert.match(result.rows[2].errors.join(" "), /número finito/u);
   assert.match(result.rows[3].errors.join(" "), /hasta 4 decimales/u);
@@ -192,18 +192,78 @@ test("servicios permiten la celda de UM vacía sin inventar una unidad", async (
   assert.deepEqual(result.rows.map(row => row.price), ["509.04", "333.2", "0", "0", "80.64"]);
 });
 
+test("servicios permiten repetir código, descripción y UM con observaciones distintas", async () => {
+  const file = await workbookFile("servicios.xlsx", [
+    ["codigo", "descripcion", "UM", "precio", "Observaciones"],
+    ["86180185", "Dosis extra de retardante (m³)", "M3", 10.92, " Una dosis "],
+    ["86180185", "Dosis extra de retardante (m³)", "M3", 21.84, "Doble dosis"],
+    ["86180185", "Dosis extra de retardante (m³)", "UN", 12, "Por unidad"],
+    ["86180185", "Dosis extra de retardante (m³)", null, 0, null],
+  ]);
+  const result = await parseProjectPriceCatalog(file, "SERVICE");
+  assert.equal(result.validCount, 4);
+  assert.equal(result.errorCount, 0);
+  assert.deepEqual(result.rows.map(row => row.price), ["10.92", "21.84", "12", "0"]);
+  assert.deepEqual(result.rows.map(row => row.unitCode), ["M3", "M3", "UN", null]);
+  assert.deepEqual(result.rows.map(row => row.observations), ["Una dosis", "Doble dosis", "Por unidad", null]);
+});
+
+test("servicios siguen rechazando repetir la misma variante incluso con distinto precio", async () => {
+  const file = await workbookFile("servicios.xlsx", [
+    ["codigo", "descripcion", "UM", "precio", "Observación"],
+    ["S1", "Bomba", "m³", 10, "Una dosis"],
+    ["S1", "Otro servicio", "UN", 20, " Una dosis "],
+    ["S2", "Sin unidad", null, 0, null],
+    ["S2", "Otra descripción", "M3", 12, "\u00a0"],
+  ]);
+  const result = await parseProjectPriceCatalog(file, "SERVICE");
+  assert.equal(result.errorCount, 4);
+  assert.ok(result.rows.every(row => row.errors.some(error => /código y observaciones.*duplicada/u.test(error))));
+});
+
+test("observaciones son opcionales, se recortan sin alterar su contenido y rechazan fórmulas o valores inválidos", async () => {
+  const file = await workbookFile("servicios.xlsx", [
+    ["codigo", "descripcion", "UM", "precio", "observaciones"],
+    ["S1", "Servicio", null, 0, "\u00a0 Por m³ \t"],
+    ["S2", "Servicio", null, 0, { formula: '"Nota"', result: "Nota" }],
+    ["S3", "Servicio", null, 0, "x".repeat(501)],
+    ["S4", "Servicio", null, 0, "Nota\ninterna"],
+    ["S5", "Servicio", null, 0, ""],
+  ]);
+  const result = await parseProjectPriceCatalog(file, "SERVICE");
+  assert.equal(result.rows[0].observations, "Por m³");
+  assert.equal(result.rows[4].observations, null);
+  assert.equal(result.errorCount, 3);
+  assert.match(result.rows[1].errors.join(" "), /observaciones.*fórmula/u);
+  assert.match(result.rows[2].errors.join(" "), /observaciones.*500/u);
+  assert.match(result.rows[3].errors.join(" "), /observaciones/u);
+});
+
+test("productos no cambian su identidad ni permiten repetir código y referencia", async () => {
+  const file = await workbookFile("productos.xlsx", [
+    ["codigo", "referencia", "precio"],
+    ["86180185", "CON.3001", 10],
+    ["86180185", "CON.3001", 20],
+    ["86180185", "CON.5001", 30],
+  ]);
+  const result = await parseProjectPriceCatalog(file, "PRODUCT");
+  assert.equal(result.errorCount, 2);
+  assert.equal(result.rows[2].errors.length, 0);
+  assert.ok(result.rows.slice(0, 2).every(row => row.errors.some(error => /código y referencia.*duplicada/u.test(error))));
+});
+
 test("permitir UM vacía no omite duplicados, metadatos requeridos ni fórmulas", async () => {
   const file = await workbookFile("servicios.xlsx", [
     ["codigo", "descripcion", "UM", "precio"],
     ["DUP", "Una descripción", null, 1],
-    ["DUP", "Otra descripción", null, 2],
+    ["DUP", "Una descripción", null, 2],
     ["BAD", "Servicio", "LITROS", 1],
     ["DESC", "", null, 1],
     ["FORMULA", "Servicio", { formula: '""', result: "" }, 1],
   ]);
   const result = await parseProjectPriceCatalog(file, "SERVICE");
   assert.equal(result.errorCount, 5);
-  assert.ok(result.rows.slice(0, 2).every(row => row.errors.some(error => /duplicado/u.test(error))));
+  assert.ok(result.rows.slice(0, 2).every(row => row.errors.some(error => /duplicada/u.test(error))));
   assert.match(result.rows[2].errors.join(" "), /La UM debe/u);
   assert.match(result.rows[3].errors.join(" "), /descripción/u);
   assert.match(result.rows[4].errors.join(" "), /fórmula/u);

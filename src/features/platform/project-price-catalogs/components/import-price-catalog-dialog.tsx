@@ -154,11 +154,16 @@ export function ImportPriceCatalogDialog({
               <p className="mt-2 text-xs text-foreground-muted">
                 Máximo 10 MiB y 10,000 registros. {catalogKind === "PRODUCT"
                   ? "Columnas: codigo, referencia, precio."
-                  : "Columnas: codigo, descripcion, unidad de medida, precio. La UM puede quedar vacía; si se indica, debe ser KM, M3, UN (Unidad), Servicio, Combo, Recargo o dosis/m3."}
+                  : "Columnas: codigo, descripcion, unidad de medida, precio y observaciones (opcional). La UM puede quedar vacía; si se indica, debe ser KM, M3, UN (Unidad), Servicio, Combo, Recargo o dosis/m3."}
               </p>
               <p className="mt-1 text-xs text-foreground-muted">
                 Los precios vacíos o con texto no numérico se importan con valor 0.
               </p>
+              {catalogKind === "SERVICE" && (
+                <p className="mt-1 text-xs text-foreground-muted">
+                  El código puede repetirse con observaciones distintas. Actualizar modifica la descripción, UM y precio del mismo código y observaciones. Las observaciones solo aparecen en el catálogo y selector, no en la guía.
+                </p>
+              )}
             </div>
 
             <LoadingButton

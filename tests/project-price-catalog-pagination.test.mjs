@@ -15,7 +15,7 @@ function catalogQueries({ services = 20, products = 24, rowsError = null, latest
   const calls = [];
   const makeRows = (total, project = "project-a") => Array.from({ length: total }, (_, i) => ({
     id: `${project}-${i}`, project_id: project, code: `C${String(i).padStart(3, "0")}`,
-    reference: "CON.3003", description: "Bomba", unit_code: "M3", price: 80.64,
+    reference: "CON.3003", description: "Bomba", observations: "Tarifa especial", unit_code: "M3", price: 80.64,
     updated_at: "2026-10-23T07:00:00Z",
   }));
   const tables = {
@@ -28,19 +28,20 @@ function catalogQueries({ services = 20, products = 24, rowsError = null, latest
     from(table) {
       assert.ok(Object.hasOwn(tables, table), `Unexpected table: ${table}`);
       const filters = [];
+      const order = [];
       let range = null;
       let single = false;
       let search = "";
       const query = {
         select() { return query; },
         eq(key, value) { filters.push([key, value]); return query; },
-        order() { return query; },
+        order(key) { order.push(key); return query; },
         range(from, to) { range = [from, to]; return query; },
         or(value) { search = value; return query; },
         limit() { return query; },
         maybeSingle() { single = true; return query; },
         then(resolve, reject) {
-          calls.push({ table, filters, range, search });
+          calls.push({ table, filters, range, search, order });
           const rows = tables[table].filter(row => filters.every(([key, value]) => row[key] === value));
           const forcedError = table === "project_service_prices" ? (range ? rowsError : latestError) : null;
           let result;
@@ -95,6 +96,15 @@ test("una página 2 válida sigue mostrando sus registros", async () => {
   assert.equal(result.services.page, 2);
   assert.equal(result.services.totalPages, 2);
   assert.equal(result.services.items.length, 3);
+});
+
+test("servicios ordenan variantes por observaciones e ID, sin cambiar productos, y permiten buscar observaciones", async () => {
+  const { get, calls } = catalogQueries({ services: 28 });
+  const result = await get("company-a", "project-a", { ...filters, serviceQuery: "Tarifa" });
+  assert.deepEqual(calls.find(call => call.table === "project_service_prices" && call.range).order, ["code", "observations", "id"]);
+  assert.ok(calls.find(call => call.table === "project_service_prices" && call.range).search.includes("observations.ilike.%Tarifa%"));
+  assert.equal(result.services.items[0].observations, "Tarifa especial");
+  assert.deepEqual(calls.find(call => call.table === "project_product_prices" && call.range).order, ["code", "reference"]);
 });
 
 test("un catálogo vacío con página obsoleta devuelve el estado vacío sin bucles", async () => {

@@ -93,7 +93,7 @@ export function ProjectPriceCatalogsView({ data }: { data: ProjectPriceCatalogsD
       />
       <CatalogSection
         title="Catálogo de servicios"
-        description="Servicios identificados por código."
+        description="Servicios identificados por código y observaciones. Las observaciones no se incluyen en la guía."
         icon={Wrench}
         companyId={data.company.id}
         projectId={data.project.id}
@@ -159,7 +159,7 @@ function CatalogSection({
             name={queryName}
             defaultValue={catalog.query}
             className="form-input pl-10"
-            placeholder={kind === "PRODUCT" ? "Buscar por código o referencia" : "Buscar por código o descripción"}
+            placeholder={kind === "PRODUCT" ? "Buscar por código o referencia" : "Buscar por código, descripción u observaciones"}
           />
         </label>
         <button className="secondary-button" type="submit">Buscar</button>
@@ -187,7 +187,7 @@ function CatalogSection({
               <tr>
                 <th className="px-6 py-3.5 sm:px-8">Código</th>
                 {kind === "PRODUCT" && <th className="px-4 py-3.5">Referencia</th>}
-                {kind === "SERVICE" && <><th className="px-4 py-3.5">Descripción</th><th className="px-4 py-3.5">Unidad de medida</th></>}
+                {kind === "SERVICE" && <><th className="px-4 py-3.5">Descripción</th><th className="px-4 py-3.5">Observaciones</th><th className="px-4 py-3.5">Unidad de medida</th></>}
                 <th className="px-6 py-3.5 text-right sm:px-8">Precio unitario</th>
               </tr>
             </thead>
@@ -196,7 +196,7 @@ function CatalogSection({
                 <tr key={item.id}>
                   <td className="px-6 py-4 font-mono font-semibold sm:px-8">{item.code}</td>
                   {kind === "PRODUCT" && <td className="px-4 py-4 font-mono">{(item as ProjectProductPrice).reference}</td>}
-                  {kind === "SERVICE" && <><td className="px-4 py-4">{(item as ProjectServicePrice).description || "Sin descripción"}</td><td className="px-4 py-4">{(item as ProjectServicePrice).unitCode || "Sin UM"}</td></>}
+                  {kind === "SERVICE" && <><td className="px-4 py-4">{(item as ProjectServicePrice).description || "Sin descripción"}</td><td className="max-w-xs break-words px-4 py-4">{(item as ProjectServicePrice).observations || "—"}</td><td className="px-4 py-4">{(item as ProjectServicePrice).unitCode || "Sin UM"}</td></>}
                   <td className="px-6 py-4 text-right font-semibold sm:px-8">{money(item.price)}</td>
                 </tr>
               ))}

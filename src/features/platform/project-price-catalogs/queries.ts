@@ -30,6 +30,7 @@ type ServiceRow = {
   id: string;
   code: string;
   description: string | null;
+  observations: string | null;
   unit_code: string | null;
   price: string | number;
   updated_at: string;
@@ -124,11 +125,13 @@ async function getServiceCatalog(
 
   let rowsQuery = supabase
     .from("project_service_prices")
-    .select("id, code, description, unit_code, price, updated_at", { count: "exact" })
+    .select("id, code, description, observations, unit_code, price, updated_at", { count: "exact" })
     .eq("project_id", projectId)
     .order("code")
+    .order("observations")
+    .order("id")
     .range(from, to);
-  if (query) rowsQuery = rowsQuery.or(`code.ilike.%${query}%,description.ilike.%${query}%`);
+  if (query) rowsQuery = rowsQuery.or(`code.ilike.%${query}%,description.ilike.%${query}%,observations.ilike.%${query}%`);
 
   const [rowsResult, latestResult] = await Promise.all([
     rowsQuery,
@@ -160,6 +163,7 @@ async function getServiceCatalog(
       id: row.id,
       code: row.code,
       description: row.description,
+      observations: row.observations,
       unitCode: row.unit_code,
       price: String(row.price),
       updatedAt: row.updated_at,

@@ -329,6 +329,7 @@ export async function searchDispatchCatalogAction(
           code,
           reference: typeof row.reference === "string" ? row.reference : null,
           description: typeof row.description === "string" ? row.description : null,
+          observations: catalogType === "SERVICE" && typeof row.observations === "string" ? row.observations : null,
           unitCode: typeof row.unit_code === "string" ? row.unit_code : null,
           price,
           currency: "GTQ",

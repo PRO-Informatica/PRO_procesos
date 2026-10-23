@@ -7,6 +7,11 @@ import { validateDispatchGuideLines } from "../src/features/dispatches/validatio
 const line = { catalogType: "PRODUCT", productDescription: "CONA3000", unitCode: "M3" };
 const service = { type: "SERVICE", description: "Bomba y operador", unitCode: "M3", reference: null };
 
+test("observaciones distinguen el selector pero nunca se copian a la descripción o UM de la guía", () => {
+  const selected = { ...service, observations: "Tarifa especial por doble dosis" };
+  assert.deepEqual(catalogSelectionDefaults(selected, line, "KM"), { productDescription: "Bomba y operador", unitCode: "M3" });
+});
+
 test("seleccionar servicio completa su descripción y su propia UM", () => {
   assert.deepEqual(catalogSelectionDefaults(service, line, "KM"), { productDescription: "Bomba y operador", unitCode: "M3" });
   assert.deepEqual(catalogSelectionDefaults({ ...service, description: "Laboratorio", unitCode: "COMBO" }, line, "M3"), { productDescription: "Laboratorio", unitCode: "COMBO" });
