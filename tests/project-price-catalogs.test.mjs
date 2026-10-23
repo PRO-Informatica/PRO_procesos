@@ -304,6 +304,22 @@ test("acepta U y m del proveedor sin confundir metros lineales con M3", async ()
   assert.deepEqual(result.rows.map(row => row.price), ["18.76", "621.6", "22.12", "24.92", "80.64"]);
 });
 
+test("Unitario equivale a U/UN solo en el catálogo de servicios y conserva descripción, precio y observaciones", async () => {
+  const file = await workbookFile("servicios.xlsx", [
+    ["codigo", "descripcion", "UM", "precio", "observaciones"],
+    ["SERV1010", "Recargo por suspensión de obra", "Unitario", 1200.36, null],
+    ["SERV1011", "Recargo por traslado de concreto <6 m³ (carga mínima)", " unitario ", 200.2, "Carga mínima"],
+    ["SERV1018", "Recargo por suspensión de bomba en falso", "UNITARIO", 724.36, null],
+    ["SERV1019", "Recargo por suspensión de colocación en falso", "\u00a0Unitario\u00a0", 724.36, null],
+  ]);
+  const result = await parseProjectPriceCatalog(file, "SERVICE");
+  assert.equal(result.errorCount, 0);
+  assert.ok(result.rows.every(row => row.unitCode === "UN"));
+  assert.deepEqual(result.rows.map(row => row.price), ["1200.36", "200.2", "724.36", "724.36"]);
+  assert.equal(result.rows[1].observations, "Carga mínima");
+  assert.equal(result.rows[1].description, "Recargo por traslado de concreto <6 m³ (carga mínima)");
+});
+
 test("acepta servicios sin columna UM o con guiones, pero muestra el texto de las UM desconocidas", async () => {
   const missing = await parseProjectPriceCatalog(await workbookFile("servicios.xlsx", [
     ["codigo", "descripcion", "precio", "observaciones"], ["S1", "Servicio sin unidad", 5, "Nota"],
