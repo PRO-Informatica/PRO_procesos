@@ -105,7 +105,11 @@ if (mode === "--apply") {
   const dump = spawnSync("pg_dump", ["--format=custom", "--schema-only", "--schema=public", "--schema=app_private", "--schema=supabase_migrations", "--file", archive], { env, encoding: "utf8" });
   if (dump.status !== 0) throw new Error(dump.stderr || "Schema backup failed.");
   const inspect = spawnSync("pg_restore", ["--list", archive], { encoding: "utf8" });
-  if (inspect.status !== 0 || !inspect.stdout.includes(unitKey)) throw new Error("Schema backup is incomplete.");
+  // CHECK constraints are embedded in the TABLE definition, not separate TOC entries.
+  const restored = spawnSync("pg_restore", ["--schema-only", "--file=-", archive], { encoding: "utf8", maxBuffer: 20 * 1024 * 1024 });
+  if (inspect.status !== 0 || !inspect.stdout.includes("project_service_prices")
+    || restored.status !== 0 || !restored.stdout.includes(`CONSTRAINT ${unitKey} ${oldDefinition}`)
+    || routines.some(routine => !restored.stdout.includes(routine.previous))) throw new Error("Schema backup is incomplete.");
   await writeFile(path.join(directory, "manifest.json"), JSON.stringify({ head: git("rev-parse", "HEAD"), target, version: "118", sha256 }, null, 2), { mode: 0o600 });
   console.log(JSON.stringify({ status: "SCHEMA_BACKUP_CREATED", directory }));
 }
