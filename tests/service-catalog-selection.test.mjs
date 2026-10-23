@@ -40,6 +40,8 @@ test("normaliza sin conversiones y solo servicios aceptan unidades comerciales",
   assert.equal(normalizeServiceUnit(" Unitario "), "UN");
   assert.equal(normalizeServiceUnit("unitario"), "UN");
   assert.equal(normalizeServiceUnit("m"), "M");
+  assert.equal(normalizeServiceUnit("m²"), "M2");
+  assert.equal(normalizeServiceUnit(" M2 "), "M2");
   assert.equal(normalizeServiceUnit("horas"), null);
   const input = { line_id: null, quantity: 1, unit_code: "COMBO", catalog_type: "SERVICE", catalog_item_id: "id", product_description: null };
   assert.equal(validateDispatchGuideLines([input]), null);
@@ -49,4 +51,7 @@ test("normaliza sin conversiones y solo servicios aceptan unidades comerciales",
   assert.equal(validateDispatchGuideLines([{ ...input, unit_code: "M" }]), null);
   assert.match(validateDispatchGuideLines([{ ...input, unit_code: "M", catalog_type: "PRODUCT" }]), /UM válida/u);
   assert.deepEqual(catalogSelectionDefaults({ ...service, unitCode: "M" }, line, "M3"), { productDescription: service.description, unitCode: "M" });
+  assert.equal(validateDispatchGuideLines([{ ...input, unit_code: "M2" }]), null);
+  assert.match(validateDispatchGuideLines([{ ...input, unit_code: "M2", catalog_type: "PRODUCT" }]), /UM válida/u);
+  assert.deepEqual(catalogSelectionDefaults({ ...service, unitCode: "M2" }, line, "M3"), { productDescription: service.description, unitCode: "M2" });
 });
