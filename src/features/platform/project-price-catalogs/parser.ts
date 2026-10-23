@@ -33,7 +33,7 @@ function isFormula(value: CellValue) {
   return Boolean(
     value &&
       typeof value === "object" &&
-      "formula" in value,
+      ("formula" in value || "sharedFormula" in value),
   );
 }
 
@@ -63,9 +63,14 @@ function identifierText(cell: Cell) {
 }
 
 function parsePrice(cell: Cell) {
-  const rawValue = isFormula(cell.value)
-    ? (cell.value as { result?: CellValue }).result
+  const formula = isFormula(cell.value);
+  // ExcelJS's cell.value omits falsy formula results; its result getter keeps 0.
+  const rawValue = formula
+    ? cell.result
     : cell.value;
+  // An unevaluated/broken formula is not an intentionally empty price.
+  if (formula && (rawValue === null || rawValue === undefined)) return null;
+  if (rawValue === null || rawValue === undefined) return "0";
   if (typeof rawValue === "number") {
     if (!Number.isFinite(rawValue) || rawValue < 0) return null;
     const rounded = Number(rawValue.toFixed(4));
@@ -75,12 +80,20 @@ function parsePrice(cell: Cell) {
       ? decimal
       : null;
   }
+  if (
+    typeof rawValue === "boolean" ||
+    rawValue instanceof Date ||
+    (typeof rawValue === "object" && "error" in rawValue)
+  ) return null;
 
   let text = valueText(rawValue)
     .replace(/[Q$\s]/gu, "")
     .trim();
   if (text.includes(",") && text.includes(".")) text = text.replace(/,/gu, "");
   else if (text.includes(",")) text = text.replace(",", ".");
+  // Supplier catalogs may leave prices blank or use labels such as "N/A".
+  // Normalize only those values to zero; numeric validation still applies.
+  if (!text || Number.isNaN(Number(text))) return "0";
   if (!/^(?:0|[1-9]\d{0,13})(?:\.\d{1,4})?$/u.test(text)) return null;
   const numeric = Number(text);
   return Number.isFinite(numeric) && numeric >= 0 ? text : null;

@@ -13,6 +13,7 @@ import {
   previewProjectPriceCatalogAction,
 } from "../actions";
 import { catalogHrefAfterImport } from "../navigation";
+import { PriceCatalogPreviewTable } from "./price-catalog-preview-table";
 import type {
   PriceCatalogImportMode,
   PriceCatalogKind,
@@ -33,6 +34,7 @@ export function ImportPriceCatalogDialog({
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PriceCatalogPreview | null>(null);
+  const [previewRevision, setPreviewRevision] = useState(0);
   const [mode, setMode] = useState<PriceCatalogImportMode>("UPDATE");
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
@@ -69,6 +71,7 @@ export function ImportPriceCatalogDialog({
       setMessage("Selecciona un archivo .xlsx.");
       return;
     }
+    setPreview(null);
     setMessage(null);
     startTransition(async () => {
       const result = await previewProjectPriceCatalogAction(buildFormData());
@@ -79,6 +82,7 @@ export function ImportPriceCatalogDialog({
         return;
       }
       setPreview(result);
+      setPreviewRevision((revision) => revision + 1);
       setIsError(result.errorCount > 0);
       setMessage(
         result.errorCount > 0
@@ -152,6 +156,9 @@ export function ImportPriceCatalogDialog({
                   ? "Columnas: codigo, referencia, precio."
                   : "Columnas: codigo, descripcion, unidad de medida, precio. UM: KM, M3, UN (Unidad), Servicio, Combo, Recargo o dosis/m3."}
               </p>
+              <p className="mt-1 text-xs text-foreground-muted">
+                Los precios vacíos o con texto no numérico se importan con valor 0.
+              </p>
             </div>
 
             <LoadingButton
@@ -186,43 +193,7 @@ export function ImportPriceCatalogDialog({
                   <Summary label="Con errores" value={String(preview.errorCount)} />
                 </dl>
 
-                <div className="overflow-x-auto rounded-xl border border-border">
-                  <table className="w-full min-w-[680px] text-left text-sm">
-                    <thead className="bg-muted text-xs uppercase tracking-wide text-foreground-muted">
-                      <tr>
-                        <th className="px-4 py-3">Fila</th>
-                        <th className="px-4 py-3">Código</th>
-                        {catalogKind === "PRODUCT" && <th className="px-4 py-3">Referencia</th>}
-                        {catalogKind === "SERVICE" && <><th className="px-4 py-3">Descripción</th><th className="px-4 py-3">UM</th></>}
-                        <th className="px-4 py-3 text-right">Precio</th>
-                        <th className="px-4 py-3">Validación</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {preview.rows.slice(0, 25).map((row) => (
-                        <tr key={row.rowNumber}>
-                          <td className="px-4 py-3 text-foreground-muted">{row.rowNumber}</td>
-                          <td className="px-4 py-3 font-mono">{row.code || "—"}</td>
-                          {catalogKind === "PRODUCT" && <td className="px-4 py-3 font-mono">{row.reference || "—"}</td>}
-                          {catalogKind === "SERVICE" && <><td className="px-4 py-3">{row.description || "—"}</td><td className="px-4 py-3">{row.unitCode || "—"}</td></>}
-                          <td className="px-4 py-3 text-right">{row.price || "—"}</td>
-                          <td className="px-4 py-3">
-                            {row.errors.length ? (
-                              <span className="text-destructive">{row.errors.join(" ")}</span>
-                            ) : (
-                              <span className="text-success">Válida</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {preview.rows.length > 25 && (
-                    <p className="border-t border-border px-4 py-3 text-xs text-foreground-muted">
-                      Se muestran las primeras 25 filas de {preview.totalCount}.
-                    </p>
-                  )}
-                </div>
+                <PriceCatalogPreviewTable key={previewRevision} preview={preview} disabled={pending} />
 
                 {errorRows.length > 0 && (
                   <div className="rounded-xl border border-destructive/25 bg-destructive-soft p-4">
