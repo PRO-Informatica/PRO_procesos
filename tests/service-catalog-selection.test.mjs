@@ -37,6 +37,8 @@ test("normaliza sin conversiones y solo servicios aceptan unidades comerciales",
   assert.equal(normalizeServiceUnit(" Dosis / m³ "), "DOSIS/M3");
   assert.equal(normalizeServiceUnit("Unidad"), "UN");
   assert.equal(normalizeServiceUnit(" u "), "UN");
+  assert.equal(normalizeServiceUnit(" Unitario "), "UN");
+  assert.equal(normalizeServiceUnit("unitario"), "UN");
   assert.equal(normalizeServiceUnit("m"), "M");
   assert.equal(normalizeServiceUnit("horas"), null);
   const input = { line_id: null, quantity: 1, unit_code: "COMBO", catalog_type: "SERVICE", catalog_item_id: "id", product_description: null };
