@@ -246,7 +246,7 @@ function parseRows(
         errors.push("La descripción no es válida (máximo 500 caracteres).");
       }
       if (descriptionCell && isFormula(descriptionCell.value)) errors.push("La descripción no puede ser una fórmula.");
-      if (!unitCode) errors.push(SERVICE_UNIT_ERROR);
+      if (rawUnit && !unitCode) errors.push(SERVICE_UNIT_ERROR);
       if (unitCell && isFormula(unitCell.value)) errors.push("La UM no puede ser una fórmula.");
     }
 

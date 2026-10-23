@@ -161,7 +161,7 @@ test("servicios importan descripción y UM sin calcular IVA adicional", async ()
   assert.equal(result.rows[0].price, "80.64");
 });
 
-test("rechaza servicios sin descripción, UM válida o con fórmulas en metadatos", async () => {
+test("rechaza servicios sin descripción, con UM desconocida o con fórmulas en metadatos", async () => {
   const file = await workbookFile("servicios.xlsx", [
     ["codigo", "descripcion", "unidad", "precio"],
     ["S1", "", "M3", 1],
@@ -175,6 +175,38 @@ test("rechaza servicios sin descripción, UM válida o con fórmulas en metadato
   assert.match(result.rows[1].errors.join(" "), /UM/u);
   assert.match(result.rows[2].errors.join(" "), /fórmula/u);
   assert.match(result.rows[3].errors.join(" "), /fórmula/u);
+});
+
+test("servicios permiten la celda de UM vacía sin inventar una unidad", async () => {
+  const file = await workbookFile("servicios.xlsx", [
+    ["codigo", "descripcion", "unidad de medida", "precio"],
+    ["S1", "Curador rojo", null, 509.04],
+    ["S2", "Curador blanco", "", 333.2],
+    ["S3", "Servicio sin UM", "   ", 0],
+    ["S4", "Servicio sin UM", "\u00a0", "N/A"],
+    ["S5", "Bomba", "M3", 80.64],
+  ]);
+  const result = await parseProjectPriceCatalog(file, "SERVICE");
+  assert.equal(result.errorCount, 0);
+  assert.deepEqual(result.rows.map(row => row.unitCode), [null, null, null, null, "M3"]);
+  assert.deepEqual(result.rows.map(row => row.price), ["509.04", "333.2", "0", "0", "80.64"]);
+});
+
+test("permitir UM vacía no omite duplicados, metadatos requeridos ni fórmulas", async () => {
+  const file = await workbookFile("servicios.xlsx", [
+    ["codigo", "descripcion", "UM", "precio"],
+    ["DUP", "Una descripción", null, 1],
+    ["DUP", "Otra descripción", null, 2],
+    ["BAD", "Servicio", "LITROS", 1],
+    ["DESC", "", null, 1],
+    ["FORMULA", "Servicio", { formula: '""', result: "" }, 1],
+  ]);
+  const result = await parseProjectPriceCatalog(file, "SERVICE");
+  assert.equal(result.errorCount, 5);
+  assert.ok(result.rows.slice(0, 2).every(row => row.errors.some(error => /duplicado/u.test(error))));
+  assert.match(result.rows[2].errors.join(" "), /La UM debe/u);
+  assert.match(result.rows[3].errors.join(" "), /descripción/u);
+  assert.match(result.rows[4].errors.join(" "), /fórmula/u);
 });
 
 test("acepta dosis/m3, dosis/m³ y Unidad del tarifario sin convertir dosis a M3", async () => {
