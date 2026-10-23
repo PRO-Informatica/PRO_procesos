@@ -8,6 +8,7 @@ export type PriceCatalogPreviewRow = {
   description: string | null;
   observations: string | null;
   unitCode: string | null;
+  rawUnitCode: string | null;
   price: string;
   errors: string[];
 };
