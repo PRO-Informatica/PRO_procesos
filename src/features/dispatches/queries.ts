@@ -200,6 +200,7 @@ function uniqueCatalogProduct(
     code: match.code,
     reference: match.reference,
     description: null,
+    observations: null,
     unitCode: null,
     price: numberValue(match.price),
     currency: "GTQ",

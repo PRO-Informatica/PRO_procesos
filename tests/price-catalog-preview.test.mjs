@@ -37,7 +37,7 @@ function hooks() {
 }
 function preview(kind = "PRODUCT", count = 75, errorIndexes = [61, 72]) {
   const rows = Array.from({ length: count }, (_, index) => ({ rowNumber: index + 2,
-    code: `C${index}`, reference: `CON.${index}`, description: `Servicio ${index}`, unitCode: "M3", price: "0",
+    code: `C${index}`, reference: `CON.${index}`, description: `Servicio ${index}`, observations: `Observación ${index}`, unitCode: "M3", price: "0",
     errors: errorIndexes.includes(index) ? ["Error de prueba"] : [],
   }));
   const errorCount = rows.filter(row => row.errors.length).length;
@@ -80,8 +80,8 @@ for (const kind of ["PRODUCT", "SERVICE"]) {
     f.previous();
     assert.equal(f.find(node => node.type === "select").props.value, 2);
     const cells = nodes(f.rows()[0]).filter(node => node.type === "td").map(node => node.props.children);
-    if (kind === "SERVICE") assert.ok(cells.includes("Servicio 25") && cells.includes("M3"));
-    else assert.ok(cells.includes("CON.25"));
+    if (kind === "SERVICE") assert.ok(cells.includes("Servicio 25") && cells.includes("M3") && cells.includes("Observación 25"));
+    else { assert.ok(cells.includes("CON.25")); assert.ok(!cells.includes("Observación 25")); }
   });
 }
 

@@ -47,7 +47,7 @@ export function PriceCatalogPreviewTable({
               <th scope="col" className="px-4 py-3">Fila</th>
               <th scope="col" className="px-4 py-3">Código</th>
               {preview.catalogKind === "PRODUCT" && <th scope="col" className="px-4 py-3">Referencia</th>}
-              {preview.catalogKind === "SERVICE" && <><th scope="col" className="px-4 py-3">Descripción</th><th scope="col" className="px-4 py-3">UM</th></>}
+              {preview.catalogKind === "SERVICE" && <><th scope="col" className="px-4 py-3">Descripción</th><th scope="col" className="px-4 py-3">Observaciones</th><th scope="col" className="px-4 py-3">UM</th></>}
               <th scope="col" className="px-4 py-3 text-right">Precio</th>
               <th scope="col" className="px-4 py-3">Validación</th>
             </tr>
@@ -58,7 +58,7 @@ export function PriceCatalogPreviewTable({
                 <td className="px-4 py-3 text-foreground-muted">{row.rowNumber}</td>
                 <td className="px-4 py-3 font-mono">{row.code || "—"}</td>
                 {preview.catalogKind === "PRODUCT" && <td className="px-4 py-3 font-mono">{row.reference || "—"}</td>}
-                {preview.catalogKind === "SERVICE" && <><td className="px-4 py-3">{row.description || "—"}</td><td className="px-4 py-3">{row.unitCode || "—"}</td></>}
+                {preview.catalogKind === "SERVICE" && <><td className="px-4 py-3">{row.description || "—"}</td><td className="max-w-xs break-words px-4 py-3">{row.observations || "—"}</td><td className="px-4 py-3">{row.unitCode || "—"}</td></>}
                 <td className="px-4 py-3 text-right">{row.price || "—"}</td>
                 <td className="px-4 py-3">
                   {row.errors.length ? (

@@ -154,8 +154,9 @@ function findHeaderColumns(sheet: Worksheet, kind: PriceCatalogKind) {
     sheet.getRow(rowNumber).eachCell({ includeEmpty: false }, (cell, columnNumber) => {
       const rawHeader = normalizeHeader(valueText(cell.value));
       const header = rawHeader === "um" || rawHeader === "unidad" ? "unidad de medida"
-        : rawHeader === "precio incluye iva" ? "precio" : rawHeader;
-      if (required.includes(header) && !columns.has(header)) columns.set(header, columnNumber);
+        : rawHeader === "precio incluye iva" ? "precio"
+        : rawHeader === "observacion" ? "observaciones" : rawHeader;
+      if ((required.includes(header) || (kind === "SERVICE" && header === "observaciones")) && !columns.has(header)) columns.set(header, columnNumber);
     });
     if (required.every((header) => columns.has(header))) {
       return { rowNumber, columns };
@@ -168,7 +169,9 @@ function addDuplicateErrors(rows: PriceCatalogPreviewRow[], kind: PriceCatalogKi
   const grouped = new Map<string, PriceCatalogPreviewRow[]>();
   for (const row of rows) {
     if (!row.code || (kind === "PRODUCT" && !row.reference)) continue;
-    const key = kind === "PRODUCT" ? `${row.code}\u0000${row.reference}` : row.code;
+    const key = kind === "PRODUCT"
+      ? `${row.code}\u0000${row.reference}`
+      : JSON.stringify([row.code, row.observations]);
     const matches = grouped.get(key) ?? [];
     matches.push(row);
     grouped.set(key, matches);
@@ -179,7 +182,7 @@ function addDuplicateErrors(rows: PriceCatalogPreviewRow[], kind: PriceCatalogKi
       row.errors.push(
         kind === "PRODUCT"
           ? "La combinación de código y referencia está duplicada."
-          : "El código está duplicado.",
+          : "La combinación de código y observaciones está duplicada. Usa observaciones distintas para diferenciar los servicios.",
       );
     }
   }
@@ -204,6 +207,9 @@ function parseRows(
       : null;
     const priceCell = row.getCell(header.columns.get("precio")!);
     const descriptionCell = kind === "SERVICE" ? row.getCell(header.columns.get("descripcion")!) : null;
+    const observationsColumn = kind === "SERVICE" ? header.columns.get("observaciones") : undefined;
+    const observationsCell = observationsColumn ? row.getCell(observationsColumn) : null;
+    const observations = observationsCell ? valueText(observationsCell.value) || null : null;
     const unitCell = kind === "SERVICE" ? row.getCell(header.columns.get("unidad de medida")!) : null;
     const description = descriptionCell ? valueText(descriptionCell.value) : null;
     const rawUnit = unitCell ? valueText(unitCell.value) : "";
@@ -212,7 +218,7 @@ function parseRows(
     const reference = referenceCell ? identifierText(referenceCell).trim() : null;
     const rawPrice = valueText(priceCell.value);
 
-    if (!code && !reference && !rawPrice && !description && !rawUnit) {
+    if (!code && !reference && !rawPrice && !description && !rawUnit && !observations) {
       consecutiveEmptyRows += 1;
       if (consecutiveEmptyRows >= 20 && rows.length > 0) break;
       continue;
@@ -246,6 +252,10 @@ function parseRows(
         errors.push("La descripción no es válida (máximo 500 caracteres).");
       }
       if (descriptionCell && isFormula(descriptionCell.value)) errors.push("La descripción no puede ser una fórmula.");
+      if (observations && (observations.length > 500 || /[\u0000-\u001f\u007f]/u.test(observations))) {
+        errors.push("Las observaciones no son válidas (máximo 500 caracteres).");
+      }
+      if (observationsCell && isFormula(observationsCell.value)) errors.push("Las observaciones no pueden ser una fórmula.");
       if (rawUnit && !unitCode) errors.push(SERVICE_UNIT_ERROR);
       if (unitCell && isFormula(unitCell.value)) errors.push("La UM no puede ser una fórmula.");
     }
@@ -264,6 +274,7 @@ function parseRows(
       code,
       reference,
       description,
+      observations,
       unitCode,
       price: price ?? rawPrice,
       errors,

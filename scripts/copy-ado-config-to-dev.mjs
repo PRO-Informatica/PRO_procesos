@@ -59,7 +59,8 @@ const snapshotQuery = `select jsonb_build_object(
    'products',coalesce((select jsonb_agg(jsonb_build_object('code',pp.code,'reference',pp.reference,'price',pp.price::text)
      order by pp.code,pp.reference) from public.project_product_prices pp where pp.project_id=p.id),'[]'),
    'services',coalesce((select jsonb_agg(jsonb_build_object('code',sp.code,'price',sp.price::text,
-     'description',to_jsonb(sp)->>'description','unit_code',to_jsonb(sp)->>'unit_code') order by sp.code)
+     'description',to_jsonb(sp)->>'description','unit_code',to_jsonb(sp)->>'unit_code','observations',to_jsonb(sp)->>'observations')
+     order by sp.code,to_jsonb(sp)->>'observations')
      from public.project_service_prices sp where sp.project_id=p.id),'[]')
    ) order by p.code) from public.projects p where p.company_id=c.id),'[]')
 ) from public.companies c where c.code='PRO-ADO'`;
@@ -158,9 +159,9 @@ begin
    select v_project,r.code,r.name,r.active from jsonb_to_recordset(v_p->'workItems') as r(code text,name text,active boolean);
    insert into public.project_product_prices(project_id,code,reference,price)
    select v_project,r.code,r.reference,r.price::numeric(18,4) from jsonb_to_recordset(v_p->'products') as r(code text,reference text,price text);
-   insert into public.project_service_prices(project_id,code,price,description,unit_code)
-   select v_project,r.code,r.price::numeric(18,4),r.description,r.unit_code
-   from jsonb_to_recordset(v_p->'services') as r(code text,price text,description text,unit_code text);
+   insert into public.project_service_prices(project_id,code,price,description,unit_code,observations)
+   select v_project,r.code,r.price::numeric(18,4),r.description,r.unit_code,r.observations
+   from jsonb_to_recordset(v_p->'services') as r(code text,price text,description text,unit_code text,observations text);
    insert into public.audit_events(actor_user_id,company_id,project_id,entity_type,entity_id,action,new_values,comment)
    values(v_actor,v_company,v_project,'project',v_project,'DEV_CONFIGURATION_COPIED_FROM_PROD',
      jsonb_build_object('source_company_id',v_payload->>'sourceCompanyId','source_project_id',v_p->>'sourceId',
