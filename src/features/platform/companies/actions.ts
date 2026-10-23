@@ -349,6 +349,13 @@ export async function updateCompanyProject(
         fields,
       };
     }
+    if (value.includes("PROJECT_COMPANY_INACTIVE")) {
+      return {
+        status: "error",
+        message: "Primero reactiva la empresa para poder activar este proyecto.",
+        fields,
+      };
+    }
     if (value.includes("PROJECT_TIMEZONE_INVALID")) {
       return { status: "error", message: "La zona horaria no es válida.", fields };
     }
@@ -482,6 +489,7 @@ export async function setCompanyStatus(
     return actionError(databaseErrorMessage(error));
   }
 
+  revalidatePath("/", "layout");
   revalidatePath("/platform/companies");
   revalidatePath(`/platform/companies/${companyId}`);
 

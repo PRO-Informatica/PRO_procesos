@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireActiveProfile } from "@/features/auth/queries";
 import { classifyInvoiceLines } from "@/features/invoices/invoice-classification";
+import { getDispatchInvoiceIdentities } from "@/features/invoices/dispatch-invoice-identity-queries";
 import { normalizeOperationalOrder, processInvoicePdf, type InvoiceProcessingContext } from "@/features/invoices/invoice-processing";
 import { resolveReconciliationQuantityBasis, selectValidProgrammedQuantity } from "@/features/invoices/reconciliation-quantity";
 import { resolveInvoiceUploadSlot } from "@/features/invoices/reinvoicing";
@@ -14,6 +15,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 import { extractMixtoListoInvoicePdf } from "./mixto-listo-extractor";
+import { weeklyBatchPeriods } from "./period-policy";
 import { orderNumberFromMixtoListoPca } from "./mixto-listo-parser";
 import type { BatchMutationState, InvoiceInspection, InvoiceType } from "./types";
 
@@ -36,6 +38,7 @@ function refresh(batchId?: string, dispatchId?: string) {
   revalidatePath("/batches");
   revalidatePath("/invoices");
   revalidatePath("/reconciliation");
+  revalidatePath("/programming", "layout");
   if (batchId) revalidatePath(`/batches/${batchId}`);
   if (dispatchId) revalidatePath(`/dispatches/${dispatchId}`);
 }
@@ -48,7 +51,9 @@ function batchError(message: string) {
   if (error.includes("DISPATCH_NOT_ELIGIBLE")) return "El despacho no es elegible para este lote.";
   if (error.includes("BATCH_NOT_EDITABLE")) return "El lote está cerrado y ya no permite cambios.";
   if (error.includes("REMOVAL_REASON")) return "Indica un motivo válido para remover el despacho.";
-  if (error.includes("MONDAY_TO_SUNDAY")) return "La semana debe iniciar lunes y finalizar domingo.";
+  if (error.includes("OVERDUE_OPEN")) return "Hay un lote abierto cuya semana ya terminó. Ciérralo antes de crear otro lote.";
+  if (error.includes("DESTINATION_CLOSED")) return "El lote siguiente ya está cerrado; revisa la secuencia de cierre antes de continuar.";
+  if (error.includes("MONTH_SEGMENT") || error.includes("MONDAY_TO_SUNDAY")) return "El período debe corresponder a la semana seleccionada, sin cruzar de mes.";
   if (error.includes("ALREADY_EXISTS") || error.includes("DUPLICATE")) return "Ya existe un lote para esa semana o código.";
   if (error.includes("PERMISSION_DENIED")) return "No tienes permiso para realizar esta operación.";
   return "No fue posible completar la operación del lote.";
@@ -56,6 +61,7 @@ function batchError(message: string) {
 
 function invoiceError(message: string) {
   const error = message.toUpperCase();
+  if (error.includes("INVOICE_ACCOUNTING_PERIOD")) return "La factura no corresponde al mes del lote o ya vencieron los cinco días hábiles de gracia para el mes anterior.";
   if (error.includes("NOT_COMPLETED")) return "El despacho debe estar completado para recibir facturas.";
   if (error.includes("ACTIVE_DISPATCH_INVOICE")) return "Ya existe una factura activa de ese tipo para el despacho.";
   if (error.includes("TYPE_MISMATCH")) return "El tipo detectado no coincide con el tipo de factura seleccionado.";
@@ -80,7 +86,7 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
   const [dispatchResult, batchResult, projectResult, reconciliationResult] = await Promise.all([
     admin.from("dispatches").select("id, project_id, programming_id, supplier_id, order_number, real_volume, real_unit_code, status, result").eq("id", dispatchId).eq("project_id", projectId).maybeSingle(),
     admin.from("batches").select("id, project_id, accounting_period").eq("id", batchId).eq("project_id", projectId).maybeSingle(),
-    admin.from("projects").select("id, company_id, address, billing_legal_name, billing_tax_id").eq("id", projectId).maybeSingle(),
+    admin.from("projects").select("id, company_id, address, billing_legal_name, billing_tax_id, timezone").eq("id", projectId).maybeSingle(),
     admin.from("dispatch_reconciliations").select("status, current_product_invoice_id, current_service_invoice_id").eq("dispatch_id", dispatchId).eq("project_id", projectId).maybeSingle(),
   ]);
   if (!dispatchResult.data || !batchResult.data || !projectResult.data) return null;
@@ -104,7 +110,11 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
     programmedQuantity: programmedQuantity === null ? null : Number(programmedQuantity),
     programmedUnitCode: programmingResult.data.unit_code,
   });
+  const identities = await getDispatchInvoiceIdentities(admin, projectId, [dispatchResult.data]);
+  const identity = identities.get(dispatchId);
+  if (!identity) return null;
   return {
+    ...identity,
     projectId, batchId, dispatchId,
     operationalStatus: dispatchResult.data.status,
     companyCode: companyResult.data.code,
@@ -115,6 +125,7 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
     billingTaxId: projectResult.data.billing_tax_id,
     projectAddress: projectResult.data.address,
     accountingPeriod: batchResult.data.accounting_period,
+    projectTimezone: projectResult.data.timezone,
     expectedQuantity: quantityBasis.quantity,
     expectedUnitCode: quantityBasis.unitCode,
     expectedQuantitySource: quantityBasis.source,
@@ -128,10 +139,15 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
 export async function createBatchAction(_previous: BatchMutationState, formData: FormData): Promise<BatchMutationState> {
   const projectId = value(formData, "projectId");
   if (!UUID.test(projectId) || !(await authorize(projectId, "batch.create"))) return { status: "error", message: "No tienes permiso para crear lotes." };
-  const { data, error } = await (await createClient()).rpc("create_batch", { p_project_id: projectId, p_code: value(formData, "code"), p_period_start: value(formData, "periodStart"), p_period_end: value(formData, "periodEnd") });
+  const referenceDate = value(formData, "referenceDate");
+  let split: boolean;
+  try { split = weeklyBatchPeriods(referenceDate).length === 2; }
+  catch { return { status: "error", message: "Selecciona una fecha válida para la semana." }; }
+  if (split && value(formData, "confirmSplit") !== "yes") return { status: "error", message: "Confirma expresamente la creación de los dos lotes separados por mes." };
+  const { data, error } = await (await createClient()).rpc("create_weekly_batches", { p_project_id: projectId, p_code: value(formData, "code"), p_reference_date: referenceDate });
   if (error || !data) return { status: "error", message: batchError(error?.message ?? "BATCH_CREATE_FAILED") };
-  refresh(String(data));
-  return { status: "success", message: "Lote creado correctamente.", batchId: String(data) };
+  refresh(String(data.batch_id));
+  return { status: "success", message: split ? "Los dos lotes se crearon correctamente." : "Lote creado correctamente.", batchId: String(data.batch_id) };
 }
 
 export async function addDispatchToBatchAction(_previous: BatchMutationState, formData: FormData): Promise<BatchMutationState> {
@@ -165,6 +181,8 @@ export async function rolloverBatchAction(_previous: BatchMutationState, formDat
   const { error } = await (await createClient()).rpc("rollover_weekly_batch", { p_batch_id: batchId });
   if (error) return { status: "error", message: batchError(error.message) };
   refresh(batchId);
+  revalidatePath("/notifications");
+  revalidatePath("/(dashboard)", "layout");
   return { status: "success", message: "Semana cerrada y pendientes trasladados al siguiente lote." };
 }
 

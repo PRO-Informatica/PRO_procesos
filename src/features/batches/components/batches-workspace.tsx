@@ -13,6 +13,7 @@ import { formatBatchDate } from "../formatters";
 import type { BatchPageData } from "../types";
 import { CreateBatchDialog } from "./batch-dialogs";
 import { BatchStatusBadge } from "./batch-status-badge";
+import { OverdueBatchNotice } from "./overdue-batch-notice";
 
 export function BatchesWorkspace({ project, canCreate, data }: { project: ProjectSummary; canCreate: boolean; data: BatchPageData }) {
   const [createOpen, setCreateOpen] = useState(false);
@@ -21,6 +22,7 @@ export function BatchesWorkspace({ project, canCreate, data }: { project: Projec
       <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Gestión · Operación semanal</p><h1 className="mt-2 text-2xl font-semibold sm:text-3xl">Lotes semanales</h1><p className="mt-2 text-sm text-foreground-muted">Agrupa despachos y gestiona sus facturas y conciliación en {project.name}.</p></div>
       {canCreate && <button type="button" onClick={() => setCreateOpen(true)} className="primary-button w-full gap-2 sm:w-auto"><Plus className="size-4" /> Crear lote semanal</button>}
     </MotionSection>
+    <OverdueBatchNotice overdue={data.overdue} />
     <MotionSection className="overflow-hidden rounded-xl border border-border bg-surface">
       <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-4 sm:px-5"><div><h2 className="font-semibold">Lotes</h2><p className="mt-1 text-xs text-foreground-muted">Semana, estado y avance por despacho.</p></div><span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted">{data.history.length} lote(s)</span></div>
       {data.history.length ? <>

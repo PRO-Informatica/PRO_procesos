@@ -60,7 +60,7 @@ export function DispatchCatalogPickerDialog({
         </div>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={catalogType === "PRODUCT" ? "Buscar por código o referencia" : "Buscar por código"} className="form-input pl-10" maxLength={120} autoFocus />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={catalogType === "PRODUCT" ? "Buscar por código o referencia" : "Buscar por código o descripción"} className="form-input pl-10" maxLength={120} autoFocus />
         </div>
         <div className="min-h-64 overflow-hidden rounded-xl border border-border">
           {loading ? (
@@ -72,9 +72,9 @@ export function DispatchCatalogPickerDialog({
           ) : (
             <div className="max-h-[24rem] overflow-auto">
               <table className="w-full min-w-[34rem] text-left text-sm">
-                <thead className="sticky top-0 bg-muted text-xs uppercase tracking-wide text-foreground-muted"><tr><th className="px-4 py-3">Código</th>{catalogType === "PRODUCT" && <th className="px-4 py-3">Referencia</th>}<th className="px-4 py-3 text-right">Precio</th><th className="px-4 py-3 text-right">Acción</th></tr></thead>
+                <thead className="sticky top-0 bg-muted text-xs uppercase tracking-wide text-foreground-muted"><tr><th className="px-4 py-3">Código</th><th className="px-4 py-3">{catalogType === "PRODUCT" ? "Referencia" : "Descripción"}</th>{catalogType === "SERVICE" && <th className="px-4 py-3">UM</th>}<th className="px-4 py-3 text-right">Precio</th><th className="px-4 py-3 text-right">Acción</th></tr></thead>
                 <tbody className="divide-y divide-border">
-                  {items.map((item) => <tr key={item.id} className="hover:bg-muted/35"><td className="px-4 py-3 font-mono text-xs font-semibold">{item.code}</td>{catalogType === "PRODUCT" && <td className="px-4 py-3 font-medium">{item.reference}</td>}<td className="px-4 py-3 text-right font-semibold">{formatDispatchMoney(item.price, item.currency)}</td><td className="px-4 py-3 text-right"><button type="button" onClick={() => onSelect(item)} className="secondary-button min-h-9 px-3 text-xs">Seleccionar</button></td></tr>)}
+                  {items.map((item) => <tr key={item.id} className="hover:bg-muted/35"><td className="px-4 py-3 font-mono text-xs font-semibold">{item.code}</td><td className="px-4 py-3 font-medium">{(catalogType === "PRODUCT" ? item.reference : item.description) || "Sin descripción"}</td>{catalogType === "SERVICE" && <td className="px-4 py-3">{item.unitCode || "Sin UM"}</td>}<td className="px-4 py-3 text-right font-semibold">{formatDispatchMoney(item.price, item.currency)}</td><td className="px-4 py-3 text-right"><button type="button" onClick={() => onSelect(item)} className="secondary-button min-h-9 px-3 text-xs">Seleccionar</button></td></tr>)}
                 </tbody>
               </table>
             </div>

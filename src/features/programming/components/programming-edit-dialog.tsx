@@ -17,6 +17,7 @@ import {
   type ProgrammingUnit,
 } from "../types";
 import { ProgrammingLinesFields } from "./programming-lines-fields";
+import { ProgrammingDeliveryFields } from "./programming-delivery-fields";
 
 function zonedInputValue(value: string, timezone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -140,6 +141,8 @@ export function ProgrammingEditDialog({
               disabled={pending}
             />
           </div>
+
+          <ProgrammingDeliveryFields initialModes={item.deliveryModes} disabled={pending} />
 
           <ProgrammingLinesFields
             units={units}

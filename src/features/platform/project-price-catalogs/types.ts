@@ -5,6 +5,8 @@ export type PriceCatalogPreviewRow = {
   rowNumber: number;
   code: string;
   reference: string | null;
+  description: string | null;
+  unitCode: string | null;
   price: string;
   errors: string[];
 };
@@ -43,6 +45,8 @@ export type ProjectProductPrice = {
 export type ProjectServicePrice = {
   id: string;
   code: string;
+  description: string | null;
+  unitCode: string | null;
   price: string;
   updatedAt: string;
 };

@@ -8,11 +8,13 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file");
+    const productFile = formData.get("productFile");
     if (!(file instanceof File)) return Response.json({ message: "Selecciona un PDF." }, { status: 400 });
+    if (productFile !== null && !(productFile instanceof File)) return Response.json({ message: "El Producto adjunto debe ser un PDF." }, { status: 400 });
     return Response.json(await classifyUniversalInvoice(file, {
       projectId: typeof formData.get("projectId") === "string" ? String(formData.get("projectId")) : null,
       dispatchId: typeof formData.get("dispatchId") === "string" ? String(formData.get("dispatchId")) : null,
-    }));
+    }, productFile ?? undefined));
   } catch (error) {
     console.error("Universal invoice classification failed", error);
     return Response.json({ message: "No fue posible clasificar la factura." }, { status: 500 });

@@ -9,7 +9,7 @@ import { Dialog, DialogFooter } from "@/components/ui/dialog";
 import { notifications } from "@/lib/notification-messages";
 
 import { updateCompanyProject } from "../actions";
-import type { CompanyProject, ProjectActionState } from "../types";
+import type { CompanyProject, CompanyStatus, ProjectActionState } from "../types";
 
 const INITIAL_STATE: ProjectActionState = { status: "idle" };
 
@@ -28,10 +28,12 @@ const TIMEZONES = [
 
 function EditProjectForm({
   companyId,
+  companyStatus,
   project,
   onClose,
 }: {
   companyId: string;
+  companyStatus: CompanyStatus;
   project: CompanyProject;
   onClose: () => void;
 }) {
@@ -136,10 +138,15 @@ function EditProjectForm({
                 defaultValue={values?.status ?? project.status}
                 className="form-input"
               >
-                <option value="ACTIVE">Activo</option>
+                <option value="ACTIVE" disabled={companyStatus !== "ACTIVE"}>Activo</option>
                 <option value="INACTIVE">Inactivo</option>
                 <option value="CLOSED">Cerrado</option>
               </select>
+              {companyStatus !== "ACTIVE" && (
+                <p className="mt-1 text-xs text-foreground-muted">
+                  Reactiva la empresa antes de activar este proyecto.
+                </p>
+              )}
             </div>
             <div>
               <label className="form-label" htmlFor={`edit-project-start-${project.id}`}>
@@ -199,9 +206,11 @@ function EditProjectForm({
 
 export function EditProjectDialog({
   companyId,
+  companyStatus,
   project,
 }: {
   companyId: string;
+  companyStatus: CompanyStatus;
   project: CompanyProject;
 }) {
   const [open, setOpen] = useState(false);
@@ -218,8 +227,9 @@ export function EditProjectDialog({
       </button>
       {open && (
         <EditProjectForm
-          key={`${project.id}-${project.name}-${project.code}-${project.status}`}
+          key={`${project.id}-${project.name}-${project.code}-${project.status}-${companyStatus}`}
           companyId={companyId}
+          companyStatus={companyStatus}
           project={project}
           onClose={() => setOpen(false)}
         />

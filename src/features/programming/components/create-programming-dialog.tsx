@@ -16,6 +16,7 @@ import {
   type ProgrammingUnit,
 } from "../types";
 import { ProgrammingLinesFields } from "./programming-lines-fields";
+import { ProgrammingDeliveryFields } from "./programming-delivery-fields";
 
 function splitScheduledAt(value: string) {
   const [date = "", time = ""] = value.split("T");
@@ -107,6 +108,8 @@ export function CreateProgrammingDialog({
                     </select>
                   )}
                 </div>
+
+                <ProgrammingDeliveryFields initialModes={state.fields?.deliveryModes} disabled={pending} />
 
                 <div className="grid min-w-0 grid-cols-1 gap-3 min-[460px]:grid-cols-3 sm:col-span-2">
                   <div className="min-w-0">

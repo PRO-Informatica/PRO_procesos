@@ -1,4 +1,5 @@
 import type { DispatchCatalogType, DispatchResult } from "./types";
+import { SERVICE_UNIT_CODES } from "../platform/project-price-catalogs/service-units.ts";
 
 export const DISPATCH_GUIDE_UNIT_CODES = ["KM", "M3", "UN"] as const;
 
@@ -53,8 +54,8 @@ export function validateDispatchGuideLines(lines: DispatchGuideLineInput[]) {
       (line) =>
         !Number.isFinite(line.quantity) ||
         line.quantity <= 0 ||
-        !DISPATCH_GUIDE_UNIT_CODES.includes(
-          line.unit_code as (typeof DISPATCH_GUIDE_UNIT_CODES)[number],
+        !(line.catalog_type === "SERVICE" ? SERVICE_UNIT_CODES as readonly string[] : DISPATCH_GUIDE_UNIT_CODES as readonly string[]).includes(
+          line.unit_code,
         ),
     )
   ) {

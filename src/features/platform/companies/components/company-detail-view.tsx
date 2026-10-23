@@ -232,6 +232,7 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
                         </Link>
                         <EditProjectDialog
                           companyId={company.id}
+                          companyStatus={company.status}
                           project={project}
                         />
                       </div>

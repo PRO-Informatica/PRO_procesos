@@ -10,6 +10,7 @@ import { parseMixtoListoInvoiceText } from "../src/features/batches/mixto-listo-
 const service = await readFile(new URL("../src/features/invoices/universal/service.ts", import.meta.url), "utf8");
 const classifyRoute = await readFile(new URL("../src/app/api/invoices/universal/classify/route.ts", import.meta.url), "utf8");
 const commitRoute = await readFile(new URL("../src/app/api/invoices/universal/commit/route.ts", import.meta.url), "utf8");
+const identifyRoute = await readFile(new URL("../src/app/api/invoices/universal/identify/route.ts", import.meta.url), "utf8");
 const migration = await readFile(new URL("../supabase/migrations/090_universal_invoice_pipeline.sql", import.meta.url), "utf8");
 const companyAdminPurchasingMigration = await readFile(
   new URL("../supabase/migrations/091_company_admin_inherits_purchasing_permissions.sql", import.meta.url),
@@ -84,6 +85,7 @@ test("Universal limita proyectos, no selecciona coincidencias ambiguas y exige l
 });
 
 test("los endpoints mutables verifican mismo origen", () => {
+  assert.match(identifyRoute, /hasValidSameOrigin/u);
   assert.match(classifyRoute, /hasValidSameOrigin/u);
   assert.match(commitRoute, /hasValidSameOrigin/u);
 });

@@ -1,9 +1,12 @@
 import "server-only";
+import { requiresServiceInvoice } from "@/features/programming/invoice-policy";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 import { formatProgrammingCode } from "./formatters";
+import { getOverdueBatchAlerts } from "./overdue-queries";
+import { isBatchWeekOverdue, projectCalendarDate } from "./period-policy";
 import type {
   BatchDetail, BatchDispatchRelation, BatchInvoice, BatchPageData,
   BatchRolloverPreview, BatchSecondaryData, BatchSource, BatchStatus, BatchSummary,
@@ -27,13 +30,7 @@ function numeric(value: unknown) {
 }
 
 function localDate(timezone: string) {
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: timezone }).formatToParts(new Date());
-    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
-    return `${part("year")}-${part("month")}-${part("day")}`;
-  } catch {
-    return new Date().toISOString().slice(0, 10);
-  }
+  return projectCalendarDate(timezone);
 }
 
 function summarize(batch: BatchRow, relations: RelationRow[], reconciliations: ReconciliationRow[], today: string): BatchSummary {
@@ -48,6 +45,7 @@ function summarize(batch: BatchRow, relations: RelationRow[], reconciliations: R
     pendingCount: active.length - reconciledCount,
     rolloverCount: relations.filter((row) => row.batch_id === batch.id && row.rolled_to_batch_id).length,
     isCurrent: batch.period_start <= today && batch.period_end >= today,
+    isOverdue: isBatchWeekOverdue(batch.status, batch.period_start, today),
   };
 }
 
@@ -68,10 +66,11 @@ export async function getUniversalBatchScope(userId: string, projectId: string) 
 
 export async function getBatchPageData(projectId: string, timezone: string): Promise<BatchPageData> {
   const supabase = await createClient();
-  const [batchesResult, relationsResult, reconciliationsResult] = await Promise.all([
+  const [batchesResult, relationsResult, reconciliationsResult, overdue] = await Promise.all([
     supabase.from("batches").select("id, project_id, code, period_start, period_end, accounting_period, status, creation_source, created_at").eq("project_id", projectId).order("period_start", { ascending: false }).limit(200),
     supabase.from("batch_dispatches").select("id, project_id, batch_id, dispatch_id, assignment_source, added_at, removed_at, removed_by, removal_reason, rolled_to_batch_id, removal_metadata").eq("project_id", projectId).order("added_at", { ascending: false }).limit(2000),
     supabase.from("dispatch_reconciliations").select("id, dispatch_id, status, current_product_invoice_id, current_service_invoice_id").eq("project_id", projectId),
+    getOverdueBatchAlerts(projectId, timezone),
   ]);
   const error = batchesResult.error ?? relationsResult.error ?? reconciliationsResult.error;
   if (error) throw new Error(`No fue posible cargar los lotes. ${error.message}`);
@@ -79,7 +78,7 @@ export async function getBatchPageData(projectId: string, timezone: string): Pro
   const relations = (relationsResult.data ?? []) as RelationRow[];
   const reconciliations = (reconciliationsResult.data ?? []) as ReconciliationRow[];
   const summaries = batches.map((batch) => summarize(batch, relations, reconciliations, localDate(timezone)));
-  return { current: summaries.find((row) => row.isCurrent) ?? null, history: summaries };
+  return { current: summaries.find((row) => row.isCurrent) ?? null, history: summaries, overdue };
 }
 
 export async function getUniversalBatchOverview(
@@ -163,7 +162,7 @@ export async function getBatchDetail(
   const supplierIds = [...new Set(dispatches.map((row) => row.supplier_id))];
 
   const [programmingResult, suppliersResult, guidesResult, reconciliationsResult, invoicesResult, attemptsResult, exceptionsResult, profilesResult] = await Promise.all([
-    programmingIds.length ? supabase.from("programming").select("id, scheduled_at").eq("project_id", projectId).in("id", programmingIds) : Promise.resolve({ data: [], error: null }),
+    programmingIds.length ? supabase.from("programming").select("id, scheduled_at, delivery_modes").eq("project_id", projectId).in("id", programmingIds) : Promise.resolve({ data: [], error: null }),
     supplierIds.length ? supabase.from("suppliers").select("id, name").in("id", supplierIds) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("dispatch_guides").select("id, dispatch_id").eq("project_id", projectId).in("dispatch_id", dispatchIds) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("dispatch_reconciliations").select("id, dispatch_id, status, current_product_invoice_id, current_service_invoice_id").eq("project_id", projectId).in("dispatch_id", dispatchIds) : Promise.resolve({ data: [], error: null }),
@@ -246,6 +245,7 @@ export async function getBatchDetail(
       reconciliationStatus: reconciliation?.status ?? "NOT_STARTED",
       productInvoice: reconciliation?.current_product_invoice_id ? invoiceViewById.get(reconciliation.current_product_invoice_id) ?? null : null,
       serviceInvoice: reconciliation?.current_service_invoice_id ? invoiceViewById.get(reconciliation.current_service_invoice_id) ?? null : null,
+      serviceInvoiceRequired: requiresServiceInvoice(programmingById.get(dispatch.programming_id)?.delivery_modes),
       latestAttempt: latestAttemptByDispatch.get(dispatch.id) ?? null,
     }];
   });
@@ -315,7 +315,7 @@ export async function getBatchSecondaryData(
   const programmingIds = [...new Set(dispatches.map((row) => row.programming_id))];
   const supplierIds = [...new Set(dispatches.map((row) => row.supplier_id))];
   const [programmingResult, suppliersResult] = await Promise.all([
-    programmingIds.length ? supabase.from("programming").select("id, scheduled_at").eq("project_id", projectId).in("id", programmingIds) : Promise.resolve({ data: [], error: null }),
+    programmingIds.length ? supabase.from("programming").select("id, scheduled_at, delivery_modes").eq("project_id", projectId).in("id", programmingIds) : Promise.resolve({ data: [], error: null }),
     supplierIds.length ? supabase.from("suppliers").select("id, name").in("id", supplierIds) : Promise.resolve({ data: [], error: null }),
   ]);
   if (programmingResult.error ?? suppliersResult.error) throw new Error("No fue posible completar el historial removido.");
@@ -340,6 +340,7 @@ export async function getBatchSecondaryData(
       operationalStatus: dispatch.status, realVolume: dispatch.real_volume === null ? null : numeric(dispatch.real_volume),
       realUnitCode: dispatch.real_unit_code, guideCount: 0, reconciliationId: null,
       reconciliationStatus: "NOT_STARTED", productInvoice: null, serviceInvoice: null, latestAttempt: null,
+      serviceInvoiceRequired: requiresServiceInvoice(programmingById.get(dispatch.programming_id)?.delivery_modes),
     }];
   });
   const preview: BatchRolloverPreview[] = (previewResult.data ?? []).map((row: Record<string, unknown>) => ({

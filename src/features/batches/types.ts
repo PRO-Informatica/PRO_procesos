@@ -11,10 +11,12 @@ export type BatchSummary = {
   id: string; code: string; periodStart: string; periodEnd: string;
   accountingPeriod: string; status: BatchStatus; source: BatchSource;
   activeDispatchCount: number; reconciledCount: number; pendingCount: number;
-  rolloverCount: number; isCurrent: boolean;
+  rolloverCount: number; isCurrent: boolean; isOverdue: boolean;
 };
 
-export type BatchPageData = { current: BatchSummary | null; history: BatchSummary[] };
+export type OverdueBatch = { id: string; code: string; periodStart: string; periodEnd: string; createdAt?: string };
+export type OverdueBatchAlerts = { batches: OverdueBatch[]; total: number };
+export type BatchPageData = { current: BatchSummary | null; history: BatchSummary[]; overdue: OverdueBatchAlerts };
 
 export type UniversalBatchProject = {
   project: ProjectSummary;
@@ -65,6 +67,7 @@ export type BatchDispatchRelation = {
   realVolume: number | null; realUnitCode: string | null; guideCount: number;
   reconciliationId: string | null; reconciliationStatus: ReconciliationStatus;
   productInvoice: BatchInvoice | null; serviceInvoice: BatchInvoice | null;
+  serviceInvoiceRequired: boolean;
   latestAttempt: ReconciliationAttempt | null;
 };
 

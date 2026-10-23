@@ -1,10 +1,12 @@
 import { Workbook, type Worksheet } from "exceljs";
-import JSZip from "jszip";
 import type { NextRequest } from "next/server";
 
 import { requireActiveProfile } from "@/features/auth/queries";
 import { getProjectContext } from "@/features/projects/queries";
-import { reportArchiveItems, reportArchivePath, sanitizeArchiveSegment } from "@/features/reports/export-utils";
+import { reportArchiveItems, sanitizeArchiveSegment } from "@/features/reports/export-utils";
+import { archiveIdChunks, getReportEvidence, readArchiveRows } from "@/features/reports/archive-queries";
+import { createReportZip, ReportArchiveTooLargeError } from "@/features/reports/zip-archive";
+import { reportZipResponse } from "@/features/reports/zip-response";
 import { parseGuideReportFilters } from "@/features/reports/filters";
 import { getGuideReport, getUniversalReportScopes } from "@/features/reports/queries";
 import type { GuideReportData, ProgrammingReportItem, ReportInvoice } from "@/features/reports/types";
@@ -15,6 +17,7 @@ import {
 } from "@/features/reports/workbook-header";
 import { formatStatusLabel } from "@/lib/status-labels";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -211,26 +214,26 @@ async function buildWorkbook(
 }
 
 async function buildZip(report: GuideReportData, includeProjectFolders: boolean) {
+  const client = await createClient();
   const admin = createAdminClient();
-  const items = reportArchiveItems(report);
-  const documentIds = [...new Set(items.map((item) => item.invoice.documentId).filter((id): id is string => Boolean(id)))];
-  if (!documentIds.length) return { zip: new JSZip(), fileCount: 0 };
-  const versions = await admin.from("document_versions").select("document_id, storage_bucket, storage_path").in("document_id", documentIds).eq("upload_status", "UPLOADED").eq("is_current", true);
-  if (versions.error) throw new Error("No fue posible preparar los documentos del reporte.");
-  const versionByDocument = new Map((versions.data ?? []).map((version) => [version.document_id, version]));
-  const zip = new JSZip();
-  const usedPaths = new Set<string>();
-  let fileCount = 0;
-  for (const item of items) {
-    const documentId = item.invoice.documentId;
-    const version = documentId ? versionByDocument.get(documentId) : null;
-    if (!version) continue;
-    const downloaded = await admin.storage.from(version.storage_bucket).download(version.storage_path);
-    if (downloaded.error || !downloaded.data) throw new Error("No fue posible descargar uno de los PDF del reporte.");
-    zip.file(reportArchivePath(item, usedPaths, { includeProject: includeProjectFolders }), await downloaded.data.arrayBuffer());
-    fileCount += 1;
+  const evidence = await getReportEvidence(client, report.rows);
+  const items = reportArchiveItems(report, evidence);
+  const documentIds = [...new Set(items.map((item) => item.documentId))];
+  const versions = [];
+  for (const ids of archiveIdChunks(documentIds)) {
+    versions.push(...await readArchiveRows((from, to) => client.from("document_versions")
+      .select("document_id, file_name, mime_type, file_size, storage_bucket, storage_path")
+      .in("document_id", ids).eq("upload_status", "UPLOADED").eq("is_current", true)
+      .order("document_id").range(from, to)));
   }
-  return { zip, fileCount };
+  return createReportZip(items, versions, {
+    includeProjectFolders,
+    download: async (version) => {
+      const downloaded = await admin.storage.from(version.storage_bucket).download(version.storage_path);
+      if (downloaded.error || !downloaded.data) throw new Error("No fue posible descargar uno de los adjuntos del reporte.");
+      return downloaded.data.arrayBuffer();
+    },
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -260,9 +263,8 @@ export async function GET(request: NextRequest) {
 
     if (format === "zip") {
       const { zip, fileCount } = await buildZip(report, universal || projects.length > 1);
-      if (!fileCount) return Response.json({ message: "El resultado filtrado no contiene facturas con PDF disponible." }, { status: 404 });
-      const buffer = await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE", compressionOptions: { level: 6 } });
-      return new Response(buffer, { headers: { "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="Reporte_${safeProject}_${filters.dateFrom}_${filters.dateTo}.zip"`, "Cache-Control": "private, no-store" } });
+      if (!fileCount) return Response.json({ message: "El resultado filtrado no contiene facturas ni evidencias con archivos disponibles." }, { status: 404 });
+      return reportZipResponse(zip, `Reporte_${safeProject}_${filters.dateFrom}_${filters.dateTo}.zip`);
     }
 
     const companyNames = [...new Set(projects.map((project) => project.companyName))];
@@ -288,6 +290,7 @@ export async function GET(request: NextRequest) {
     const buffer = await workbook.xlsx.writeBuffer();
     return new Response(new Uint8Array(buffer), { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="Reporte_${safeProject}_${filters.dateFrom}_${filters.dateTo}.xlsx"`, "Cache-Control": "private, no-store" } });
   } catch (error) {
+    if (error instanceof ReportArchiveTooLargeError) return Response.json({ message: error.message }, { status: 413 });
     console.error("Report export failed", error);
     return Response.json({ message: "No fue posible generar la exportación." }, { status: 500 });
   }

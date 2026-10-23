@@ -7,6 +7,7 @@ import { getProjectContext } from "@/features/projects/queries";
 import { createClient } from "@/lib/supabase/server";
 
 import { getProgrammingCatalogs, getProgrammingItems } from "./queries";
+import { isDeliveryMode } from "./invoice-policy";
 import {
   extractMixtoProgrammingWorkbook,
   isApprovedProgrammingDayAllowed,
@@ -111,6 +112,12 @@ function localDateKey(value: Date, timezone: string) {
 
 function databaseErrorMessage(error: { code?: string; message: string }) {
   const message = error.message.toUpperCase();
+  if (message.includes("PROGRAMMING_BILLING_INCOMPLETE")) {
+    return "No se puede cerrar: todos los despachos deben estar finalizados, con producto conciliado, facturas requeridas y sin decisiones fiscales pendientes.";
+  }
+  if (message.includes("PROGRAMMING_DELIVERY_MODES")) {
+    return "Revisa la modalidad de entrega. Solo puede cambiarse antes de iniciar el despacho y debe confirmarse nuevamente.";
+  }
   if (message.includes("PERMISSION_DENIED")) {
     return "No tienes permiso para realizar esta acción en el proyecto.";
   }
@@ -262,6 +269,7 @@ export async function mutateProgrammingAction(
     const orderNumber = readText(formData, "orderNumber");
     const reason = readText(formData, "reason");
     const notes = readText(formData, "notes");
+    const deliveryModes = readTexts(formData, "deliveryModes");
     const lines = quantities.map((quantity, index) => ({
       quantity: Number(quantity),
       unit_code: unitCodes[index] ?? "",
@@ -270,6 +278,7 @@ export async function mutateProgrammingAction(
 
     if (
       !UUID_PATTERN.test(supplierId) ||
+      deliveryModes.some((mode) => !isDeliveryMode(mode)) ||
       !lines.length ||
       quantities.length !== unitCodes.length ||
       quantities.length !== concreteTypes.length ||
@@ -332,6 +341,7 @@ export async function mutateProgrammingAction(
       p_notes: notes || null,
       p_order_number: orderNumber,
       p_reason: reason,
+      p_delivery_modes: deliveryModes,
     }));
   } else if (intent === "confirm") {
     const confirmedQuantity = Number(readText(formData, "confirmedQuantity"));
@@ -442,6 +452,7 @@ export async function createProgrammingAction(
   const concreteTypes = readTexts(formData, "lineConcreteType");
   const orderNumber = readText(formData, "orderNumber");
   const notes = readText(formData, "notes");
+  const deliveryModes = readTexts(formData, "deliveryModes");
   const lines = quantities.map((quantity, index) => ({
     quantity,
     unitCode: unitCodes[index] ?? "",
@@ -453,7 +464,12 @@ export async function createProgrammingAction(
     orderNumber,
     lines,
     notes,
+    deliveryModes: deliveryModes.filter(isDeliveryMode),
   };
+
+  if (deliveryModes.some((mode) => !isDeliveryMode(mode))) {
+    return { status: "error", message: "La modalidad de entrega no es válida.", fields };
+  }
 
   if (!UUID_PATTERN.test(projectId) || !UUID_PATTERN.test(supplierId)) {
     return { status: "error", message: "Selecciona un proyecto y proveedor válidos.", fields };
@@ -522,6 +538,7 @@ export async function createProgrammingAction(
     })),
     p_notes: notes || null,
     p_order_number: orderNumber,
+    p_delivery_modes: deliveryModes,
   });
 
   if (error) {
@@ -685,6 +702,7 @@ export async function createProgrammingBatchAction(
       supplier_id: submitted.supplierId,
       scheduled_at: scheduledAt,
       order_number: row.orderNumber,
+      delivery_modes: row.deliveryModes,
       lines: [{ quantity, unit_code: m3Unit.code, concrete_type: row.concreteType }],
       notes: submitted.notes?.trim() || row.notes || null,
     });

@@ -130,8 +130,8 @@ test("los nombres del ZIP se sanitizan y las colisiones reciben sufijo", () => {
   assert.equal(sanitizeArchiveSegment('21/central:*?"<>|'), "21-central");
   const used = new Set();
   const item = reportArchiveItems(report(invoice("product", "PRODUCT", "A/1"), null))[0];
-  assert.equal(reportArchivePath(item, used), "Pedido_21/Factura_Producto_A-1.pdf");
-  assert.equal(reportArchivePath(item, used), "Pedido_21/Factura_Producto_A-1_2.pdf");
+  assert.equal(reportArchivePath(item, used), "Pedido_21/Despacho_dispatch-a/Facturas/Factura_Producto_A-1.pdf");
+  assert.equal(reportArchivePath(item, used), "Pedido_21/Despacho_dispatch-a/Facturas/Factura_Producto_A-1_2.pdf");
 });
 
 test("el ZIP universal separa las facturas por proyecto", () => {
@@ -139,7 +139,7 @@ test("el ZIP universal separa las facturas por proyecto", () => {
   const item = reportArchiveItems(report(invoice("product", "PRODUCT"), null))[0];
   assert.equal(
     reportArchivePath(item, used, { includeProject: true }),
-    "Proyecto_CER_CER-PRO/Pedido_21/Factura_Producto_123.pdf",
+    "Proyecto_CER_CER-PRO_project-a/Pedido_21/Despacho_dispatch-a/Facturas/Factura_Producto_123.pdf",
   );
 });
 

@@ -29,6 +29,8 @@ type ProductRow = {
 type ServiceRow = {
   id: string;
   code: string;
+  description: string | null;
+  unit_code: string | null;
   price: string | number;
   updated_at: string;
 };
@@ -75,8 +77,16 @@ async function getProductCatalog(
       .limit(1)
       .maybeSingle<{ updated_at: string }>(),
   ]);
+  // A replacement/filter may shrink the catalog while an old page is still in
+  // the URL. PostgREST returns PGRST103 (not an empty page), without a count.
+  // Retry page 1 once, keeping the same project and search scope.
+  if (rowsResult.error?.code === "PGRST103" && requestedPage > 1 && !latestResult.error) {
+    return getProductCatalog(projectId, query, 1);
+  }
   if (rowsResult.error || latestResult.error) {
-    throw new Error("No fue posible cargar el catálogo de productos.");
+    throw new Error("No fue posible cargar el catálogo de productos.", {
+      cause: rowsResult.error ?? latestResult.error,
+    });
   }
 
   const total = rowsResult.count ?? 0;
@@ -114,11 +124,11 @@ async function getServiceCatalog(
 
   let rowsQuery = supabase
     .from("project_service_prices")
-    .select("id, code, price, updated_at", { count: "exact" })
+    .select("id, code, description, unit_code, price, updated_at", { count: "exact" })
     .eq("project_id", projectId)
     .order("code")
     .range(from, to);
-  if (query) rowsQuery = rowsQuery.ilike("code", `%${query}%`);
+  if (query) rowsQuery = rowsQuery.or(`code.ilike.%${query}%,description.ilike.%${query}%`);
 
   const [rowsResult, latestResult] = await Promise.all([
     rowsQuery,
@@ -130,8 +140,13 @@ async function getServiceCatalog(
       .limit(1)
       .maybeSingle<{ updated_at: string }>(),
   ]);
+  if (rowsResult.error?.code === "PGRST103" && requestedPage > 1 && !latestResult.error) {
+    return getServiceCatalog(projectId, query, 1);
+  }
   if (rowsResult.error || latestResult.error) {
-    throw new Error("No fue posible cargar el catálogo de servicios.");
+    throw new Error("No fue posible cargar el catálogo de servicios.", {
+      cause: rowsResult.error ?? latestResult.error,
+    });
   }
 
   const total = rowsResult.count ?? 0;
@@ -144,6 +159,8 @@ async function getServiceCatalog(
     items: ((rowsResult.data ?? []) as ServiceRow[]).map((row) => ({
       id: row.id,
       code: row.code,
+      description: row.description,
+      unitCode: row.unit_code,
       price: String(row.price),
       updatedAt: row.updated_at,
     })),

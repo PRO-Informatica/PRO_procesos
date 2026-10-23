@@ -14,11 +14,12 @@ import { fadeUp } from "@/lib/motion/variants";
 import { notify } from "@/lib/notify";
 
 import type { UniversalCommitResult, UniversalInvoiceResult } from "../types";
+import { classifyProductFirst, COMMITTABLE_INVOICE_STATUSES, uploadedProductForService, type InvoiceClassificationStage } from "../upload-pairing";
 
 type Entry = {
   id: string;
   file: File;
-  phase: "SELECTED" | "CLASSIFYING" | "CLASSIFIED" | "SAVING" | "SAVED";
+  phase: "SELECTED" | "WAITING" | "CLASSIFYING" | "CLASSIFIED" | "SAVING" | "SAVED";
   result: UniversalInvoiceResult | UniversalCommitResult | null;
   projectId: string;
   dispatchId: string;
@@ -34,6 +35,10 @@ const ATTENTION_STATUSES = new Set([
   "REQUIRES_REINVOICING",
   "PROJECT_AMBIGUOUS",
   "DISPATCH_AMBIGUOUS",
+  "PRODUCT_MISMATCH",
+  "DISPATCH_IDENTITY_UNVERIFIED",
+  "REQUIRES_PRODUCT_VALIDATION",
+  "SERVICE_PCA_MISMATCH",
   "DUPLICATE",
   "NO_ACTIVE_BATCH",
 ]);
@@ -45,6 +50,10 @@ const toneByStatus: Record<string, BadgeTone> = {
   REQUIRES_REINVOICING: "warning",
   PROJECT_AMBIGUOUS: "warning",
   DISPATCH_AMBIGUOUS: "warning",
+  PRODUCT_MISMATCH: "warning",
+  DISPATCH_IDENTITY_UNVERIFIED: "warning",
+  REQUIRES_PRODUCT_VALIDATION: "warning",
+  SERVICE_PCA_MISMATCH: "warning",
   DUPLICATE: "info",
   NO_ACTIVE_BATCH: "warning",
   SAVED: "success",
@@ -59,6 +68,10 @@ const labelByStatus: Record<string, string> = {
   PROJECT_AMBIGUOUS: "Proyecto ambiguo",
   DISPATCH_NOT_FOUND: "Despacho no encontrado",
   DISPATCH_AMBIGUOUS: "Despacho ambiguo",
+  PRODUCT_MISMATCH: "Concreto no coincide",
+  DISPATCH_IDENTITY_UNVERIFIED: "Producto sin verificar",
+  REQUIRES_PRODUCT_VALIDATION: "Sin producto coincidente",
+  SERVICE_PCA_MISMATCH: "PCA no coincide",
   NO_ACTIVE_BATCH: "Sin lote activo",
   UNKNOWN_TYPE: "Tipo desconocido",
   INVALID_FILE: "Archivo inválido",
@@ -87,29 +100,33 @@ async function runPool<T>(items: T[], task: (item: T) => Promise<void>) {
 }
 
 async function requestResult(
-  endpoint: "classify" | "commit",
+  endpoint: "identify" | "classify" | "commit",
   entry: Entry,
+  product: Entry | null = null,
 ): Promise<UniversalInvoiceResult | UniversalCommitResult> {
   const form = new FormData();
   form.set("file", entry.file);
+  if (product) form.set("productFile", product.file);
   if (entry.projectId) form.set("projectId", entry.projectId);
-  if (entry.dispatchId) form.set("dispatchId", entry.dispatchId);
+  const dispatchId = entry.dispatchId || product?.result?.dispatchId;
+  if (dispatchId) form.set("dispatchId", dispatchId);
   const response = await fetch(`/api/invoices/universal/${endpoint}`, { method: "POST", body: form });
   const body = await response.json().catch(() => null);
   if (!response.ok) throw new Error(body?.message || "No fue posible procesar el archivo.");
   return body;
 }
 
-function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending }: {
+function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending, operationPending }: {
   entry: Entry;
   onChange: (entry: Entry) => void;
   onRemove: () => void;
   onDecision: (decision: "APPROVE" | "REQUEST_REINVOICE") => void;
   decisionPending: boolean;
+  operationPending: boolean;
 }) {
-  const pending = entry.phase === "CLASSIFYING" || entry.phase === "SAVING";
+  const pending = entry.phase === "WAITING" || entry.phase === "CLASSIFYING" || entry.phase === "SAVING";
   const showPending = useDelayedPending(pending);
-  const status = entry.phase === "SAVED" ? "SAVED" : entry.result?.status;
+  const status = pending ? undefined : entry.phase === "SAVED" ? "SAVED" : entry.result?.status;
   const exceptionStatus = entry.result && "recipientExceptionStatus" in entry.result
     ? entry.result.recipientExceptionStatus
     : null;
@@ -121,10 +138,11 @@ function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending }: {
           <div className="flex flex-wrap items-center gap-2">
             <p className="min-w-0 break-all text-sm font-semibold">{entry.file.name}</p>
             {status && <Badge tone={toneByStatus[status] ?? "danger"}>{labelByStatus[status] ?? status}</Badge>}
-            {!status && showPending && <Badge tone="info"><LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" />{entry.phase === "SAVING" ? "Guardando" : "Clasificando"}</Badge>}
+            {!status && showPending && <Badge tone="info"><LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" />{entry.phase === "SAVING" ? "Guardando" : entry.phase === "WAITING" ? "En espera" : "Clasificando"}</Badge>}
           </div>
           <p className="mt-1 text-xs text-foreground-muted">{sizeLabel(entry.file.size)}{entry.result?.invoiceNumber ? ` · Factura ${entry.result.invoiceNumber}` : ""}{entry.result?.detectedType && entry.result.detectedType !== "UNKNOWN" ? ` · ${entry.result.detectedType === "PRODUCT" ? "Producto" : "Servicio"}` : ""}</p>
-          {entry.result?.status === "REQUIRES_RECIPIENT_EXCEPTION" && (
+          {entry.result?.pcaOriginal && <p className="mt-1 break-all text-xs text-foreground-muted">PCA: {entry.result.pcaOriginal}</p>}
+          {!pending && entry.result?.status === "REQUIRES_RECIPIENT_EXCEPTION" && (
             <div className="mt-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-xs text-warning">
               <p className="font-semibold">{exceptionStatus === "APPROVED" ? "Excepción C14 aceptada" : exceptionStatus === "REINVOICE_REQUESTED" ? "Refacturación solicitada" : "Decisión de Compras pendiente"}</p>
               <p className="mt-0.5">{exceptionStatus === "APPROVED" ? "La factura continuó con su flujo normal." : exceptionStatus === "REINVOICE_REQUESTED" ? "La factura original se conserva en el historial." : "Acepta la excepción C14 o solicita refacturación."}</p>
@@ -136,17 +154,17 @@ function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending }: {
               )}
             </div>
           )}
-          {entry.result?.operation === "REINVOICE" && (
+          {!pending && entry.result?.operation === "REINVOICE" && (
             <div className="mt-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-xs text-warning">
               <p className="font-semibold">Nueva Factura de Producto · Tipo: Refacturación</p>
               <p className="mt-0.5">Reemplaza la factura {entry.result.replacesInvoiceNumber ?? "vigente"}.</p>
             </div>
           )}
-          {entry.result?.status !== "REQUIRES_RECIPIENT_EXCEPTION" && entry.result?.message && <p className="mt-2 text-xs text-foreground-muted">{entry.result.message}</p>}
-          {entry.result?.status !== "REQUIRES_RECIPIENT_EXCEPTION" && entry.result?.warnings.map((warning) => <p key={warning} className="mt-2 text-xs text-warning">{warning}</p>)}
+          {!pending && entry.result?.status !== "REQUIRES_RECIPIENT_EXCEPTION" && entry.result?.message && <p className="mt-2 text-xs text-foreground-muted">{entry.result.message}</p>}
+          {!pending && entry.result?.status !== "REQUIRES_RECIPIENT_EXCEPTION" && entry.result?.warnings.map((warning) => <p key={warning} className="mt-2 text-xs text-warning">{warning}</p>)}
           {entry.result?.status === "PROJECT_AMBIGUOUS" && (
             <label className="mt-3 block text-xs font-medium">Proyecto
-              <select className="form-input mt-1" value={entry.projectId} onChange={(event) => onChange({ ...entry, projectId: event.target.value, dispatchId: "" })}>
+              <select className="form-input mt-1" disabled={operationPending} value={entry.projectId} onChange={(event) => onChange({ ...entry, projectId: event.target.value, dispatchId: "" })}>
                 <option value="">Seleccionar proyecto</option>
                 {entry.result.candidateProjects.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
               </select>
@@ -154,14 +172,14 @@ function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending }: {
           )}
           {entry.result?.status === "DISPATCH_AMBIGUOUS" && entry.result.candidateDispatches.length > 0 && (
             <label className="mt-3 block text-xs font-medium">Despacho
-              <select className="form-input mt-1" value={entry.dispatchId} onChange={(event) => onChange({ ...entry, dispatchId: event.target.value })}>
+              <select className="form-input mt-1" disabled={operationPending} value={entry.dispatchId} onChange={(event) => onChange({ ...entry, dispatchId: event.target.value })}>
                 <option value="">Seleccionar despacho</option>
                 {entry.result.candidateDispatches.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
               </select>
             </label>
           )}
         </div>
-        <button type="button" onClick={onRemove} disabled={pending} className="icon-button size-10 shrink-0" aria-label={`Quitar ${entry.file.name}`}><Trash2 className="size-4" /></button>
+        <button type="button" onClick={onRemove} disabled={pending || operationPending} className="icon-button size-10 shrink-0" aria-label={`Quitar ${entry.file.name}`}><Trash2 className="size-4" /></button>
       </div>
     </article>
   );
@@ -174,21 +192,26 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
   const [dragActive, setDragActive] = useState(false);
   const [decisionPendingId, setDecisionPendingId] = useState<string | null>(null);
   const [activeOperation, setActiveOperation] = useState<"classify" | "resolve" | "commit" | null>(null);
+  const [classificationStage, setClassificationStage] = useState<InvoiceClassificationStage | null>(null);
+  const stageLabel = classificationStage === "IDENTIFYING" ? "Identificando tipos y pedidos"
+    : classificationStage === "PRODUCTS" ? "Validando Productos y sus despachos"
+    : classificationStage === "SERVICES" ? "Vinculando Servicios a los Productos validados" : null;
   const operationPendingRef = useRef(false);
   const busy = activeOperation !== null || entries.some((entry) => entry.phase === "CLASSIFYING" || entry.phase === "SAVING");
-  const ready = entries.filter((entry) => entry.phase !== "SAVED" && entry.result && ["READY", "READY_WITH_DIFFERENCES", "REQUIRES_RECIPIENT_EXCEPTION", "REQUIRES_REINVOICING"].includes(entry.result.status));
+  const ready = entries.filter((entry) => entry.phase !== "SAVED" && entry.result && COMMITTABLE_INVOICE_STATUSES.includes(entry.result.status));
   const needsResolution = entries.filter((entry) =>
     (entry.result?.status === "PROJECT_AMBIGUOUS" && entry.projectId) ||
     (entry.result?.status === "DISPATCH_AMBIGUOUS" && entry.dispatchId),
   );
   const phaseCounts = useMemo(() => entries.reduce((counts, entry) => {
-    if (entry.phase === "SELECTED") counts.pending += 1;
+    if (entry.phase === "SELECTED" || entry.phase === "WAITING") counts.pending += 1;
     if (entry.phase === "CLASSIFYING" || entry.phase === "SAVING") counts.processing += 1;
     if (entry.phase === "CLASSIFIED") counts.classified += 1;
     if (entry.phase === "SAVED") counts.saved += 1;
     return counts;
   }, { pending: 0, processing: 0, classified: 0, saved: 0 }), [entries]);
   const outcomeCounts = useMemo(() => entries.reduce((counts, entry) => {
+    if (entry.phase !== "CLASSIFIED" && entry.phase !== "SAVED") return counts;
     const status = entry.phase === "SAVED" ? "SAVED" : entry.result?.status;
     if (!status) return counts;
     if (SUCCESS_STATUSES.has(status)) counts.success += 1;
@@ -215,15 +238,20 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
         resolved: projectResolved,
         orders: new Map<string, { label: string; entries: Entry[] }>(),
       };
-      const orderKey = entry.result?.orderNumber
-        ? `order:${entry.result.orderNumber}`
-        : entry.result?.dispatchId
-          ? `dispatch:${entry.result.dispatchId}`
+      const orderKey = entry.result?.dispatchId
+        ? `dispatch:${entry.result.dispatchId}`
+        : entry.result?.pcaOriginal
+          ? `pca:${entry.result.pcaOriginal}`
+          : entry.result?.orderNumber
+            ? `order:${entry.result.orderNumber}:unverified`
           : "unresolved";
       const order = project.orders.get(orderKey) ?? {
-        label: entry.result?.orderNumber
-          ? `Pedido ${entry.result.orderNumber}`
-          : entry.result?.dispatchLabel ?? (projectResolved ? "Sin pedido identificado" : "Archivos"),
+        label: entry.result?.dispatchId
+          ? entry.result.dispatchLabel ?? `Pedido ${entry.result.orderNumber}`
+          : entry.result?.pcaOriginal
+            ? `${entry.result.pcaOriginal} · ${entry.result.status === "IDENTIFIED" ? "En espera de validación" : "Sin despacho validado"}`
+            : entry.result?.orderNumber ? `Pedido ${entry.result.orderNumber} · Sin despacho validado`
+              : projectResolved ? "Sin pedido identificado" : "Archivos",
         entries: [],
       };
       order.entries.push(entry);
@@ -249,19 +277,32 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
     if (!targets.length || operationPendingRef.current) return;
     operationPendingRef.current = true;
     setActiveOperation(operation);
+    const targetIds = new Set(targets.map((entry) => entry.id));
+    setEntries((current) => current.map((entry) => targetIds.has(entry.id) ? { ...entry, phase: "WAITING", result: null } : entry));
     try {
-      await runPool(targets, async (target) => {
+      const processEntry = async (target: Entry, endpoint: "identify" | "classify", product: Entry | null = null): Promise<Entry> => {
         setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "CLASSIFYING" } : entry));
         try {
-          const latest = entries.find((entry) => entry.id === target.id) ?? target;
-          const result = await requestResult("classify", latest);
-          setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "CLASSIFIED", result, projectId: result.projectId ?? entry.projectId, dispatchId: result.dispatchId ?? entry.dispatchId } : entry));
+          const result = await requestResult(endpoint, target, product);
+          const next: Entry = { ...target, phase: result.status === "IDENTIFIED" ? "WAITING" : "CLASSIFIED", result,
+            projectId: result.projectId ?? target.projectId,
+            dispatchId: endpoint === "identify" ? target.dispatchId : result.dispatchId ?? "" };
+          setEntries((current) => current.map((entry) => entry.id === target.id ? next : entry));
+          return next;
         } catch (error) {
           const message = error instanceof Error ? error.message : "No fue posible clasificar el archivo.";
-          setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "CLASSIFIED", result: { status: "ERROR", message, fileName: entry.file.name, fileSize: entry.file.size, detectedType: "UNKNOWN", invoiceNumber: null, detectedBillingLegalName: null, orderNumber: null, projectId: null, projectLabel: null, dispatchId: null, dispatchLabel: null, batchId: null, batchLabel: null, candidateProjects: [], candidateDispatches: [], warnings: [], operation: "NEW", replacesInvoiceId: null, replacesInvoiceNumber: null } } : entry));
+          const next: Entry = { ...target, phase: "CLASSIFIED", dispatchId: "", result: { status: "ERROR", message, fileName: target.file.name, fileSize: target.file.size, detectedType: "UNKNOWN", invoiceNumber: null, detectedBillingLegalName: null, orderNumber: null, pcaOriginal: null, projectId: null, projectLabel: null, dispatchId: null, dispatchLabel: null, batchId: null, batchLabel: null, candidateProjects: [], candidateDispatches: [], warnings: [], operation: "NEW", replacesInvoiceId: null, replacesInvoiceNumber: null } };
+          setEntries((current) => current.map((entry) => entry.id === target.id ? next : entry));
+          return next;
         }
-      });
+      };
+      await classifyProductFirst(targets, entries, {
+        identify: (target) => processEntry(target, "identify"),
+        classify: (target, product) => processEntry(target, "classify", product),
+        onStage: setClassificationStage,
+      }, CONCURRENCY);
     } finally {
+      setClassificationStage(null);
       operationPendingRef.current = false;
       setActiveOperation(null);
     }
@@ -271,7 +312,7 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
 
   const commit = async () => {
     if (operationPendingRef.current) return;
-    const targets = entries.filter((entry) => entry.phase !== "SAVED" && entry.result && ["READY", "READY_WITH_DIFFERENCES", "REQUIRES_RECIPIENT_EXCEPTION", "REQUIRES_REINVOICING"].includes(entry.result.status));
+    const targets = entries.filter((entry) => entry.phase !== "SAVED" && entry.result && COMMITTABLE_INVOICE_STATUSES.includes(entry.result.status));
     if (!targets.length) return;
     operationPendingRef.current = true;
     setActiveOperation("commit");
@@ -279,10 +320,10 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
     let attention = 0;
     let failed = 0;
     try {
-      await runPool(targets, async (target) => {
+      const saveEntry = async (target: Entry) => {
         setEntries((current) => current.map((entry) => entry.id === target.id ? { ...entry, phase: "SAVING" } : entry));
         try {
-          const result = await requestResult("commit", target) as UniversalCommitResult;
+          const result = await requestResult("commit", target, uploadedProductForService(target, entries)) as UniversalCommitResult;
           if (result.saved) {
             saved += 1;
             if (result.reconciliationStatus === "WITH_DIFFERENCES" || result.recipientExceptionStatus === "PENDING" || result.warnings.length > 0) attention += 1;
@@ -295,7 +336,11 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
           const message = error instanceof Error ? error.message : "No fue posible procesar la factura.";
           setEntries((current) => current.map((entry) => entry.id === target.id && entry.result ? { ...entry, phase: "CLASSIFIED", result: { ...entry.result, status: "ERROR", message } } : entry));
         }
-      });
+      };
+      // One user action, two internal phases. Avoid a Service racing the
+      // Product's prepare/finalize calls and observing a half-written invoice.
+      await runPool(targets.filter((entry) => entry.result?.detectedType === "PRODUCT"), saveEntry);
+      await runPool(targets.filter((entry) => entry.result?.detectedType !== "PRODUCT"), saveEntry);
       const description = `${saved} ${saved === 1 ? "factura guardada" : "facturas guardadas"}${attention ? `, ${attention} requieren atención` : ""}${failed ? ` y ${failed} con error` : ""}.`;
       if (saved === 0) notify.error("No se procesaron las facturas", "Revisa los archivos marcados e inténtalo nuevamente.");
       else if (attention || failed) notify.warning("Carga finalizada con observaciones", description);
@@ -338,7 +383,7 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
   return (
     <MotionPage className="mx-auto max-w-[1500px] space-y-5 pb-10">
       <MotionSection className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Gestión multi‑proyecto</p><h1 className="mt-2 text-2xl font-bold sm:text-3xl">Facturas Universal</h1><p className="mt-2 max-w-3xl text-sm leading-5 text-foreground-muted">Clasifica PDFs por proyecto, pedido y despacho. Producto se concilia y Servicio queda como documento independiente.</p></div>
+        <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Gestión multi‑proyecto</p><h1 className="mt-2 text-2xl font-bold sm:text-3xl">Facturas Universal</h1><p className="mt-2 max-w-3xl text-sm leading-5 text-foreground-muted">Carga todas tus facturas juntas. Primero se validan los Productos contra su pedido, concreto y despacho; después se vinculan sus Servicios por pedido. El PCA completo distingue operaciones cuando el pedido se repite.</p></div>
         <span className="w-fit"><Badge tone="info">{authorizedProjects.length} proyecto(s) autorizado(s)</Badge></span>
       </MotionSection>
 
@@ -350,13 +395,13 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
           {entries.length > 0 && <Button className="w-full sm:w-auto" variant="ghost" onClick={() => setEntries([])} disabled={busy}><X className="size-4" /> Limpiar</Button>}
           {needsResolution.length > 0 && <LoadingButton className="w-full sm:w-auto" type="button" variant="secondary" loading={activeOperation === "resolve"} disabled={busy} onClick={resolveSelections} loadingLabel="Resolviendo…"><Globe2 className="size-4" /> Resolver selección</LoadingButton>}
-          <LoadingButton className="w-full sm:w-auto" type="button" variant="secondary" loading={activeOperation === "classify"} disabled={busy || !entries.length} onClick={() => classify()} loadingLabel="Clasificando…">Clasificar facturas</LoadingButton>
+          <LoadingButton className="w-full sm:w-auto" type="button" variant="secondary" loading={activeOperation === "classify"} disabled={busy || !entries.length} onClick={() => classify()} loadingLabel={classificationStage === "IDENTIFYING" ? "Identificando…" : classificationStage === "PRODUCTS" ? "Validando Productos…" : "Vinculando Servicios…"}>Clasificar facturas</LoadingButton>
           <LoadingButton className="w-full sm:w-auto" type="button" loading={activeOperation === "commit"} disabled={busy || !ready.length} onClick={commit} loadingLabel="Conciliando…">Conciliar ({ready.length})</LoadingButton>
         </div>
         {entries.length > 0 && (
           <div className="mt-4 rounded-xl border border-border bg-muted/20 p-3 sm:p-4" role="status" aria-live="polite" aria-busy={busy}>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold">{busy ? "Procesando facturas" : "Resumen de archivos"}</p>
+              <p className="text-sm font-semibold">{stageLabel ?? (busy ? "Procesando facturas" : "Resumen de archivos")}</p>
               <span className="text-xs font-medium text-foreground-muted">{phaseCounts.classified + phaseCounts.saved} de {entries.length} procesadas</span>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -395,7 +440,7 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
                       </div>
                     </div>
                     <Badge tone="info">{project.resolved
-                      ? countLabel(project.orders.length, "pedido", "pedidos")
+                      ? countLabel(project.orders.length, "grupo de operación", "grupos de operación")
                       : countLabel(fileCount, "archivo", "archivos")}</Badge>
                   </div>
 
@@ -407,7 +452,7 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
                             {project.resolved
                               ? <Package className="size-4 shrink-0 text-brand-strong" />
                               : <FileText className="size-4 shrink-0 text-brand-strong" />}
-                            <h3 className="truncate text-sm font-semibold">{order.label}</h3>
+                            <h3 className="min-w-0 break-words text-sm font-semibold [overflow-wrap:anywhere]">{order.label}</h3>
                           </div>
                           <span className="shrink-0 text-xs font-medium text-foreground-muted">{countLabel(order.entries.length, "factura", "facturas")}</span>
                         </div>
@@ -420,6 +465,7 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
                               onRemove={() => setEntries((current) => current.filter((item) => item.id !== entry.id))}
                               onDecision={(decision) => void decideException(entry, decision)}
                               decisionPending={decisionPendingId === entry.id}
+                              operationPending={busy}
                             />
                           ))}
                         </div>

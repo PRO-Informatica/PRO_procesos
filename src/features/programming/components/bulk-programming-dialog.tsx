@@ -13,6 +13,7 @@ import {
   createProgrammingBatchAction,
   extractProgrammingWorkbookAction,
 } from "../actions";
+import { deliveryModeLabel, requiresServiceInvoice } from "../invoice-policy";
 import {
   initialCreateProgrammingBatchState,
   initialExtractProgrammingWorkbookState,
@@ -151,6 +152,11 @@ export function BulkProgrammingDialog({
                           <label className="text-xs font-semibold text-foreground-muted">Proveedor<select className="form-input mt-1" value={row.supplierId} onChange={(event) => update(index, { supplierId: event.target.value })}><option value="">Selecciona</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.code} · {supplier.name}</option>)}</select></label>
                           <label className="text-xs font-semibold text-foreground-muted">Pedido No.<input className="form-input mt-1 disabled:bg-muted" value={row.orderNumber} disabled /></label>
                           <label className="text-xs font-semibold text-foreground-muted">Tipo de concreto<input className="form-input mt-1 disabled:bg-muted" value={row.concreteType} disabled /></label>
+                          <div className="text-xs font-semibold text-foreground-muted">
+                            Modalidad del Excel
+                            <p className="mt-1 text-sm text-foreground">{deliveryModeLabel(row.deliveryModes)}</p>
+                            <p className="mt-1 font-normal">{requiresServiceInvoice(row.deliveryModes) ? "Producto conciliado + servicio" : "Producto conciliado; servicio opcional"}</p>
+                          </div>
                           <label className="text-xs font-semibold text-foreground-muted">Volumen<div className="mt-1 flex gap-2"><input type="number" className="form-input disabled:bg-muted" value={row.quantity} disabled /><span className="flex min-h-11 items-center rounded-lg border border-border bg-muted/30 px-3 text-sm font-semibold">{row.unitCode}</span></div></label>
                           <label className="text-xs font-semibold text-foreground-muted">Elemento a fundir<input className="form-input mt-1 disabled:bg-muted" value={row.placementElement} disabled /></label>
                           <label className="text-xs font-semibold text-foreground-muted">Adicionales al concreto<input className="form-input mt-1 disabled:bg-muted" value={row.additions} disabled /></label>

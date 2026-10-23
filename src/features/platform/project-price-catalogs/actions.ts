@@ -106,7 +106,9 @@ export async function importProjectPriceCatalogAction(
     }
     const rows = preview.rows.map((row) => ({
       code: row.code,
-      ...(catalogKind === "PRODUCT" ? { reference: row.reference } : {}),
+      ...(catalogKind === "PRODUCT"
+        ? { reference: row.reference }
+        : { description: row.description, unit_code: row.unitCode }),
       price: row.price,
     }));
     const { data, error } = await supabase.rpc("platform_import_project_price_catalog", {
