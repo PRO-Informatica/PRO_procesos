@@ -54,7 +54,7 @@ test("detecta duplicados y precios inválidos antes de persistir", async () => {
     ["codigo", "precio", "descripcion", "unidad de medida"],
     ["SERV0250", 80.64, "Bomba", "M3"],
     ["SERV0250", -1, "Bomba", "M3"],
-    ["SERV0511", "texto", "Bomba", "M3"],
+    ["SERV0511", true, "Bomba", "M3"],
     ["SERV9999", 1.23456, "Bomba", "M3"],
   ]);
   const result = await parseProjectPriceCatalog(file, "SERVICE");
@@ -64,6 +64,59 @@ test("detecta duplicados y precios inválidos antes de persistir", async () => {
   assert.match(result.rows[1].errors.join(" "), /mayor o igual a cero/u);
   assert.match(result.rows[2].errors.join(" "), /número finito/u);
   assert.match(result.rows[3].errors.join(" "), /hasta 4 decimales/u);
+});
+
+for (const kind of ["PRODUCT", "SERVICE"]) {
+  test(`${kind}: precios vacíos o con texto se normalizan a 0 sin perder registros`, async () => {
+    const values = [null, "", "   ", "N/A", "-", "Pendiente", "sin precio", "Q -", "precio por definir", { richText: [{ text: "No disponible" }] }];
+    const headers = kind === "PRODUCT" ? ["codigo", "referencia", "precio"] : ["codigo", "descripcion", "UM", "precio"];
+    const rows = values.map((value, index) => kind === "PRODUCT"
+      ? [`P${index}`, `CON.${index}`, value]
+      : [`S${index}`, `Servicio ${index}`, "M3", value]);
+    const result = await parseProjectPriceCatalog(await workbookFile("catalogo.xlsx", [headers, ...rows]), kind);
+    assert.equal(result.totalCount, values.length);
+    assert.equal(result.errorCount, 0);
+    assert.ok(result.rows.every(row => row.price === "0"));
+  });
+
+  test(`${kind}: conserva precios numéricos y sigue rechazando negativos o exceso de precisión`, async () => {
+    const values = [0, "0", "Q 0.00", 80.64, "Q 1,528.1234", "12,5", -1, "-1", 1.23456, "1.23456", "Infinity"];
+    const headers = kind === "PRODUCT" ? ["codigo", "referencia", "precio"] : ["codigo", "descripcion", "UM", "precio"];
+    const rows = values.map((value, index) => kind === "PRODUCT"
+      ? [`P${index}`, `CON.${index}`, value]
+      : [`S${index}`, `Servicio ${index}`, "M3", value]);
+    const result = await parseProjectPriceCatalog(await workbookFile("catalogo.xlsx", [headers, ...rows]), kind);
+    assert.deepEqual(result.rows.slice(0, 6).map(row => row.price), ["0", "0", "0.00", "80.64", "1528.1234", "12.5"]);
+    assert.equal(result.validCount, 6);
+    assert.ok(result.rows.slice(6).every(row => row.errors.length > 0));
+  });
+}
+
+test("no convierte errores de Excel ni fórmulas sin calcular en precios gratuitos", async () => {
+  const file = await workbookFile("productos.xlsx", [
+    ["codigo", "referencia", "precio"],
+    ["1", "CON.1", { error: "#VALUE!" }],
+    ["2", "CON.2", { formula: "1+2" }],
+    ["3", "CON.3", { formula: "1-1", result: 0 }],
+    ["4", "CON.4", { formula: '"N/A"', result: "N/A" }],
+  ]);
+  const result = await parseProjectPriceCatalog(file, "PRODUCT");
+  assert.equal(result.errorCount, 2);
+  assert.ok(result.rows.slice(0, 2).every(row => row.errors.length > 0));
+  assert.deepEqual(result.rows.slice(2).map(row => row.price), ["0", "0"]);
+});
+
+test("las fórmulas compartidas también preservan el cero y exigen un resultado calculado", async () => {
+  const file = await workbookFile("productos.xlsx", [
+    ["codigo", "referencia", "precio"],
+    ["1", "CON.1", { formula: "1-1", result: 0 }],
+    ["2", "CON.2", { sharedFormula: "C2", result: 0 }],
+    ["3", "CON.3", { sharedFormula: "C2" }],
+  ]);
+  const result = await parseProjectPriceCatalog(file, "PRODUCT");
+  assert.deepEqual(result.rows.slice(0, 2).map(row => row.price), ["0", "0"]);
+  assert.equal(result.errorCount, 1);
+  assert.match(result.rows[2].errors.join(" "), /fórmula/u);
 });
 
 test("acepta una fórmula de precio solo con resultado numérico calculado", async () => {
