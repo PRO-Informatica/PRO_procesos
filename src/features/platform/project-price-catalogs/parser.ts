@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import type { Cell, CellValue, Worksheet } from "exceljs";
 import JSZip from "jszip";
-import { normalizeServiceUnit, SERVICE_UNIT_ERROR } from "./service-units.ts";
+import { isEmptyServiceUnit, normalizeServiceUnit, SERVICE_UNIT_ERROR } from "./service-units.ts";
 
 import type {
   PriceCatalogKind,
@@ -147,7 +147,7 @@ async function normalizeWorkbookXml(bytes: Buffer) {
 function findHeaderColumns(sheet: Worksheet, kind: PriceCatalogKind) {
   const required = kind === "PRODUCT"
     ? ["codigo", "referencia", "precio"]
-    : ["codigo", "descripcion", "unidad de medida", "precio"];
+    : ["codigo", "descripcion", "precio"];
 
   for (let rowNumber = 1; rowNumber <= Math.min(sheet.rowCount, 10); rowNumber += 1) {
     const columns = new Map<string, number>();
@@ -156,7 +156,7 @@ function findHeaderColumns(sheet: Worksheet, kind: PriceCatalogKind) {
       const header = rawHeader === "um" || rawHeader === "unidad" ? "unidad de medida"
         : rawHeader === "precio incluye iva" ? "precio"
         : rawHeader === "observacion" ? "observaciones" : rawHeader;
-      if ((required.includes(header) || (kind === "SERVICE" && header === "observaciones")) && !columns.has(header)) columns.set(header, columnNumber);
+      if ((required.includes(header) || (kind === "SERVICE" && ["observaciones", "unidad de medida"].includes(header))) && !columns.has(header)) columns.set(header, columnNumber);
     });
     if (required.every((header) => columns.has(header))) {
       return { rowNumber, columns };
@@ -210,7 +210,8 @@ function parseRows(
     const observationsColumn = kind === "SERVICE" ? header.columns.get("observaciones") : undefined;
     const observationsCell = observationsColumn ? row.getCell(observationsColumn) : null;
     const observations = observationsCell ? valueText(observationsCell.value) || null : null;
-    const unitCell = kind === "SERVICE" ? row.getCell(header.columns.get("unidad de medida")!) : null;
+    const unitColumn = kind === "SERVICE" ? header.columns.get("unidad de medida") : undefined;
+    const unitCell = unitColumn ? row.getCell(unitColumn) : null;
     const description = descriptionCell ? valueText(descriptionCell.value) : null;
     const rawUnit = unitCell ? valueText(unitCell.value) : "";
     const unitCode = kind === "SERVICE" ? normalizeServiceUnit(rawUnit) : null;
@@ -256,7 +257,7 @@ function parseRows(
         errors.push("Las observaciones no son válidas (máximo 500 caracteres).");
       }
       if (observationsCell && isFormula(observationsCell.value)) errors.push("Las observaciones no pueden ser una fórmula.");
-      if (rawUnit && !unitCode) errors.push(SERVICE_UNIT_ERROR);
+      if (!isEmptyServiceUnit(rawUnit) && !unitCode) errors.push(SERVICE_UNIT_ERROR);
       if (unitCell && isFormula(unitCell.value)) errors.push("La UM no puede ser una fórmula.");
     }
 
@@ -276,6 +277,7 @@ function parseRows(
       description,
       observations,
       unitCode,
+      rawUnitCode: kind === "SERVICE" && !isEmptyServiceUnit(rawUnit) ? rawUnit : null,
       price: price ?? rawPrice,
       errors,
     });
@@ -325,7 +327,7 @@ export async function parseProjectPriceCatalog(
     throw new Error(
       catalogKind === "PRODUCT"
         ? "El Excel debe incluir las columnas codigo, referencia y precio."
-        : "El Excel debe incluir las columnas codigo, descripcion, unidad de medida y precio.",
+        : "El Excel debe incluir las columnas codigo, descripcion y precio. Unidad de medida y observaciones son opcionales.",
     );
   }
 

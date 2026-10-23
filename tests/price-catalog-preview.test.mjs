@@ -114,6 +114,26 @@ test("una página y la importación en curso deshabilitan los controles correcto
   }
 });
 
+test("encabezados opacos sobre el contenido y columnas contenidas en scroll propio", () => {
+  const f = tableFixture(preview("SERVICE", 5, []));
+  const region = f.find(node => node.props?.role === "region");
+  assert.match(region.props.className, /isolate.*overflow-auto/u);
+  assert.equal(region.props.tabIndex, 0);
+  assert.match(f.find(node => node.type === "table").props.className, /table-fixed border-separate/u);
+  const headers = nodes(f.find(node => node.type === "thead")).filter(node => node.type === "th");
+  assert.equal(headers.length, 7);
+  assert.ok(headers.every(node => /sticky top-0 z-10.*bg-muted/u.test(node.props.className)));
+});
+
+test("la UM vacía se distingue de una UM desconocida, cuyo texto se conserva en la vista previa", () => {
+  const data = preview("SERVICE", 2, []);
+  data.rows[0].unitCode = null; data.rows[0].rawUnitCode = null;
+  data.rows[1].unitCode = null; data.rows[1].rawUnitCode = "galón";
+  const f = tableFixture(data);
+  assert.ok(nodes(f.rows()[0]).some(node => node.type === "td" && node.props.children === "Sin UM"));
+  assert.ok(nodes(f.rows()[1]).some(node => node.type === "td" && node.props.children === "galón"));
+});
+
 test("cambiar archivo, validar de nuevo y cerrar desmontan la paginación anterior; navegar no importa datos", async () => {
   const h = hooks();
   let task;

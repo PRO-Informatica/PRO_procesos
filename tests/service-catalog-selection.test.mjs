@@ -36,10 +36,15 @@ test("normaliza sin conversiones y solo servicios aceptan unidades comerciales",
   assert.equal(normalizeServiceUnit("dosis/m3"), "DOSIS/M3");
   assert.equal(normalizeServiceUnit(" Dosis / m³ "), "DOSIS/M3");
   assert.equal(normalizeServiceUnit("Unidad"), "UN");
+  assert.equal(normalizeServiceUnit(" u "), "UN");
+  assert.equal(normalizeServiceUnit("m"), "M");
   assert.equal(normalizeServiceUnit("horas"), null);
   const input = { line_id: null, quantity: 1, unit_code: "COMBO", catalog_type: "SERVICE", catalog_item_id: "id", product_description: null };
   assert.equal(validateDispatchGuideLines([input]), null);
   assert.match(validateDispatchGuideLines([{ ...input, catalog_type: "PRODUCT" }]), /UM válida/u);
   assert.equal(validateDispatchGuideLines([{ ...input, unit_code: "DOSIS/M3" }]), null);
   assert.match(validateDispatchGuideLines([{ ...input, unit_code: "DOSIS/M3", catalog_type: "PRODUCT" }]), /UM válida/u);
+  assert.equal(validateDispatchGuideLines([{ ...input, unit_code: "M" }]), null);
+  assert.match(validateDispatchGuideLines([{ ...input, unit_code: "M", catalog_type: "PRODUCT" }]), /UM válida/u);
+  assert.deepEqual(catalogSelectionDefaults({ ...service, unitCode: "M" }, line, "M3"), { productDescription: service.description, unitCode: "M" });
 });
