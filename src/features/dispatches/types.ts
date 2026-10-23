@@ -13,6 +13,8 @@ export type DispatchCatalogOption = {
   type: DispatchCatalogType;
   code: string;
   reference: string | null;
+  description: string | null;
+  unitCode: string | null;
   price: number;
   currency: "GTQ";
 };

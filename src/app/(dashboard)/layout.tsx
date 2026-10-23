@@ -22,7 +22,7 @@ export default async function DashboardLayout({
   ]);
   const hasOperationalAccess = projectContext.status === "ready";
   const unreadNotifications = projectContext.status === "ready" && projectContext.activeProject
-    ? await getUnreadNotificationCount({ projectId: projectContext.activeProject.id, projectName: projectContext.activeProject.name, userId: profile.id, permissions: projectContext.permissions })
+    ? await getUnreadNotificationCount({ projectId: projectContext.activeProject.id, projectName: projectContext.activeProject.name, timezone: projectContext.activeProject.timezone, userId: profile.id, permissions: projectContext.permissions })
     : 0;
 
   if (platformAdmin && projectContext.status === "empty") {

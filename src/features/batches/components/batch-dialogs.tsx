@@ -13,30 +13,41 @@ import { notifications } from "@/lib/notification-messages";
 
 import { addDispatchToBatchAction, createBatchAction, removeDispatchFromBatchAction, rolloverBatchAction } from "../actions";
 import { formatBatchDate, formatBatchQuantity } from "../formatters";
+import { projectCalendarDate, weeklyBatchPeriods, type BatchPeriod } from "../period-policy";
 import { initialBatchMutationState, type BatchDispatchRelation, type BatchMutationState, type BatchRolloverPreview, type EligibleBatchDispatch } from "../types";
 
 export function Modal({ title, description, icon: Icon, onClose, pending, children, wide = false }: { title: string; description: string; icon: typeof Plus; onClose: () => void; pending: boolean; children: React.ReactNode; wide?: boolean }) {
   return <Dialog title={title} description={description} icon={Icon} onClose={onClose} pending={pending} size={wide ? "xl" : "md"}>{children}</Dialog>;
 }
 
-function localDate(timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: timezone }).formatToParts(new Date());
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((row) => row.type === type)?.value ?? "";
-  return `${part("year")}-${part("month")}-${part("day")}`;
-}
-
-function weekFor(value: string) {
-  const date = new Date(`${value}T12:00:00Z`), day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() - day + 1); const start = date.toISOString().slice(0, 10);
-  date.setUTCDate(date.getUTCDate() + 6); return { start, end: date.toISOString().slice(0, 10) };
-}
-
 export function CreateBatchDialog({ project, onClose }: { project: ProjectSummary; onClose: () => void }) {
-  const router = useRouter(), week = weekFor(localDate(project.timezone));
+  const router = useRouter();
+  const [reference, setReference] = useState(() => projectCalendarDate(project.timezone));
+  let periods: BatchPeriod[] = [];
+  try { if (reference) periods = weeklyBatchPeriods(reference); } catch { /* Incomplete date input. */ }
+  const split = periods.length === 2;
   const [state, action, pending] = useActionState(createBatchAction, initialBatchMutationState);
   useActionNotification({ pending, status: state.status, success: notifications.batchCreated });
   useEffect(() => { if (state.status === "success" && state.batchId) router.push(`/batches/${state.batchId}`); }, [router, state]);
-  return <Modal title="Crear lote semanal" description="La semana canónica inicia lunes y termina domingo." icon={CalendarRange} onClose={onClose} pending={pending}><form action={action}><input type="hidden" name="projectId" value={project.id} /><div className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6"><div className="sm:col-span-2"><label className="form-label" htmlFor="batch-code">Código *</label><input id="batch-code" name="code" required maxLength={80} defaultValue={`LOT-${week.start}`} className="form-input" /></div><div><label className="form-label" htmlFor="batch-start">Lunes *</label><input id="batch-start" name="periodStart" type="date" required defaultValue={week.start} className="form-input" /></div><div><label className="form-label" htmlFor="batch-end">Domingo *</label><input id="batch-end" name="periodEnd" type="date" required defaultValue={week.end} className="form-input" /></div><Message state={state} /></div><Footer onClose={onClose} pending={pending} label="Crear lote semanal" loading="Creando…" /></form></Modal>;
+  return <Modal title="Crear lote semanal" description="Cada lote pertenece a un solo mes, aunque la semana cruce de mes." icon={CalendarRange} onClose={onClose} pending={pending}>
+    <form action={action}>
+      <input type="hidden" name="projectId" value={project.id} />
+      <div className="space-y-4 p-5 sm:p-6">
+        <div><label className="form-label" htmlFor="batch-reference">Fecha de la semana *</label><input id="batch-reference" name="referenceDate" type="date" required value={reference} onChange={(event) => setReference(event.target.value)} disabled={pending} className="form-input" /></div>
+        <div><label className="form-label" htmlFor="batch-code">{split ? "Código base *" : "Código *"}</label><input key={periods[0]?.start} id="batch-code" name="code" required maxLength={70} defaultValue={`LOT-${periods[0]?.start ?? ""}`} className="form-input" /></div>
+        <div className="space-y-2 rounded-xl border border-border bg-muted/25 p-4 text-sm">
+          {periods.map((period) => <p key={period.start}>{formatBatchDate(period.start)} – {formatBatchDate(period.end)} · Mes {period.accountingPeriod.slice(0, 7)}</p>)}
+        </div>
+        {split && <div role="alert" className="rounded-xl border border-brand/25 bg-brand-soft p-4 text-sm text-foreground">
+          <p className="font-semibold text-brand-strong">Se crearán dos lotes</p><p className="mt-1">Esta semana cruza de mes. Los últimos días del mes y los primeros del siguiente tendrán lotes separados. Se añadirá el mes a cada código.</p>
+          <label key={periods[0]?.start} className="mt-3 flex items-start gap-2"><input type="checkbox" name="confirmSplit" value="yes" required className="mt-1 accent-[var(--brand)]" />Confirmo la creación de los dos lotes.</label>
+        </div>}
+        <p className="text-xs text-foreground-muted">El cierre es manual. Si hay un lote abierto de una semana cuyo domingo ya pasó, debes cerrarlo antes de crear otro.</p>
+        <Message state={state} />
+      </div>
+      <Footer onClose={onClose} pending={pending} disabled={!periods.length} label={split ? "Crear dos lotes" : "Crear lote semanal"} loading="Creando…" />
+    </form>
+  </Modal>;
 }
 
 export function AddDispatchDialog({ projectId, batchId, dispatches, onClose, onSuccess }: { projectId: string; batchId: string; dispatches: EligibleBatchDispatch[]; onClose: () => void; onSuccess?: () => void | Promise<void> }) {
@@ -119,7 +130,7 @@ export function RolloverDialog({ projectId, batchId, preview, onClose, onSuccess
   useActionNotification({ pending, status: state.status, success: notifications.batchClosed });
   useEffect(() => { if (state.status === "success" && !successHandled.current) { successHandled.current = true; void (async () => { try { if (onSuccess) await onSuccess(); else router.refresh(); } finally { onClose(); } })(); } }, [onClose, onSuccess, router, state.status]);
   const stay = preview.filter((row) => row.action === "STAY"), move = preview.filter((row) => row.action === "MOVE"), next = preview[0];
-  return <Modal title="Cerrar semana y preparar siguiente" description="Los conciliados permanecen; cualquier proceso pendiente continúa en la siguiente semana." icon={RotateCcw} onClose={onClose} pending={pending}><form action={action}><input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="batchId" value={batchId} /><div className="space-y-4 p-5 sm:p-6">{next && <div className="rounded-xl border border-border bg-muted/25 p-4 text-sm"><p className="font-semibold">Siguiente semana</p><p className="mt-1 text-foreground-muted">{formatBatchDate(next.destinationPeriodStart)} – {formatBatchDate(next.destinationPeriodEnd)}</p></div>}<div className="grid gap-3 sm:grid-cols-2"><Summary label="Permanecen conciliados" value={stay.length} tone="success" /><Summary label="Continúan siguiente semana" value={move.length} tone="warning" /></div><Message state={state} /></div><Footer onClose={onClose} pending={pending} label="Confirmar cierre" loading="Cerrando…" icon /></form></Modal>;
+  return <Modal title="Cerrar lote y preparar siguiente" description="Permanecen los despachos con producto conciliado y facturas requeridas completas. Los pendientes pasan al siguiente período, separado por mes." icon={RotateCcw} onClose={onClose} pending={pending}><form action={action}><input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="batchId" value={batchId} /><div className="space-y-4 p-5 sm:p-6">{next && <div className="rounded-xl border border-border bg-muted/25 p-4 text-sm"><p className="font-semibold">Siguiente período</p><p className="mt-1 text-foreground-muted">{formatBatchDate(next.destinationPeriodStart)} – {formatBatchDate(next.destinationPeriodEnd)}</p></div>}<div className="grid gap-3 sm:grid-cols-2"><Summary label="Permanecen completos" value={stay.length} tone="success" /><Summary label="Continúan siguiente período" value={move.length} tone="warning" /></div><Message state={state} /></div><Footer onClose={onClose} pending={pending} label="Confirmar cierre" loading="Cerrando…" icon /></form></Modal>;
 }
 
 function Summary({ label, value, tone }: { label: string; value: number; tone: "success" | "warning" }) { return <div className={`rounded-xl border p-4 ${tone === "success" ? "border-success/20 bg-success-soft text-success" : "border-amber-300/30 bg-amber-50 text-amber-900 dark:bg-amber-950/35 dark:text-amber-200"}`}><p className="text-xs font-semibold uppercase">{label}</p><p className="mt-2 text-2xl font-semibold">{value}</p></div>; }

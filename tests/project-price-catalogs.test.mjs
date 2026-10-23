@@ -42,7 +42,7 @@ test("acepta productos con el mismo código y referencias diferentes", async () 
 test("preserva ceros iniciales de códigos numéricos formateados", async () => {
   const file = await workbookFile(
     "servicios.xlsx",
-    [["codigo", "precio"], [123, 80.64]],
+    [["codigo", "precio", "descripcion", "UM"], [123, 80.64, "Bomba y operador", "M3"]],
     (sheet) => { sheet.getCell("A2").numFmt = "00000"; },
   );
   const result = await parseProjectPriceCatalog(file, "SERVICE");
@@ -51,11 +51,11 @@ test("preserva ceros iniciales de códigos numéricos formateados", async () => 
 
 test("detecta duplicados y precios inválidos antes de persistir", async () => {
   const file = await workbookFile("servicios.xlsx", [
-    ["codigo", "precio"],
-    ["SERV0250", 80.64],
-    ["SERV0250", -1],
-    ["SERV0511", "texto"],
-    ["SERV9999", 1.23456],
+    ["codigo", "precio", "descripcion", "unidad de medida"],
+    ["SERV0250", 80.64, "Bomba", "M3"],
+    ["SERV0250", -1, "Bomba", "M3"],
+    ["SERV0511", "texto", "Bomba", "M3"],
+    ["SERV9999", 1.23456, "Bomba", "M3"],
   ]);
   const result = await parseProjectPriceCatalog(file, "SERVICE");
   assert.equal(result.validCount, 0);
@@ -83,13 +83,67 @@ test("acepta una fórmula de precio solo con resultado numérico calculado", asy
 
 test("rechaza macros y estructuras distintas a la esperada", async () => {
   const regular = await workbookFile("servicios.xlsx", [["otro", "precio"], ["SERV1", 1]]);
-  await assert.rejects(() => parseProjectPriceCatalog(regular, "SERVICE"), /columnas codigo y precio/u);
+  await assert.rejects(() => parseProjectPriceCatalog(regular, "SERVICE"), /columnas codigo, descripcion, unidad de medida y precio/u);
 
   const archive = await JSZip.loadAsync(Buffer.from(await regular.arrayBuffer()));
   archive.file("xl/vbaProject.bin", Uint8Array.from([1, 2, 3]));
   const macroBytes = await archive.generateAsync({ type: "uint8array" });
   const macroFile = new File([macroBytes], "servicios.xlsx", { type: MIME });
   await assert.rejects(() => parseProjectPriceCatalog(macroFile, "SERVICE"), /archivo Excel/u);
+});
+
+test("servicios importan descripción y UM sin calcular IVA adicional", async () => {
+  const file = await workbookFile("servicios.xlsx", [
+    ["Código", "Descripción", "Unidad de Medida", "Precio (Incluye IVA)"],
+    ["SERV0250", "Bomba y Operador", "m³", 80.64],
+    ["SERV0255", "Cobro mínimo", "Servicio", 563.36],
+    ["SERV0274", "Laboratorio", "combo", 621.6],
+    ["SERV1018", "Suspensión", "Recargo", 724.36],
+    ["SERV0272", "Kilometraje", "Km", 29.68],
+  ]);
+  const result = await parseProjectPriceCatalog(file, "SERVICE");
+  assert.equal(result.errorCount, 0);
+  assert.deepEqual(result.rows.map(row => row.unitCode), ["M3", "SERVICIO", "COMBO", "RECARGO", "KM"]);
+  assert.equal(result.rows[0].description, "Bomba y Operador");
+  assert.equal(result.rows[0].price, "80.64");
+});
+
+test("rechaza servicios sin descripción, UM válida o con fórmulas en metadatos", async () => {
+  const file = await workbookFile("servicios.xlsx", [
+    ["codigo", "descripcion", "unidad", "precio"],
+    ["S1", "", "M3", 1],
+    ["S2", "Servicio", "litros", 1],
+    ["S3", { formula: '"Bomba"', result: "Bomba" }, "M3", 1],
+    ["S4", "Servicio", { formula: '"M3"', result: "M3" }, 1],
+  ]);
+  const result = await parseProjectPriceCatalog(file, "SERVICE");
+  assert.equal(result.errorCount, 4);
+  assert.match(result.rows[0].errors.join(" "), /descripción/u);
+  assert.match(result.rows[1].errors.join(" "), /UM/u);
+  assert.match(result.rows[2].errors.join(" "), /fórmula/u);
+  assert.match(result.rows[3].errors.join(" "), /fórmula/u);
+});
+
+test("acepta dosis/m3, dosis/m³ y Unidad del tarifario sin convertir dosis a M3", async () => {
+  const file = await workbookFile("servicios.xlsx", [
+    ["Código", "Descripción", "Unidad de Medida", "Precio (Incluye IVA)"],
+    ["SERV0226", "Dosis extra de retardante ( m3)", "dosis/m3", 10.92],
+    ["SERV0308", "Dosis para mantener trabajabilidad (m³)", "dosis/m³", 95.20],
+    ["Tubo adicional", "Tubo adicional", "Unidad", 12.60],
+  ]);
+  const result = await parseProjectPriceCatalog(file, "SERVICE");
+  assert.equal(result.errorCount, 0);
+  assert.deepEqual(result.rows.map(row => row.unitCode), ["DOSIS/M3", "DOSIS/M3", "UN"]);
+  assert.deepEqual(result.rows.map(row => row.price), ["10.92", "95.2", "12.6"]);
+  assert.equal(result.rows[2].code, "Tubo adicional");
+});
+
+test("el nuevo formato exige las columnas de servicio y no afecta productos", async () => {
+  const file = await workbookFile("servicios.xlsx", [["codigo", "precio"], ["S1", 1]]);
+  await assert.rejects(() => parseProjectPriceCatalog(file, "SERVICE"), /descripcion, unidad de medida/u);
+  const product = await workbookFile("productos.xlsx", [["codigo", "referencia", "precio"], ["1", { formula: '"CON.1"', result: "CON.1" }, 1]]);
+  const result = await parseProjectPriceCatalog(product, "PRODUCT");
+  assert.match(result.rows[0].errors.join(" "), /referencia no puede ser una fórmula/u);
 });
 
 test("la migración aísla por proyecto y usa importación atómica con RLS", () => {

@@ -12,6 +12,8 @@ import { IconButton } from "@/components/ui/icon-button";
 import { notifications } from "@/lib/notification-messages";
 
 import { saveDispatchGuideAction } from "../actions";
+import { catalogSelectionDefaults } from "../catalog-selection";
+import { SERVICE_UNIT_CODES } from "../../platform/project-price-catalogs/service-units";
 import { formatDispatchMoney } from "../formatters";
 import {
   initialDispatchMutationState,
@@ -156,10 +158,7 @@ export function DispatchGuideDialog({
         catalogItemId: item.id,
         productCode: item.code,
         catalogReference: item.reference ?? "",
-        productDescription: item.type === "PRODUCT"
-          ? item.reference ?? ""
-          : line.catalogType === "PRODUCT" ? "" : line.productDescription,
-        unitCode: item.type === "PRODUCT" ? programmedUnitCode : line.unitCode,
+        ...catalogSelectionDefaults(item, line, programmedUnitCode),
         unitPrice: item.price,
         currency: item.currency,
       };
@@ -187,6 +186,11 @@ export function DispatchGuideDialog({
                 {!readOnly && <button type="button" onClick={() => setLines((current) => [...current, emptyLine(crypto.randomUUID())])} className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted min-[460px]:min-h-9 min-[460px]:w-auto"><Plus className="size-4" /> Agregar producto / servicio</button>}
               </div>
               <div className="divide-y divide-border">
+                {lines.length === 0 && (
+                  <p className="px-4 py-6 text-sm text-foreground-muted" role="status">
+                    Sin líneas. Agrega un producto o servicio para continuar.
+                  </p>
+                )}
                 {lines.map((line, index) => {
                   const parsedQuantity = Number(line.quantity);
                   const subtotal = line.unitPrice === null || !Number.isFinite(parsedQuantity) ? null : line.unitPrice * parsedQuantity;
@@ -196,18 +200,18 @@ export function DispatchGuideDialog({
                       ? line.productCode
                       : line.lineId ? "Sin catálogo (línea histórica)" : "Seleccionar del catálogo";
                   return (
-                    <div key={line.key} className="grid gap-3 p-4 md:grid-cols-[7rem_7rem_minmax(13rem,1.15fr)_minmax(11rem,1fr)_8rem_2.5rem]">
+                    <div key={line.key} className="grid gap-3 p-4 md:grid-cols-[7rem_8.5rem_minmax(13rem,1.15fr)_minmax(11rem,1fr)_8rem_2.5rem]">
                       <input type="hidden" name="lineId" value={line.lineId} />
                       <input type="hidden" name="lineUnitCode" value={line.unitCode} />
                       <input type="hidden" name="lineCatalogType" value={line.catalogType} />
                       <input type="hidden" name="lineCatalogItemId" value={line.catalogItemId} />
                       <input type="hidden" name="lineProductDescription" value={line.productDescription} />
                       <div><label className="form-label" htmlFor={`line-quantity-${line.key}`}>Cantidad *</label><input id={`line-quantity-${line.key}`} name="lineQuantity" type="number" min="0.001" step="0.001" required value={line.quantity} onChange={(event) => update(line.key, "quantity", event.target.value)} disabled={readOnly} className="form-input disabled:bg-muted" /></div>
-                      <div><label className="form-label" htmlFor={`line-unit-${line.key}`}>UM *</label><select id={`line-unit-${line.key}`} required value={line.unitCode} onChange={(event) => update(line.key, "unitCode", event.target.value)} disabled={readOnly || line.catalogType === "PRODUCT" || (!line.catalogType && Boolean(line.lineId))} className="form-input disabled:bg-muted"><option value="">—</option>{units.map((unit) => <option key={unit.code} value={unit.code}>{unit.code}</option>)}</select></div>
+                      <div><label className="form-label" htmlFor={`line-unit-${line.key}`}>UM *</label><select id={`line-unit-${line.key}`} required value={line.unitCode} onChange={(event) => update(line.key, "unitCode", event.target.value)} disabled={readOnly || line.catalogType === "PRODUCT" || (!line.catalogType && Boolean(line.lineId))} className="form-input disabled:bg-muted"><option value="">—</option>{(line.catalogType === "SERVICE" ? SERVICE_UNIT_CODES : units.map((unit) => unit.code)).map((code) => <option key={code} value={code}>{code}</option>)}</select></div>
                       <div><p className="form-label">Código *</p><button type="button" onClick={() => setPickerLineKey(line.key)} disabled={readOnly} className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 text-left text-sm disabled:bg-muted"><span className={line.productCode || line.lineId ? "font-medium" : "text-foreground-muted"}>{selectionLabel}</span>{!readOnly && <Search className="size-4 shrink-0 text-foreground-muted" />}</button></div>
                       <div><label className="form-label" htmlFor={`line-description-${line.key}`}>{line.catalogType === "PRODUCT" ? "Referencia" : "Descripción"}</label><input id={`line-description-${line.key}`} maxLength={500} value={line.productDescription} onChange={(event) => update(line.key, "productDescription", event.target.value)} disabled={readOnly || line.catalogType !== "SERVICE"} placeholder={line.catalogType === "SERVICE" ? "Opcional" : "Se completa desde el catálogo"} className="form-input disabled:bg-muted" /></div>
                       <div><p className="form-label">Estimado</p><p className="mt-2 whitespace-nowrap text-sm font-semibold">{subtotal === null || !line.currency ? "No disponible" : formatDispatchMoney(subtotal, line.currency)}</p>{line.unitPrice !== null && line.currency && <p className="mt-1 text-[11px] text-foreground-muted">{formatDispatchMoney(line.unitPrice, line.currency)} c/u</p>}</div>
-                      <div className="flex items-end justify-end"><IconButton label={`Eliminar línea ${index + 1}`} disabled={readOnly || lines.length === 1} onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))} tone="destructive"><Trash2 className="size-4" /></IconButton></div>
+                      <div className="flex items-end justify-end"><IconButton label={`Eliminar línea ${index + 1}`} disabled={readOnly || pending} onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))} tone="destructive"><Trash2 className="size-4" /></IconButton></div>
                     </div>
                   );
                 })}
@@ -215,7 +219,7 @@ export function DispatchGuideDialog({
             </div>
             {state.status === "error" && <p role="alert" className="rounded-lg bg-destructive-soft px-4 py-3 text-sm text-destructive">{state.message}</p>}
           </div>
-          <DialogFooter><Button variant="secondary" onClick={onClose} disabled={pending}>{readOnly ? "Cerrar" : "Cancelar"}</Button>{!readOnly && <LoadingButton loadingLabel="Guardando…">Guardar guía</LoadingButton>}</DialogFooter>
+          <DialogFooter><Button variant="secondary" onClick={onClose} disabled={pending}>{readOnly ? "Cerrar" : "Cancelar"}</Button>{!readOnly && <LoadingButton loadingLabel="Guardando…" disabled={lines.length === 0}>Guardar guía</LoadingButton>}</DialogFooter>
         </form>
       </Dialog>
       {pickerLine && <DispatchCatalogPickerDialog projectId={projectId} initialType={pickerLine.catalogType === "SERVICE" ? "SERVICE" : "PRODUCT"} onSelect={selectCatalogItem} onClose={() => setPickerLineKey(null)} />}

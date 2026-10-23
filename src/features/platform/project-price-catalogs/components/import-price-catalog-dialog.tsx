@@ -12,6 +12,7 @@ import {
   importProjectPriceCatalogAction,
   previewProjectPriceCatalogAction,
 } from "../actions";
+import { catalogHrefAfterImport } from "../navigation";
 import type {
   PriceCatalogImportMode,
   PriceCatalogKind,
@@ -103,7 +104,10 @@ export function ImportPriceCatalogDialog({
       setMessage(
         `${result.message} ${result.insertedCount} nuevo(s), ${result.updatedCount} actualizado(s), ${result.totalCount} total.`,
       );
-      router.refresh();
+      const currentHref = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      const nextHref = catalogHrefAfterImport(window.location.href, catalogKind);
+      if (nextHref !== currentHref) router.replace(nextHref, { scroll: false });
+      else router.refresh();
       setTimeout(close, 900);
     });
   }
@@ -146,7 +150,7 @@ export function ImportPriceCatalogDialog({
               <p className="mt-2 text-xs text-foreground-muted">
                 Máximo 10 MiB y 10,000 registros. {catalogKind === "PRODUCT"
                   ? "Columnas: codigo, referencia, precio."
-                  : "Columnas: codigo, precio."}
+                  : "Columnas: codigo, descripcion, unidad de medida, precio. UM: KM, M3, UN (Unidad), Servicio, Combo, Recargo o dosis/m3."}
               </p>
             </div>
 
@@ -189,6 +193,7 @@ export function ImportPriceCatalogDialog({
                         <th className="px-4 py-3">Fila</th>
                         <th className="px-4 py-3">Código</th>
                         {catalogKind === "PRODUCT" && <th className="px-4 py-3">Referencia</th>}
+                        {catalogKind === "SERVICE" && <><th className="px-4 py-3">Descripción</th><th className="px-4 py-3">UM</th></>}
                         <th className="px-4 py-3 text-right">Precio</th>
                         <th className="px-4 py-3">Validación</th>
                       </tr>
@@ -199,6 +204,7 @@ export function ImportPriceCatalogDialog({
                           <td className="px-4 py-3 text-foreground-muted">{row.rowNumber}</td>
                           <td className="px-4 py-3 font-mono">{row.code || "—"}</td>
                           {catalogKind === "PRODUCT" && <td className="px-4 py-3 font-mono">{row.reference || "—"}</td>}
+                          {catalogKind === "SERVICE" && <><td className="px-4 py-3">{row.description || "—"}</td><td className="px-4 py-3">{row.unitCode || "—"}</td></>}
                           <td className="px-4 py-3 text-right">{row.price || "—"}</td>
                           <td className="px-4 py-3">
                             {row.errors.length ? (

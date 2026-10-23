@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 import { getEffectiveProgrammingStatus } from "./availability";
+import type { DeliveryMode } from "./invoice-policy";
 import type {
   ProgrammingFilters,
   ProgrammingDetail,
@@ -31,6 +32,7 @@ type ProgrammingRow = {
   unit_code: string;
   placement_group: string | null;
   requires_pumping: boolean;
+  delivery_modes: DeliveryMode[];
   estimated_work_item_id: string | null;
   status: ProgrammingStatus;
   notes: string | null;
@@ -164,7 +166,7 @@ export async function getProgrammingItems(
   let programmingQuery = supabase
     .from("programming")
     .select(
-      "id, version, project_id, supplier_id, order_number, created_by, scheduled_at, requested_quantity, confirmed_quantity, unit_code, placement_group, requires_pumping, estimated_work_item_id, status, notes, confirmed_at, confirmed_by",
+      "id, version, project_id, supplier_id, order_number, created_by, scheduled_at, requested_quantity, confirmed_quantity, unit_code, placement_group, requires_pumping, delivery_modes, estimated_work_item_id, status, notes, confirmed_at, confirmed_by",
     )
     .eq("project_id", projectId)
     .gte("scheduled_at", range.start)
@@ -317,6 +319,7 @@ export async function getProgrammingItems(
     unitCode: row.unit_code,
     placementGroup: row.placement_group,
     requiresPumping: row.requires_pumping,
+    deliveryModes: row.delivery_modes,
     estimatedWorkItemId: row.estimated_work_item_id,
     estimatedWorkItemLabel: row.estimated_work_item_id
       ? workItemLabels.get(row.estimated_work_item_id) ?? "Renglón no disponible"
@@ -381,6 +384,7 @@ export async function getProgrammingCatalogs(projectId: string) {
       .from("units_of_measure")
       .select("code, name")
       .eq("active", true)
+      .in("code", ["KM", "M3", "UN"])
       .order("code"),
   ]);
 
@@ -431,6 +435,7 @@ type ProgrammingRevisionRow = {
   scheduled_at: string;
   supplier_id: string;
   order_number: string | null;
+  delivery_modes: DeliveryMode[];
   requested_quantity: number | string;
   confirmed_quantity: number | string | null;
   unit_code: string;
@@ -456,7 +461,7 @@ export async function getProgrammingDetailPageData(
   const { data: programmingData, error: programmingError } = await supabase
     .from("programming")
     .select(
-      "id, project_id, supplier_id, order_number, created_by, scheduled_at, requested_quantity, confirmed_quantity, unit_code, placement_group, requires_pumping, estimated_work_item_id, status, notes, confirmed_at, confirmed_by, version, created_at, updated_at",
+      "id, project_id, supplier_id, order_number, created_by, scheduled_at, requested_quantity, confirmed_quantity, unit_code, placement_group, requires_pumping, delivery_modes, estimated_work_item_id, status, notes, confirmed_at, confirmed_by, version, created_at, updated_at",
     )
     .eq("id", programmingId)
     .eq("project_id", projectId)
@@ -477,7 +482,7 @@ export async function getProgrammingDetailPageData(
     supabase
       .from("programming_revisions")
       .select(
-        "id, programming_id, revision_no, programming_version, scheduled_at, supplier_id, order_number, requested_quantity, confirmed_quantity, unit_code, status, notes, change_reason, action, created_by, created_at",
+        "id, programming_id, revision_no, programming_version, scheduled_at, supplier_id, order_number, delivery_modes, requested_quantity, confirmed_quantity, unit_code, status, notes, change_reason, action, created_by, created_at",
       )
       .eq("programming_id", programmingId)
       .order("revision_no", { ascending: false }),
@@ -627,6 +632,7 @@ export async function getProgrammingDetailPageData(
     unitCode: row.unit_code,
     placementGroup: row.placement_group,
     requiresPumping: row.requires_pumping,
+    deliveryModes: row.delivery_modes,
     estimatedWorkItemId: row.estimated_work_item_id,
     estimatedWorkItemLabel: null,
     status: row.status,
@@ -663,6 +669,7 @@ export async function getProgrammingDetailPageData(
       status: revision.status,
       supplierName: supplierNames.get(revision.supplier_id) ?? "Proveedor no disponible",
       orderNumber: revision.order_number,
+      deliveryModes: revision.delivery_modes,
       scheduledAt: revision.scheduled_at,
       requestedQuantity: numeric(revision.requested_quantity) ?? 0,
       confirmedQuantity: numeric(revision.confirmed_quantity),

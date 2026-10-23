@@ -26,6 +26,7 @@ import { notifications } from "@/lib/notification-messages";
 import { formatStatusLabel } from "@/lib/status-labels";
 
 import { mutateProgrammingAction } from "../actions";
+import { deliveryModeLabel, requiresServiceInvoice } from "../invoice-policy";
 import {
   canEditProgramming,
   canCreateDispatchForProgramming,
@@ -328,6 +329,8 @@ export function ProgrammingDetailView({
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Proveedor</dt><dd className="break-words text-sm text-foreground">{detail.supplierName}</dd></div>
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Fecha programada</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.scheduledAt, project.timezone)}</dd></div>
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Pedido No.</dt><dd className="text-sm text-foreground">{detail.orderNumber ?? "—"}</dd></div>
+                <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Modalidad de entrega</dt><dd className="text-sm text-foreground">{deliveryModeLabel(detail.deliveryModes)}</dd></div>
+                <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Requisitos de cierre</dt><dd className="text-sm text-foreground">{requiresServiceInvoice(detail.deliveryModes) ? "Producto conciliado y factura de servicio" : "Producto conciliado; servicio opcional"}</dd></div>
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Creada por</dt><dd className="break-words text-sm text-foreground">{detail.createdByName}</dd></div>
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Creada</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.createdAt, project.timezone)}</dd></div>
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Persona que confirmó</dt><dd className="break-words text-sm text-foreground">{detail.confirmedByName ?? "Sin confirmar"}</dd></div>
@@ -406,6 +409,7 @@ export function ProgrammingDetailView({
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-foreground-muted">
                     <span>{formatProgrammingStatus(revision.status)}</span><span>·</span><span>Solicitado {formatProgrammingQuantity(revision.requestedQuantity)} {revision.unitCode}</span>
+                    <span>·</span><span>{deliveryModeLabel(revision.deliveryModes)}</span>
                   </div>
                   {revision.changeReason && <p className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-xs leading-5 text-foreground">{revision.changeReason}</p>}
                 </li>

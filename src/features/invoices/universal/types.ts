@@ -1,6 +1,7 @@
 import type { ProcessedInvoiceType } from "../invoice-processing";
 
 export type UniversalInvoiceStatus =
+  | "IDENTIFIED"
   | "READY"
   | "READY_WITH_DIFFERENCES"
   | "REQUIRES_RECIPIENT_EXCEPTION"
@@ -10,6 +11,10 @@ export type UniversalInvoiceStatus =
   | "PROJECT_AMBIGUOUS"
   | "DISPATCH_NOT_FOUND"
   | "DISPATCH_AMBIGUOUS"
+  | "PRODUCT_MISMATCH"
+  | "DISPATCH_IDENTITY_UNVERIFIED"
+  | "REQUIRES_PRODUCT_VALIDATION"
+  | "SERVICE_PCA_MISMATCH"
   | "NO_ACTIVE_BATCH"
   | "UNKNOWN_TYPE"
   | "DUPLICATE"
@@ -26,6 +31,7 @@ export type UniversalInvoiceResult = {
   invoiceNumber: string | null;
   detectedBillingLegalName: string | null;
   orderNumber: string | null;
+  pcaOriginal: string | null;
   projectId: string | null;
   projectLabel: string | null;
   dispatchId: string | null;

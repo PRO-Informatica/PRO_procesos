@@ -30,6 +30,7 @@ import { initialBatchMutationState, type BatchDetail, type BatchDispatchRelation
 import { AddDispatchDialog, Modal, RemoveDispatchDialog, RolloverDialog } from "./batch-dialogs";
 import { BatchStatusBadge } from "./batch-status-badge";
 import { BulkInvoiceDialog, DispatchInvoiceDialog } from "./invoice-dialogs";
+import { OverdueBatchNotice } from "./overdue-batch-notice";
 
 type InvoiceSelection = { relation: BatchDispatchRelation; type: InvoiceType; replacement?: boolean };
 const initialSwitchProjectState = { status: "idle" as const };
@@ -75,6 +76,9 @@ function DispatchDetailLink({
 
 function InvoiceCell({ relation, type }: { relation: BatchDispatchRelation; type: InvoiceType }) {
   const invoice = type === "PRODUCT" ? relation.productInvoice : relation.serviceInvoice;
+  if (!invoice && type === "SERVICE" && !relation.serviceInvoiceRequired) {
+    return <span className="text-foreground-muted">Opcional · concreto directo</span>;
+  }
   return invoice ? <div className="min-w-0"><p className="break-all font-semibold">{invoice.number}</p><p className="text-xs text-foreground-muted">{formatBatchDate(invoice.date)}</p>{invoice.recipientException?.status === "PENDING" && <span className="mt-1 inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-200">Decisión C14 pendiente</span>}{type === "PRODUCT" && invoice.replacesInvoiceId && <Link href="/invoices" className="mt-1 inline-flex text-xs font-semibold text-brand-strong hover:underline">Ver factura anterior</Link>}</div> : <span className="text-foreground-muted">Pendiente</span>;
 }
 
@@ -251,11 +255,13 @@ export function BatchDetailView({ detail, project, permissions, embedded = false
         <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
           {permissions.canModify && editable && <button type="button" onClick={() => setAddOpen(true)} className="secondary-button w-full gap-2 sm:w-auto"><Plus className="size-4" /> Agregar despacho</button>}
           {permissions.canCreateInvoice && editable && <button type="button" onClick={() => setBulkOpen(true)} className="secondary-button w-full gap-2 sm:w-auto"><Files className="size-4" /> Carga masiva de facturas</button>}
-          {permissions.canModify && editable && <button type="button" onClick={() => void openRollover()} disabled={secondaryPending} aria-busy={secondaryPending && secondaryOperation === "rollover"} className="primary-button w-full gap-2 sm:w-auto disabled:opacity-60">{showSecondaryPending && secondaryOperation === "rollover" ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /> : <RotateCcw className="size-4" />} Cerrar semana y preparar siguiente</button>}
+          {permissions.canModify && editable && <button type="button" onClick={() => void openRollover()} disabled={secondaryPending} aria-busy={secondaryPending && secondaryOperation === "rollover"} className="primary-button w-full gap-2 sm:w-auto disabled:opacity-60">{showSecondaryPending && secondaryOperation === "rollover" ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /> : <RotateCcw className="size-4" />} Cerrar lote y preparar siguiente</button>}
         </div>
       </div>
       {message && <p className="mt-4 rounded-xl bg-muted px-4 py-3 text-sm">{message}</p>}
     </MotionSection>
+
+    {detail.isOverdue && <OverdueBatchNotice overdue={{ batches: [detail], total: 1 }} />}
 
     <MotionSection disableMotion={embedded} className="overflow-hidden rounded-xl border border-border bg-surface">
       <div className="border-b border-border px-4 py-3.5 sm:px-5 sm:py-4"><h2 className="font-semibold">Despachos del lote</h2><p className="mt-1 text-xs leading-5 text-foreground-muted">Las guías son detalle interno; la pertenencia al lote y la conciliación pertenecen al despacho.</p></div>

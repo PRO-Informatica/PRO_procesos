@@ -16,6 +16,7 @@ import type {
   UploadActionResult,
 } from "./types";
 import { validateDispatchGuideLines } from "./validation";
+import { getDispatchStartLocalDateTime } from "./registration";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -87,14 +88,24 @@ function dispatchError(message: string) {
     return "La programación debe estar confirmada o en ejecución.";
   if (value.includes("DISPATCH_COMPLETED_NOT_EDITABLE"))
     return "El despacho está completado y ya no admite cambios.";
+  if (value.includes("DISPATCH_INCIDENT_TYPE_INVALID"))
+    return "El tipo de incidencia no está activo o no pertenece a la empresa de este despacho. Recarga la página y selecciona un tipo válido.";
+  if (value.includes("DISPATCH_EVIDENCE_IN_USE"))
+    return "La evidencia está vinculada a otro proceso o tiene historial de procesamiento y no puede eliminarse desde el despacho.";
+  if (value.includes("DISPATCH_DOCUMENT_NOT_FOUND") || value.includes("DOCUMENT_CONTEXT_INVALID"))
+    return "La evidencia ya no está disponible en este despacho. Recarga la página.";
   if (value.includes("DISPATCH_GUIDE_NUMBER_ALREADY_EXISTS"))
     return "Ya existe una guía con ese número en este despacho.";
+  if (value.includes("DISPATCH_GUIDE_NOT_FOUND"))
+    return "La guía ya no está disponible en este despacho. Recarga la página.";
   if (value.includes("DISPATCH_GUIDE_BATCH_LOCKED"))
     return "La guía ya está relacionada con un lote y no puede editarse.";
   if (value.includes("DISPATCH_GUIDE_HAS_EVIDENCE"))
     return "Quita primero la evidencia vinculada a esta guía.";
   if (value.includes("DISPATCH_PROGRAMMING_UNIT_MISMATCH"))
     return "Las líneas de producto deben usar la misma UM de la programación.";
+  if (value.includes("DISPATCH_SERVICE_UNIT_MISMATCH"))
+    return "La UM debe coincidir con la unidad de medida del servicio seleccionado en el catálogo.";
   if (value.includes("DISPATCH_CATALOG_SELECTION_REQUIRED"))
     return "Selecciona un producto o servicio del catálogo en cada línea nueva.";
   if (value.includes("DISPATCH_CATALOG_ITEM_NOT_FOUND"))
@@ -104,7 +115,7 @@ function dispatchError(message: string) {
   if (value.includes("DISPATCH_GUIDE_OPERATIONAL_PRODUCT_REQUIRED"))
     return "La guía necesita al menos una línea de producto para registrar el volumen operativo.";
   if (value.includes("INVALID_OR_INACTIVE_UNIT_OF_MEASURE"))
-    return "Selecciona una UM válida: KM, M3 o UN.";
+    return "Selecciona una UM válida para el producto o servicio.";
   if (value.includes("NOT_DISPATCHED_INCIDENT_REQUIRED"))
     return "Un despacho no realizado debe tener al menos una incidencia.";
   if (value.includes("DISPATCH_RESULT_REQUIRED"))
@@ -146,6 +157,20 @@ function revalidateDispatch(dispatchId?: string, programmingId?: string) {
   if (programmingId) revalidatePath(`/programming/${programmingId}`);
 }
 
+async function getDispatchRegistration(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  dispatchId: string,
+) {
+  const { data, error } = await supabase
+    .from("dispatches")
+    .select("arrival_at, received_by_name")
+    .eq("id", dispatchId)
+    .eq("project_id", projectId)
+    .maybeSingle<{ arrival_at: string | null; received_by_name: string | null }>();
+  return error ? null : data;
+}
+
 export async function startDispatchAction(
   _state: DispatchMutationState,
   formData: FormData,
@@ -157,13 +182,25 @@ export async function startDispatchAction(
   const auth = await authorize(projectId, "dispatch.create");
   if (!auth) return { status: "error", message: "No tienes permiso para iniciar despachos." };
   const timezone = auth.context.activeProject?.timezone || "America/Guatemala";
-  const arrivalAt = localToIso(text(formData, "arrivalAt"), timezone);
-  if (!arrivalAt) return { status: "error", message: "Ingresa una hora de llegada válida." };
   const supabase = await createClient();
+  const { data: programming, error: programmingError } = await supabase
+    .from("programming")
+    .select("scheduled_at")
+    .eq("id", programmingId)
+    .eq("project_id", projectId)
+    .maybeSingle<{ scheduled_at: string }>();
+  if (programmingError || !programming) {
+    return { status: "error", message: "La programación ya no está disponible en este proyecto." };
+  }
+  const arrivalAt = localToIso(
+    getDispatchStartLocalDateTime(programming.scheduled_at, timezone),
+    timezone,
+  );
+  if (!arrivalAt) return { status: "error", message: "No fue posible determinar la hora de llegada." };
   const { data, error } = await supabase.rpc("start_dispatch", {
     p_programming_id: programmingId,
     p_arrival_at: arrivalAt,
-    p_received_by_name: text(formData, "receivedByName"),
+    p_received_by_name: auth.profile.fullName,
   });
   if (error) return { status: "error", message: dispatchError(error.message) };
   const dispatchId = String(data);
@@ -187,26 +224,30 @@ export async function saveDispatchAction(
     return { status: "error", message: "Recarga el despacho antes de guardar." };
   const auth = await authorize(projectId, "dispatch.modify");
   if (!auth) return { status: "error", message: "No tienes permiso para editar el despacho." };
+  const supabase = await createClient();
+  const registration = await getDispatchRegistration(supabase, projectId, dispatchId);
+  if (!registration?.arrival_at || !registration.received_by_name) {
+    return { status: "error", message: "No fue posible recuperar la hora de llegada y el receptor originales. Recarga el despacho." };
+  }
   const timezone = auth.context.activeProject?.timezone || "America/Guatemala";
-  const arrivalAt = localToIso(text(formData, "arrivalAt"), timezone);
+  const arrivalAt = registration.arrival_at;
   const departureValue = text(formData, "departureAt");
   const departureAt = departureValue ? localToIso(departureValue, timezone) : null;
   const result = text(formData, "result");
-  if (!arrivalAt || (departureValue && !departureAt))
-    return { status: "error", message: "Revisa las horas de llegada y salida." };
+  if (departureValue && !departureAt)
+    return { status: "error", message: "Revisa la hora de salida." };
   if (result && !RESULTS.includes(result))
     return { status: "error", message: "Selecciona un resultado válido." };
   const rawVolume = text(formData, "realVolume");
   const realVolume = rawVolume === "" ? null : Number(rawVolume);
   if (realVolume !== null && (!Number.isFinite(realVolume) || realVolume < 0))
     return { status: "error", message: "Ingresa un Volumen Real válido." };
-  const supabase = await createClient();
   const { data, error } = await supabase.rpc("update_dispatch", {
     p_dispatch_id: dispatchId,
     p_expected_version: expectedVersion,
     p_arrival_at: arrivalAt,
     p_departure_at: departureAt,
-    p_received_by_name: text(formData, "receivedByName"),
+    p_received_by_name: registration.received_by_name,
     p_result: result || null,
     p_order_number: text(formData, "orderNumber") || null,
     p_real_volume: result === "NOT_DISPATCHED" ? 0 : realVolume,
@@ -287,6 +328,8 @@ export async function searchDispatchCatalogAction(
           type: catalogType,
           code,
           reference: typeof row.reference === "string" ? row.reference : null,
+          description: typeof row.description === "string" ? row.description : null,
+          unitCode: typeof row.unit_code === "string" ? row.unit_code : null,
           price,
           currency: "GTQ",
         }];
@@ -356,6 +399,17 @@ export async function deleteDispatchGuideAction(
   if (!(await authorize(projectId, "dispatch.modify")))
     return { status: "error", message: "No tienes permiso para eliminar guías." };
   const supabase = await createClient();
+  const { data: guide, error: guideError } = await supabase
+    .from("dispatch_guides")
+    .select("id")
+    .eq("id", guideId)
+    .eq("project_id", projectId)
+    .eq("dispatch_id", dispatchId)
+    .maybeSingle();
+  if (guideError)
+    return { status: "error", message: "No fue posible consultar la guía. Intenta nuevamente." };
+  if (!guide)
+    return { status: "error", message: "La guía ya no está disponible en este despacho. Recarga la página." };
   const { data, error } = await supabase.rpc("delete_dispatch_guide", {
     p_guide_id: guideId,
     p_expected_version: expectedVersion,
@@ -400,25 +454,30 @@ export async function finalizeDispatchAction(
   if (!auth)
     return { status: "error", message: "No tienes permiso para finalizar el despacho." };
 
+  const supabase = await createClient();
+  const registration = await getDispatchRegistration(supabase, projectId, dispatchId);
+  if (!registration?.arrival_at || !registration.received_by_name) {
+    return { status: "error", message: "No fue posible recuperar la hora de llegada y el receptor originales. Recarga el despacho." };
+  }
   const timezone = auth.context.activeProject?.timezone || "America/Guatemala";
-  const arrivalAt = localToIso(text(formData, "arrivalAt"), timezone);
+  const arrivalAt = registration.arrival_at;
   const departureAt = localToIso(text(formData, "departureAt"), timezone);
   const result = text(formData, "result");
   const rawVolume = text(formData, "realVolume");
   const realVolume = rawVolume === "" ? null : Number(rawVolume);
-  if (!arrivalAt || !departureAt)
-    return { status: "error", message: "Registra las horas de llegada y salida." };
+  if (!departureAt)
+    return { status: "error", message: "Registra la hora de salida." };
   if (!RESULTS.includes(result))
     return { status: "error", message: "Selecciona el resultado de la operación." };
   if (realVolume !== null && (!Number.isFinite(realVolume) || realVolume < 0))
     return { status: "error", message: "Ingresa un Volumen Real válido." };
 
-  const { data, error } = await (await createClient()).rpc("finalize_dispatch", {
+  const { data, error } = await supabase.rpc("finalize_dispatch", {
     p_dispatch_id: dispatchId,
     p_expected_version: expectedVersion,
     p_arrival_at: arrivalAt,
     p_departure_at: departureAt,
-    p_received_by_name: text(formData, "receivedByName"),
+    p_received_by_name: registration.received_by_name,
     p_result: result,
     p_order_number: text(formData, "orderNumber") || null,
     p_real_volume: result === "NOT_DISPATCHED" ? 0 : realVolume,
@@ -573,6 +632,15 @@ export async function removeDispatchEvidenceAction(projectId: string, documentId
   if (!validId(projectId) || !validId(documentId) || !(await authorize(projectId, "dispatch.modify")))
     return { status: "error" as const, message: "No tienes permiso para eliminar la evidencia." };
   const supabase = await createClient();
+  const document = await supabase
+    .from("documents")
+    .select("id")
+    .eq("id", documentId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (document.error || !document.data) {
+    return { status: "error" as const, message: "La evidencia no está disponible en este proyecto. Recarga la página." };
+  }
   const { data, error } = await supabase.rpc("remove_dispatch_evidence", {
     p_document_id: documentId,
   });
@@ -585,10 +653,25 @@ export async function removeDispatchEvidenceAction(projectId: string, documentId
     paths.push(object.path);
     byBucket.set(object.bucket, paths);
   }
-  const admin = createAdminClient();
-  for (const [bucket, paths] of byBucket) await admin.storage.from(bucket).remove(paths);
-  revalidatePath("/dispatches");
-  return { status: "success" as const };
+  let storageCleanupPending = false;
+  if (byBucket.size) {
+    try {
+      const admin = createAdminClient();
+      for (const [bucket, paths] of byBucket) {
+        try {
+          const removal = await admin.storage.from(bucket).remove(paths);
+          if (removal.error) storageCleanupPending = true;
+        } catch {
+          storageCleanupPending = true;
+        }
+      }
+    } catch {
+      storageCleanupPending = true;
+    }
+  }
+  revalidateDispatch(typeof data?.dispatch_id === "string" ? data.dispatch_id : undefined);
+  revalidatePath("/documents");
+  return { status: "success" as const, storageCleanupPending };
 }
 
 export async function getDocumentDownloadUrl(projectId: string, documentId: string) {

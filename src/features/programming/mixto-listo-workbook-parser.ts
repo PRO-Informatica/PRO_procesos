@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import type { Cell, CellValue, Worksheet } from "exceljs";
 
 import type { BulkProgrammingPreviewRow } from "./types.ts";
+import { DELIVERY_MODES, type DeliveryMode } from "./invoice-policy.ts";
 import {
   validateMixtoProjectReference,
   MIXTO_PROJECT_REFERENCE_MISSING_ERROR,
@@ -138,9 +139,13 @@ export function parseMixtoTime(value: CellValue) {
 type ColumnKey =
   | "requestDate" | "requestTime" | "concreteType" | "quantity"
   | "element" | "interval" | "programmedDate" | "programmedTime"
-  | "orderNumber" | "additions";
+  | "orderNumber" | "additions" | DeliveryMode;
 
 function identifyHeader(value: string): ColumnKey | null {
+  if (value === "concreto directo") return "DIRECT";
+  if (value === "bomba") return "PUMP";
+  if (value === "pluma") return "BOOM";
+  if (value === "colocacion") return "PLACEMENT";
   if (value === "dia programado") return "programmedDate";
   if (value === "hora programada") return "programmedTime";
   if (value === "pedido no") return "orderNumber";
@@ -247,7 +252,9 @@ export async function extractMixtoProgrammingWorkbookBuffer(
   let consecutiveEmpty = 0;
   for (let rowNumber = headers.lastRow + 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
     const row = sheet.getRow(rowNumber);
-    const value = (key: ColumnKey) => row.getCell(headers.columns.get(key)!).value;
+    const value = (key: ColumnKey) => headers.columns.has(key)
+      ? row.getCell(headers.columns.get(key)!).value
+      : null;
     const relevant = [
       "requestDate", "requestTime", "concreteType", "quantity", "element",
       "programmedDate", "programmedTime", "orderNumber", "additions",
@@ -271,6 +278,14 @@ export async function extractMixtoProgrammingWorkbookBuffer(
     const placementElement = cellText(value("element"));
     const additions = cellText(value("additions"));
     const truckInterval = headers.columns.has("interval") ? cellText(value("interval")) : "";
+    const deliveryModes = DELIVERY_MODES.filter((mode) => {
+      const mark = cellText(value(mode)).trim();
+      if (!mark) return false;
+      if (!/^[xX×✕✖]$/.test(mark)) {
+        throw new Error(rowError(rowNumber, "la modalidad debe marcarse con X o quedar vacía"));
+      }
+      return true;
+    });
 
     if (!date) throw new Error(rowError(rowNumber, "DÍA PROGRAMADO faltante o inválido"));
     if (!time) throw new Error(rowError(rowNumber, "HORA PROGRAMADA faltante o inválida"));
@@ -286,6 +301,7 @@ export async function extractMixtoProgrammingWorkbookBuffer(
       scheduledAt: `${date}T${time}`,
       orderNumber,
       concreteType,
+      deliveryModes,
       quantity: String(quantity),
       unitCode: "M3",
       placementElement,
@@ -301,5 +317,13 @@ export async function extractMixtoProgrammingWorkbookBuffer(
     });
   }
   if (!rows.length) throw new Error(MIXTO_WORKBOOK_ERROR);
-  return { rows, warnings: reference.warnings };
+  return {
+    rows,
+    warnings: [
+      ...reference.warnings,
+      ...(rows.some((row) => !row.deliveryModes.length)
+        ? ["Hay filas sin modalidad marcada. Se exigirán facturas de producto y servicio; no se asumirá concreto directo."]
+        : []),
+    ],
+  };
 }

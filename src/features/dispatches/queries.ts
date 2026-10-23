@@ -199,6 +199,8 @@ function uniqueCatalogProduct(
     type: "PRODUCT",
     code: match.code,
     reference: match.reference,
+    description: null,
+    unitCode: null,
     price: numberValue(match.price),
     currency: "GTQ",
   };
@@ -374,17 +376,22 @@ export async function getDispatchDetail(
 ): Promise<DispatchDetail | null> {
   const supabase = await createClient();
   const admin = createAdminClient();
-  const dispatchResult = await supabase
-    .from("dispatches")
-    .select(
-      "id, project_id, supplier_id, programming_id, status, result, version, arrival_at, departure_at, received_by_name, order_number, real_volume, real_unit_code, completed_at, created_by, created_at, updated_at",
-    )
-    .eq("project_id", projectId)
-    .eq("id", dispatchId)
-    .maybeSingle();
+  const [dispatchResult, projectResult] = await Promise.all([
+    supabase
+      .from("dispatches")
+      .select(
+        "id, project_id, supplier_id, programming_id, status, result, version, arrival_at, departure_at, received_by_name, order_number, real_volume, real_unit_code, completed_at, created_by, created_at, updated_at",
+      )
+      .eq("project_id", projectId)
+      .eq("id", dispatchId)
+      .maybeSingle(),
+    supabase.from("projects").select("company_id").eq("id", projectId).maybeSingle(),
+  ]);
   assertNoError(dispatchResult.error, "No fue posible cargar el despacho.");
-  if (!dispatchResult.data) return null;
+  assertNoError(projectResult.error, "No fue posible identificar la empresa del despacho.");
+  if (!dispatchResult.data || !projectResult.data) return null;
   const dispatch = dispatchResult.data as DispatchRow;
+  const companyId = projectResult.data.company_id as string;
 
   const [programmingResult, supplierResult, guidesResult, incidentsResult, unitsResult, typesResult, programmingLinesResult] =
     await Promise.all([
@@ -412,7 +419,7 @@ export async function getDispatchDetail(
         .eq("dispatch_id", dispatchId)
         .order("created_at", { ascending: false }),
       supabase.from("units_of_measure").select("code, name").eq("active", true).in("code", ["KM", "M3", "UN"]).order("code"),
-      supabase.from("incident_types").select("id, name").eq("active", true).order("name"),
+      supabase.from("incident_types").select("id, name").eq("company_id", companyId).eq("active", true).order("name"),
       supabase.from("programming_lines").select("concrete_type, position").eq("programming_id", dispatch.programming_id).order("position"),
     ]);
   const errors = [
@@ -540,7 +547,7 @@ export async function getDispatchDetail(
         ? supabase.from("profiles").select("id, full_name").in("id", profileIds)
         : Promise.resolve({ data: [], error: null }),
       typeIds.length
-        ? supabase.from("incident_types").select("id, name").in("id", typeIds)
+        ? supabase.from("incident_types").select("id, name").eq("company_id", companyId).in("id", typeIds)
         : Promise.resolve({ data: [], error: null }),
       documentIds.length
         ? supabase
