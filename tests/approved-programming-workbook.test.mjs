@@ -52,6 +52,64 @@ test("usa DÍA/HORA PROGRAMADA y Pedido No. de la segunda fila de encabezados", 
   assert.notEqual(result.rows[0].orderNumber, "PEDIDO-INCORRECTO");
 });
 
+for (const label of ["Fecha Programada", "FECHA PROGRAMADA", "  Fecha\nProgramada  "]) {
+  test(`acepta el encabezado alternativo ${JSON.stringify(label)} sin confundir la fecha solicitada`, async () => {
+    const { rows: [row] } = await extractMixtoProgrammingWorkbookBuffer(
+      await workbookBuffer({ headers: { I11: label } }), project,
+    );
+    assert.equal(row.scheduledAt, "2030-10-07T13:00");
+    assert.equal(row.orderNumber, "28");
+    assert.equal(row.quantity, "45");
+  });
+}
+
+for (const [dateLabel, timeColumn, orderColumn] of [
+  ["DÍA PROGRAMADO", "N", "O"],
+  ["Fecha Programada", "O", "N"],
+]) {
+  test(`lee ${dateLabel} con encabezados combinados y Hora/Pedido en orden ${timeColumn}/${orderColumn}`, async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Solicitud de Concreto");
+    for (const [cell, value] of Object.entries({
+      A1: "atencionalcliente@mixtolisto.com",
+      A2: "Nombre destinatario de factura", B2: project.billingLegalName,
+      A3: "Dirección exacta de Obra", B3: project.address,
+      A20: "Datos para la Fundición",
+    })) sheet.getCell(cell).value = value;
+    for (const [range, value] of [
+      ["A23:B24", "Fecha de Fundición"], ["C23:C24", "Hora"],
+      ["D23:D24", "Tipo de concreto"], ["E23:F24", "Volumen (m3)"],
+      ["G23:G24", "Elemento a fundir"], ["H23:H24", "Tiempo entre camiones"],
+      ["I23:I24", "Concreto Directo"], ["J23:J24", "Bomba"],
+      ["K23:K24", "Pluma"], ["L23:L24", "Colocación"],
+      ["M23:M24", dateLabel], [`${timeColumn}23:${timeColumn}24`, "Hora\nProgramada"],
+      [`${orderColumn}23:${orderColumn}24`, "Pedido No."], ["P23:Q24", "Adicionales al concreto"],
+    ]) {
+      sheet.mergeCells(range);
+      sheet.getCell(range.split(":")[0]).value = value;
+    }
+    for (const rowNumber of [25, 26]) {
+      for (const [first, last] of [["A", "B"], ["E", "F"], ["P", "Q"]]) sheet.mergeCells(`${first}${rowNumber}:${last}${rowNumber}`);
+      for (const [column, value] of Object.entries({
+        A: "01/01/2030", C: "08:00", D: "CONB3001", E: rowNumber === 25 ? 24 : 7.5,
+        G: "Losa", H: "30 minutos", J: "X", P: "Contemplar tubos adicionales",
+        M: rowNumber === 25 ? "26/10/2030" : new Date("2030-10-27T00:00:00Z"),
+        [timeColumn]: rowNumber === 25 ? "07:00AM" : new Date("1899-12-30T15:00:00Z"),
+        [orderColumn]: rowNumber === 25 ? "000145" : 146,
+      })) sheet.getCell(`${column}${rowNumber}`).value = value;
+    }
+    sheet.getCell(`${orderColumn}26`).numFmt = "000000";
+    const { rows } = await extractMixtoProgrammingWorkbookBuffer(Buffer.from(await workbook.xlsx.writeBuffer()), project);
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map(row => [row.sourceRow, row.scheduledAt, row.orderNumber, row.quantity]), [
+      [25, "2030-10-26T07:00", "000145", "24"],
+      [26, "2030-10-27T15:00", "000146", "7.5"],
+    ]);
+    assert.deepEqual(rows[0].deliveryModes, ["PUMP"]);
+    assert.equal(rows[0].additions, "Contemplar tubos adicionales");
+  });
+}
+
 test("usa exclusivamente Pedido No. aunque No. De pedido tenga otro valor", async () => {
   const { rows: [row] } = await extractMixtoProgrammingWorkbookBuffer(
     await workbookBuffer({ row: { C12: 111, K12: 999 } }),
