@@ -46,6 +46,8 @@ export type DispatchGuide = {
   id: string;
   guideNumber: string;
   guideDate: string;
+  truckArrivalAt: string | null;
+  truckDepartureAt: string | null;
   quantity: number;
   unitCode: string;
   productCount: number;

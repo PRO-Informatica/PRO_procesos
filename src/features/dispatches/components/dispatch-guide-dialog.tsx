@@ -42,6 +42,13 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function truckTime(value: string | null | undefined, timezone: string) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timezone,
+  }).format(new Date(value));
+}
+
 function emptyLine(key: string, unitCode = ""): EditableLine {
   return {
     key,
@@ -90,6 +97,7 @@ export function DispatchGuideDialog({
   defaultProductDescription,
   defaultCatalogProduct = null,
   units,
+  timezone = "America/Guatemala",
   guide,
   readOnly = false,
   onClose,
@@ -102,6 +110,7 @@ export function DispatchGuideDialog({
   defaultProductDescription?: string | null;
   defaultCatalogProduct?: DispatchCatalogOption | null;
   units: DispatchUnit[];
+  timezone?: string;
   guide?: DispatchGuide;
   readOnly?: boolean;
   onClose: () => void;
@@ -111,6 +120,8 @@ export function DispatchGuideDialog({
   useActionNotification({ pending, status: state.status, success: notifications.guideSaved, error: notifications.saveFailed });
   const [guideNumber, setGuideNumber] = useState(guide?.guideNumber ?? "");
   const [guideDate, setGuideDate] = useState(guide?.guideDate ?? today());
+  const [truckArrivalTime, setTruckArrivalTime] = useState(truckTime(guide?.truckArrivalAt, timezone));
+  const [truckDepartureTime, setTruckDepartureTime] = useState(truckTime(guide?.truckDepartureAt, timezone));
   const [pickerLineKey, setPickerLineKey] = useState<string | null>(null);
   const [lines, setLines] = useState<EditableLine[]>(
     guide?.lines.length
@@ -180,6 +191,11 @@ export function DispatchGuideDialog({
               <div><label className="form-label" htmlFor="guide-number">Número de guía *</label><input id="guide-number" name="guideNumber" required maxLength={120} value={guideNumber} onChange={(event) => setGuideNumber(event.target.value)} disabled={readOnly} className="form-input disabled:bg-muted" /></div>
               <div><label className="form-label" htmlFor="guide-date">Fecha *</label><input id="guide-date" name="guideDate" type="date" required value={guideDate} onChange={(event) => setGuideDate(event.target.value)} disabled={readOnly} className="form-input disabled:bg-muted" /></div>
             </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div><label className="form-label" htmlFor="guide-truck-arrival">Hora de llegada del camión *</label><input id="guide-truck-arrival" name="truckArrivalTime" type="time" required value={truckArrivalTime} onChange={(event) => setTruckArrivalTime(event.target.value)} disabled={readOnly} className="form-input disabled:bg-muted" /></div>
+              <div><label className="form-label" htmlFor="guide-truck-departure">Hora de salida del camión *</label><input id="guide-truck-departure" name="truckDepartureTime" type="time" required min={truckArrivalTime || undefined} value={truckDepartureTime} onChange={(event) => setTruckDepartureTime(event.target.value)} disabled={readOnly} className="form-input disabled:bg-muted" /></div>
+              <p className="text-xs text-foreground-muted sm:col-span-2">Horarios del camión en el día de la programación. La salida del despacho toma la hora de salida más tardía de sus guías.</p>
+            </div>
             <div className="rounded-xl border border-border">
               <div className="flex flex-col gap-3 border-b border-border px-4 py-3 min-[460px]:flex-row min-[460px]:items-center min-[460px]:justify-between">
                 <div><h3 className="text-sm font-semibold">Productos y servicios</h3><p className="mt-0.5 text-xs text-foreground-muted">El precio se toma del catálogo y queda guardado como histórico.</p></div>
@@ -200,7 +216,7 @@ export function DispatchGuideDialog({
                       ? line.productCode
                       : line.lineId ? "Sin catálogo (línea histórica)" : "Seleccionar del catálogo";
                   return (
-                    <div key={line.key} className="grid gap-3 p-4 md:grid-cols-[7rem_8.5rem_minmax(13rem,1.15fr)_minmax(11rem,1fr)_8rem_2.5rem]">
+                    <div key={line.key} className="grid gap-3 p-4 xl:grid-cols-[7rem_8.5rem_minmax(13rem,1.15fr)_minmax(11rem,1fr)_8rem_2.5rem]">
                       <input type="hidden" name="lineId" value={line.lineId} />
                       <input type="hidden" name="lineUnitCode" value={line.unitCode} />
                       <input type="hidden" name="lineCatalogType" value={line.catalogType} />
