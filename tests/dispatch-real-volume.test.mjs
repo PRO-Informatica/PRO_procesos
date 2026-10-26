@@ -169,3 +169,28 @@ test("normaliza la precisión a tres decimales sin introducir formato monetario 
   assert.equal(guideTotalInput(1234.567), "1234.567");
   assert.equal(initialRealVolumeOverride({ editable: false, realVolume: null, realUnitCode: null, programmedUnitCode: "M3", guideTotal: 20 }), "");
 });
+
+test("salida automática se actualiza al refrescar guías sin remontar el formulario", () => {
+  const f = fixture({ guides: [] });
+  const input = () => f.find(node => node.props?.id === "dispatch-departure");
+  assert.equal(input().props.value, "");
+  for (const [value, time] of [["2026-10-23T21:30:00Z", "15:30"], ["2026-10-23T22:10:00Z", "16:10"], ["2026-10-23T20:00:00Z", "14:00"]]) {
+    f.render({ departureAt: value, guides: [{ ...guide(5), truckDepartureAt: value }] });
+    assert.equal(input().props.value, time);
+    assert.equal(input().props.readOnly, true);
+    assert.equal(f.find(node => node.type === "input" && node.props.name === "departureAt").props.value, `2026-10-23T${time}`);
+  }
+  f.render({ departureAt: null, guides: [] });
+  assert.equal(input().props.value, "");
+});
+
+test("guías históricas sin horarios conservan la salida existente y el ajuste manual", () => {
+  const f = fixture({ departureAt: "2026-10-23T21:30:00Z" });
+  const input = () => f.find(node => node.props?.id === "dispatch-departure");
+  assert.equal(input().props.readOnly, false);
+  input().props.onChange({ target: { value: "16:00" } }); f.render();
+  assert.equal(input().props.value, "16:00");
+  f.render({ departureAt: "2026-10-23T22:15:00Z", guides: [{ ...guide(5), truckDepartureAt: "2026-10-23T22:15:00Z" }] });
+  assert.equal(input().props.value, "16:15");
+  assert.equal(input().props.readOnly, true);
+});

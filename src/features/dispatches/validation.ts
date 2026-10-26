@@ -3,6 +3,17 @@ import { SERVICE_UNIT_CODES } from "../platform/project-price-catalogs/service-u
 
 export const DISPATCH_GUIDE_UNIT_CODES = ["KM", "M3", "UN"] as const;
 
+export function validateGuideTruckTimes(arrival: string, departure: string) {
+  const time = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+  if (!time.test(arrival) || !time.test(departure)) {
+    return "Registra una hora de llegada y una hora de salida válidas para el camión.";
+  }
+  if (departure < arrival) {
+    return "La salida del camión no puede ser anterior a su llegada, en el mismo día.";
+  }
+  return null;
+}
+
 export type DispatchGuideLineInput = {
   line_id: string | null;
   quantity: number;

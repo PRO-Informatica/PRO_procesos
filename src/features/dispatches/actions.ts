@@ -15,7 +15,7 @@ import type {
   IncidentMutationState,
   UploadActionResult,
 } from "./types";
-import { validateDispatchGuideLines } from "./validation";
+import { validateDispatchGuideLines, validateGuideTruckTimes } from "./validation";
 import { getDispatchStartLocalDateTime } from "./registration";
 
 const UUID =
@@ -80,6 +80,12 @@ function localToIso(value: string, timezone: string) {
 
 function dispatchError(message: string) {
   const value = message.toUpperCase();
+  if (value.includes("GUIDE_TRUCK_TIMES_REQUIRED"))
+    return "Registra las horas de llegada y salida del camión. Si no ves los campos, recarga la página.";
+  if (value.includes("GUIDE_TRUCK_INVALID_TIME_SEQUENCE"))
+    return "La salida del camión no puede ser anterior a su llegada.";
+  if (value.includes("GUIDE_TRUCK_DATE_MISMATCH"))
+    return "Los horarios del camión deben corresponder al día de la programación.";
   if (value.includes("DISPATCH_VERSION_CONFLICT"))
     return "El despacho cambió. Recarga la página antes de continuar.";
   if (value.includes("PROGRAMMING_DISPATCH_ALREADY_EXISTS"))
@@ -353,6 +359,10 @@ export async function saveDispatchGuideAction(
     return { status: "error", message: "Recarga el despacho antes de guardar la guía." };
   if (!guideNumber)
     return { status: "error", message: "Ingresa el número de guía." };
+  const truckArrivalTime = text(formData, "truckArrivalTime");
+  const truckDepartureTime = text(formData, "truckDepartureTime");
+  const timesError = validateGuideTruckTimes(truckArrivalTime, truckDepartureTime);
+  if (timesError) return { status: "error", message: timesError };
   const linesError = validateDispatchGuideLines(lines);
   if (linesError) return { status: "error", message: linesError };
   if (!(await authorize(projectId, "dispatch.modify")))
@@ -362,6 +372,8 @@ export async function saveDispatchGuideAction(
     p_expected_version: expectedVersion,
     p_guide_number: guideNumber,
     p_guide_date: text(formData, "guideDate"),
+    p_truck_arrival_time: truckArrivalTime,
+    p_truck_departure_time: truckDepartureTime,
     p_lines: lines,
   };
   const response = guideId
