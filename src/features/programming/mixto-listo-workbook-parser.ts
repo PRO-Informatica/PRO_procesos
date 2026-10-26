@@ -11,7 +11,7 @@ import {
 export const MIXTO_WORKBOOK_ERROR =
   "El archivo no corresponde al formato de Solicitud de Concreto de Mixto Listo.";
 export const MIXTO_APPROVED_WORKBOOK_ERROR =
-  "El Excel debe venir aprobado por Mixto Listo con DÍA PROGRAMADO y HORA PROGRAMADA.";
+  "El Excel debe venir aprobado por Mixto Listo con DÍA PROGRAMADO o FECHA PROGRAMADA, y HORA PROGRAMADA.";
 
 const { Workbook } = ExcelJS;
 
@@ -146,7 +146,7 @@ function identifyHeader(value: string): ColumnKey | null {
   if (value === "bomba") return "PUMP";
   if (value === "pluma") return "BOOM";
   if (value === "colocacion") return "PLACEMENT";
-  if (value === "dia programado") return "programmedDate";
+  if (value === "dia programado" || value === "fecha programada") return "programmedDate";
   if (value === "hora programada") return "programmedTime";
   if (value === "pedido no") return "orderNumber";
   if (value === "fecha de fundicion") return "requestDate";
