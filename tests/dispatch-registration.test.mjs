@@ -23,7 +23,7 @@ const compiled = ts.transpileModule(source, {
 
 // Execute the actual Server Actions with only the auth/database boundaries
 // stubbed, so forged form values exercise the production validation path.
-function actions({ registration = savedRegistration, authorized = true, rpcError = null } = {}) {
+function actions({ registration = savedRegistration, authorized = true, rpcError = null, catalogData = {} } = {}) {
   const calls = [];
   const queries = [];
   const supabase = {
@@ -48,7 +48,7 @@ function actions({ registration = savedRegistration, authorized = true, rpcError
     },
     async rpc(name, args) {
       calls.push({ name, args });
-      return { data: ["start_dispatch", "register_dispatch_incident"].includes(name) ? dispatchId : 2, error: rpcError };
+      return { data: name === "search_project_dispatch_catalog" ? { items: catalogData[args.p_catalog_type] ?? [] } : ["start_dispatch", "register_dispatch_incident"].includes(name) ? dispatchId : 2, error: rpcError };
     },
   };
   const imports = {
@@ -60,7 +60,7 @@ function actions({ registration = savedRegistration, authorized = true, rpcError
       getProjectContext: async () => ({
         status: "ready",
         activeProject: { id: projectId, timezone: "America/Guatemala" },
-        permissions: authorized ? ["dispatch.create", "dispatch.modify", "dispatch.register_incident"] : [],
+        permissions: authorized ? ["dispatch.view", "dispatch.create", "dispatch.modify", "dispatch.register_incident"] : [],
       }),
     },
     "@/lib/supabase/admin": {},
@@ -118,14 +118,14 @@ for (const [actionName, rpc] of [
   ["saveDispatchAction", "update_dispatch"],
   ["finalizeDispatchAction", "finalize_dispatch"],
 ]) {
-  test(`${actionName} conserva receptor y timestamp originales aunque el formulario los falsifique`, async () => {
+  test(`${actionName} guarda la llegada corregida y conserva el receptor original`, async () => {
     const { exports, calls, queries } = actions();
     const state = await exports[actionName]({}, form({
-      arrivalAt: "2000-01-01T01:00", receivedByName: "Nombre falsificado",
+      arrivalAt: "2026-10-31T07:00", receivedByName: "Nombre falsificado",
     }));
     assert.equal(state.status, "success");
     assert.equal(calls[0].name, rpc);
-    assert.equal(calls[0].args.p_arrival_at, savedRegistration.arrival_at);
+    assert.equal(calls[0].args.p_arrival_at, "2026-10-31T13:00:00.000Z");
     assert.equal(calls[0].args.p_received_by_name, savedRegistration.received_by_name);
     assert.equal(calls[0].args.p_departure_at, "2026-10-31T22:30:00.000Z");
     assert.equal(queries[0].filters.project_id, projectId);
@@ -138,6 +138,14 @@ for (const [actionName, rpc] of [
     assert.equal(state.status, "success");
     assert.equal(calls[0].args.p_arrival_at, savedRegistration.arrival_at);
     assert.equal(calls[0].args.p_received_by_name, savedRegistration.received_by_name);
+  });
+
+  test(`${actionName} rechaza llegadas vacías, horas y fechas imposibles`, async () => {
+    for (const arrivalAt of ["", "2026-10-31T24:00", "2026-02-30T07:00", "2026-10-31T07:60", "no-fecha"]) {
+      const { exports, calls } = actions();
+      assert.equal((await exports[actionName]({},form({arrivalAt}))).status,"error");
+      assert.equal(calls.length,0);
+    }
   });
 
   test(`${actionName} no inventa datos si el registro original falta o está incompleto`, async () => {
@@ -183,4 +191,29 @@ test("un tipo de otra empresa produce un mensaje específico y no una confirmaci
   }));
   assert.equal(state.status, "error");
   assert.match(state.message, /no está activo o no pertenece a la empresa/u);
+});
+
+test("la búsqueda combinada consulta ambos catálogos del proyecto y conserva variantes por ID y precio", async () => {
+  const f = actions({catalogData:{
+    PRODUCT:[{id:projectId,code:'86131064',reference:'CONF4001',price:1224.16}],
+    SERVICE:[{id:dispatchId,code:'86180185',description:'Dosis',observations:'Una dosis',price:10.92,unit_code:'M3'},
+      {id:programmingId,code:'86180185',description:'Dosis',observations:'Doble dosis',price:21.84,unit_code:'M3'}],
+  }});
+  const result=await f.exports.searchDispatchCatalogAction(projectId,'ALL','  dosis  ');
+  assert.equal(result.status,'success');assert.equal(f.calls.length,2);
+  assert.deepEqual(f.calls.map(c=>c.args.p_catalog_type),['PRODUCT','SERVICE']);
+  assert.ok(f.calls.every(c=>c.args.p_project_id===projectId&&c.args.p_query==='dosis'));
+  assert.equal(result.items[0].type,'PRODUCT');assert.equal(result.items[0].reference,'CONF4001');
+  assert.equal(result.items[2].type,'SERVICE');assert.equal(result.items[2].id,programmingId);
+  assert.equal(result.items[2].price,21.84);assert.equal(result.items[2].observations,'Doble dosis');
+});
+
+test("la búsqueda mantiene permisos, proyecto, tipo, longitud y errores sin resultados parciales", async () => {
+  for(const [authorized,id,type] of [[false,projectId,'ALL'],[true,dispatchId,'ALL'],[true,projectId,'UNKNOWN']]) {
+    const f=actions({authorized});assert.equal((await f.exports.searchDispatchCatalogAction(id,type,'861')).status,'error');assert.equal(f.calls.length,0);
+  }
+  const f=actions({rpcError:{message:'PERMISSION_DENIED'}});
+  const result=await f.exports.searchDispatchCatalogAction(projectId,'ALL','x'.repeat(150));
+  assert.equal(result.status,'error');assert.equal(result.items.length,0);
+  assert.ok(f.calls.every(c=>c.args.p_query.length===120));
 });

@@ -43,8 +43,10 @@ async function authorize(projectId: string, permission: string) {
 }
 
 function localToIso(value: string, timezone: string) {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)$/);
   if (!match) return null;
+  const calendar = new Date(`${value}:00Z`);
+  if (!Number.isFinite(calendar.valueOf()) || calendar.toISOString().slice(0, 16) !== value) return null;
   const [, year, month, day, hour, minute] = match;
   const desired = Date.UTC(+year, +month - 1, +day, +hour, +minute);
   let guess = desired;
@@ -133,7 +135,7 @@ function dispatchError(message: string) {
   if (value.includes("DISPATCH_DEPARTURE_DATE_MISMATCH"))
     return "La hora de salida debe corresponder al día de la programación.";
   if (value.includes("DISPATCH_INVALID_TIME_SEQUENCE"))
-    return "La hora de salida no puede ser anterior a la hora de llegada.";
+    return "La salida del despacho o de sus guías es anterior a la llegada del despacho. Corrige y guarda la hora de llegada en Información general antes de registrar la guía.";
   if (value.includes("DISPATCH_EVIDENCE_REQUIRED"))
     return "Carga al menos una evidencia antes de finalizar el despacho.";
   if (value.includes("DISPATCH_ORDER_NUMBER_REQUIRED"))
@@ -236,7 +238,9 @@ export async function saveDispatchAction(
     return { status: "error", message: "No fue posible recuperar la hora de llegada y el receptor originales. Recarga el despacho." };
   }
   const timezone = auth.context.activeProject?.timezone || "America/Guatemala";
-  const arrivalAt = registration.arrival_at;
+  const arrivalValue = text(formData, "arrivalAt");
+  const arrivalAt = formData.has("arrivalAt") ? localToIso(arrivalValue, timezone) : registration.arrival_at;
+  if (!arrivalAt) return { status: "error", message: "Registra una hora de llegada válida." };
   const departureValue = text(formData, "departureAt");
   const departureAt = departureValue ? localToIso(departureValue, timezone) : null;
   const result = text(formData, "result");
@@ -295,53 +299,53 @@ function guideLines(formData: FormData) {
 
 export async function searchDispatchCatalogAction(
   projectId: string,
-  catalogType: DispatchCatalogType,
+  catalogType: DispatchCatalogType | "ALL",
   query: string,
 ): Promise<DispatchCatalogSearchResult> {
-  if (!validId(projectId) || !["PRODUCT", "SERVICE"].includes(catalogType)) {
+  if (!validId(projectId) || !["ALL", "PRODUCT", "SERVICE"].includes(catalogType) || typeof query !== "string") {
     return { status: "error", message: "La búsqueda del catálogo no es válida.", items: [] };
   }
   if (!(await authorize(projectId, "dispatch.view"))) {
     return { status: "error", message: "No tienes permiso para consultar este catálogo.", items: [] };
   }
 
-  const { data, error } = await (await createClient()).rpc(
-    "search_project_dispatch_catalog",
-    {
+  const supabase = await createClient();
+  const types: DispatchCatalogType[] = catalogType === "ALL" ? ["PRODUCT", "SERVICE"] : [catalogType];
+  const results = await Promise.all(types.map(async (type) => {
+    const { data, error } = await supabase.rpc("search_project_dispatch_catalog", {
       p_project_id: projectId,
-      p_catalog_type: catalogType,
+      p_catalog_type: type,
       p_query: query.trim().slice(0, 120),
       p_limit: 50,
-    },
-  );
-  if (error) {
-    return { status: "error", message: dispatchError(error.message), items: [] };
-  }
+    });
+    return { data, error, type };
+  }));
+  const error = results.find((result) => result.error)?.error;
+  if (error) return { status: "error", message: dispatchError(error.message), items: [] };
 
-  const rawItems = data && typeof data === "object" && !Array.isArray(data)
-    ? (data as { items?: unknown }).items
-    : [];
-  const items = Array.isArray(rawItems)
-    ? rawItems.flatMap<DispatchCatalogOption>((item) => {
-        if (!item || typeof item !== "object" || Array.isArray(item)) return [];
-        const row = item as Record<string, unknown>;
-        const id = String(row.id ?? "");
-        const code = String(row.code ?? "");
-        const price = Number(row.price);
-        if (!validId(id) || !code || !Number.isFinite(price) || price < 0) return [];
-        return [{
-          id,
-          type: catalogType,
-          code,
-          reference: typeof row.reference === "string" ? row.reference : null,
-          description: typeof row.description === "string" ? row.description : null,
-          observations: catalogType === "SERVICE" && typeof row.observations === "string" ? row.observations : null,
-          unitCode: typeof row.unit_code === "string" ? row.unit_code : null,
-          price,
-          currency: "GTQ",
-        }];
-      })
-    : [];
+  const items = results.flatMap<DispatchCatalogOption>(({ data, type }) => {
+    const rawItems = data && typeof data === "object" && !Array.isArray(data)
+      ? (data as { items?: unknown }).items
+      : [];
+    return Array.isArray(rawItems)
+      ? rawItems.flatMap<DispatchCatalogOption>((item) => {
+          if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+          const row = item as Record<string, unknown>;
+          const id = String(row.id ?? "");
+          const code = String(row.code ?? "");
+          const price = Number(row.price);
+          if (!validId(id) || !code || !Number.isFinite(price) || price < 0) return [];
+          return [{
+            id, type, code,
+            reference: typeof row.reference === "string" ? row.reference : null,
+            description: typeof row.description === "string" ? row.description : null,
+            observations: type === "SERVICE" && typeof row.observations === "string" ? row.observations : null,
+            unitCode: typeof row.unit_code === "string" ? row.unit_code : null,
+            price, currency: "GTQ",
+          }];
+        })
+      : [];
+  });
   return { status: "success", items };
 }
 
@@ -473,7 +477,9 @@ export async function finalizeDispatchAction(
     return { status: "error", message: "No fue posible recuperar la hora de llegada y el receptor originales. Recarga el despacho." };
   }
   const timezone = auth.context.activeProject?.timezone || "America/Guatemala";
-  const arrivalAt = registration.arrival_at;
+  const arrivalValue = text(formData, "arrivalAt");
+  const arrivalAt = formData.has("arrivalAt") ? localToIso(arrivalValue, timezone) : registration.arrival_at;
+  if (!arrivalAt) return { status: "error", message: "Registra una hora de llegada válida." };
   const departureAt = localToIso(text(formData, "departureAt"), timezone);
   const result = text(formData, "result");
   const rawVolume = text(formData, "realVolume");

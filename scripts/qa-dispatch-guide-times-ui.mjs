@@ -39,7 +39,7 @@ const guide=load(await readFile("src/features/dispatches/components/dispatch-gui
   "../../platform/project-price-catalogs/service-units":{SERVICE_UNIT_CODES:["M3","M2","UN"]},
   "../formatters":{formatDispatchMoney:value=>"Q "+Number(value).toFixed(2)},
   "../types":{initialDispatchMutationState:{status:"idle"}},
-  "./dispatch-catalog-picker-dialog":{DispatchCatalogPickerDialog:()=>null},
+  "./dispatch-catalog-combobox":{DispatchCatalogCombobox:()=>null},
 }).DispatchGuideDialog;
 const table=renderToStaticMarkup(React.createElement(guide,{
   projectId:"project",programmingId:"program",dispatchId:"dispatch",expectedVersion:1,programmedUnitCode:"M3",timezone:"America/Guatemala",units:[{code:"M3"}],onClose(){},

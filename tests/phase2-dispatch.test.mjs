@@ -151,7 +151,7 @@ test("el formulario envía identidad de catálogo y no permite código libre", (
   assert.match(guideDialog, /name="lineCatalogType"/u);
   assert.match(guideDialog, /name="lineCatalogItemId"/u);
   assert.doesNotMatch(guideDialog, /name="lineProductCode"/u);
-  assert.match(guideDialog, /DispatchCatalogPickerDialog/u);
+  assert.match(guideDialog, /DispatchCatalogCombobox/u);
   assert.match(dispatchActions, /catalog_type:/u);
   assert.match(dispatchActions, /catalog_item_id:/u);
 });

@@ -227,6 +227,18 @@ details[open] > .menu-popover {
   opacity: 0.7;
 }
 
+.form-input.dispatch-catalog-input {
+  padding-left: 2.5rem;
+  padding-right: 2.25rem;
+}
+
+@media (max-width: 639px) {
+  .dispatch-guide-form .form-input,
+  #dispatch-arrival {
+    font-size: 1rem;
+  }
+}
+
 .form-input:focus {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 13%, transparent);
