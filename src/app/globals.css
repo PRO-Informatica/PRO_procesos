@@ -232,6 +232,25 @@ details[open] > .menu-popover {
   padding-right: 2.25rem;
 }
 
+.dispatch-guide-form .guide-add-desktop {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .dispatch-guide-form .guide-add-desktop {
+    display: inline-flex;
+  }
+
+  .dispatch-guide-form .guide-add-mobile {
+    display: none;
+  }
+
+  .guide-line-fields textarea.form-input {
+    height: 2.875rem;
+    min-height: 2.875rem;
+  }
+}
+
 @media (max-width: 639px) {
   .dispatch-guide-form .form-input,
   #dispatch-arrival {
