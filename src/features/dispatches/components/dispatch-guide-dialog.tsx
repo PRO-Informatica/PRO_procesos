@@ -98,7 +98,6 @@ export function DispatchGuideDialog({
   defaultCatalogProduct = null,
   units,
   operationDate,
-  dispatchArrivalTime,
   timezone = "America/Guatemala",
   guide,
   readOnly = false,
@@ -113,7 +112,6 @@ export function DispatchGuideDialog({
   defaultCatalogProduct?: DispatchCatalogOption | null;
   units: DispatchUnit[];
   operationDate?: string;
-  dispatchArrivalTime?: string;
   timezone?: string;
   guide?: DispatchGuide;
   readOnly?: boolean;
@@ -180,7 +178,6 @@ export function DispatchGuideDialog({
     line.catalogType === type && line.unitPrice !== null && Number.isFinite(Number(line.quantity))
       ? total + line.unitPrice * Number(line.quantity) : total, 0);
   const addLine = () => setLines((current) => [...current, emptyLine(crypto.randomUUID())]);
-  const arrivalConflict = Boolean(dispatchArrivalTime && truckDepartureTime && truckDepartureTime < dispatchArrivalTime);
 
   return (
     <Dialog title={guide ? (readOnly ? "Ver guía" : "Editar guía") : "Agregar guía"} description="Registra los horarios del camión y cada producto o servicio de esta guía." icon={PackageOpen} onClose={onClose} pending={pending} size="xl">
@@ -203,13 +200,13 @@ export function DispatchGuideDialog({
             <div className="min-w-0"><label className="form-label" htmlFor="guide-truck-arrival">Llegada del camión *</label><input id="guide-truck-arrival" name="truckArrivalTime" type="time" required value={truckArrivalTime} onChange={(event) => setTruckArrivalTime(event.target.value)} disabled={readOnly || pending} className="form-input min-w-0 disabled:bg-muted" /></div>
             <div className="min-w-0"><label className="form-label" htmlFor="guide-truck-departure">Salida del camión *</label><input id="guide-truck-departure" name="truckDepartureTime" type="time" required min={truckArrivalTime || undefined} value={truckDepartureTime} onChange={(event) => setTruckDepartureTime(event.target.value)} disabled={readOnly || pending} className="form-input min-w-0 disabled:bg-muted" /></div>
           </div>
-          <p className="text-xs leading-5 text-foreground-muted">Horarios del día de la programación. La salida del despacho toma la salida más tardía de sus guías.{dispatchArrivalTime && ` Llegada del despacho: ${dispatchArrivalTime}.`}</p>
-          {arrivalConflict && <p role="alert" className="rounded-lg bg-destructive-soft p-3 text-sm text-destructive">La salida del camión es anterior a la llegada guardada del despacho ({dispatchArrivalTime}). Corrige y guarda la llegada en Información general antes de registrar esta guía.</p>}
+          <p className="text-xs leading-5 text-foreground-muted">Horarios del camión en el día de la programación, independientes de la hora de inicio del despacho. La salida del despacho toma la salida más tardía de sus guías.</p>
           <section className="space-y-3" aria-labelledby="guide-lines-heading">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><h3 id="guide-lines-heading" className="font-semibold">Productos y servicios</h3><p className="mt-1 text-xs text-foreground-muted">{productCount} producto(s) · {serviceCount} servicio(s). El precio se guarda como histórico.</p></div>
               {!readOnly && <button type="button" onClick={addLine} disabled={pending} className="secondary-button guide-add-desktop min-h-11 gap-2"><Plus aria-hidden="true" className="size-4" /> Agregar producto / servicio</button>}
             </div>
+            {serviceCount > 0 && productCount === 0 && <p role="status" className="text-xs text-foreground-muted">Guía de servicios: sus cantidades no suman volumen de concreto.</p>}
             {lines.length === 0 && <p className="rounded-xl border border-dashed border-border p-5 text-sm text-foreground-muted" role="status">Sin líneas. Agrega un producto o servicio para continuar.</p>}
             {lines.map((line, index) => {
               const parsedQuantity = Number(line.quantity);

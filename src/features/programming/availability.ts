@@ -8,6 +8,7 @@ export type ProgrammingAvailabilityInput = {
   scheduledAt: string;
   operationStarted: boolean;
   timezone?: string;
+  version?: number;
 };
 
 export type ProgrammingScopeInput = {
@@ -36,6 +37,7 @@ export function getEffectiveProgrammingStatus(
   const timezone = programming.timezone ?? DEFAULT_TIMEZONE;
   if (
     programming.status === "PENDING_CONFIRMATION" &&
+    !(programming.version && programming.version > 1) &&
     Number.isFinite(scheduledAt) &&
     localDateKey(new Date(scheduledAt), timezone) <
       localDateKey(new Date(now), timezone)
@@ -66,6 +68,7 @@ export function canEditProgramming(
   programming: ProgrammingAvailabilityInput & { hasPermission: boolean },
   now = Date.now(),
 ) {
+  void now;
   if (!programming.hasPermission || programming.operationStarted) return false;
   if (!["PENDING_CONFIRMATION", "CONFIRMED"].includes(programming.status)) {
     return false;
@@ -74,11 +77,23 @@ export function canEditProgramming(
   const scheduledAt = new Date(programming.scheduledAt);
   if (!Number.isFinite(scheduledAt.valueOf())) return false;
 
-  const timezone = programming.timezone ?? DEFAULT_TIMEZONE;
-  return (
-    localDateKey(scheduledAt, timezone) >
-    localDateKey(new Date(now), timezone)
-  );
+  return true;
+}
+
+export function canConfirmProgramming(
+  programming: ProgrammingAvailabilityInput & { hasPermission: boolean },
+  now = Date.now(),
+) {
+  if (
+    !programming.hasPermission ||
+    programming.operationStarted ||
+    programming.status !== "PENDING_CONFIRMATION"
+  ) return false;
+  const timestamp = new Date(programming.scheduledAt).valueOf();
+  // Versioned edits must be confirmed again, including historical schedules.
+  // The database independently checks the edit revision for the exact version.
+  return Number.isFinite(timestamp) &&
+    (timestamp >= now || (programming.version ?? 1) > 1);
 }
 
 export function isActiveProgramming(

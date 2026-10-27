@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  canConfirmProgramming,
   canEditProgramming,
   getEffectiveProgrammingStatus,
   isActiveProgramming,
@@ -148,7 +149,7 @@ test("una programación con despacho iniciado no puede editarse", () => {
   );
 });
 
-test("la edición se cierra al llegar el día programado", () => {
+test("la edición sigue disponible el día programado mientras no exista despacho", () => {
   assert.equal(
     canEditProgramming(
       {
@@ -160,6 +161,23 @@ test("la edición se cierra al llegar el día programado", () => {
       },
       new Date("2026-10-07T08:00:00-06:00").valueOf(),
     ),
-    false,
+    true,
   );
+});
+
+test("editar fechas pasadas conserva los bloqueos por despacho, estado y permiso", () => {
+  const programming = { status: "CONFIRMED", scheduledAt: "2020-01-01T08:00:00-06:00", operationStarted: false, hasPermission: true };
+  assert.equal(canEditProgramming(programming), true);
+  for (const patch of [{ operationStarted: true }, { hasPermission: false }, { status: "COMPLETED" }, { status: "CANCELLED" }, { status: "IN_EXECUTION" }, { scheduledAt: "invalid" }]) {
+    assert.equal(canEditProgramming({ ...programming, ...patch }), false);
+  }
+});
+
+test("una edición histórica queda pendiente de reconfirmación para su nueva versión", () => {
+  const programming = { status: "PENDING_CONFIRMATION", version: 3, scheduledAt: "2020-01-01T08:00:00-06:00", operationStarted: false, hasPermission: true };
+  assert.equal(getEffectiveProgrammingStatus(programming), "PENDING_CONFIRMATION");
+  assert.equal(canConfirmProgramming(programming), true);
+  for (const patch of [{ version: 1 }, { operationStarted: true }, { hasPermission: false }, { status: "CONFIRMED" }, { scheduledAt: "invalid" }]) {
+    assert.equal(canConfirmProgramming({ ...programming, ...patch }), false);
+  }
 });

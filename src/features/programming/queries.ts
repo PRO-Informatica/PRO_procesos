@@ -328,6 +328,7 @@ export async function getProgrammingItems(
     effectiveStatus: getEffectiveProgrammingStatus(
       {
         status: row.status,
+        version: row.version,
         scheduledAt: row.scheduled_at,
         operationStarted: rowDispatches.length > 0,
         timezone,
@@ -638,6 +639,7 @@ export async function getProgrammingDetailPageData(
     status: row.status,
     effectiveStatus: getEffectiveProgrammingStatus({
       status: row.status,
+      version: row.version,
       scheduledAt: row.scheduled_at,
       operationStarted: mappedDispatches.length > 0,
       timezone,

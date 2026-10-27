@@ -11,7 +11,7 @@ import { notifications } from "@/lib/notification-messages";
 import { formatStatusLabel } from "@/lib/status-labels";
 
 import { mutateProgrammingAction } from "../actions";
-import { canEditProgramming } from "../availability";
+import { canConfirmProgramming, canEditProgramming } from "../availability";
 
 import {
   formatProgrammingDateTime,
@@ -60,8 +60,7 @@ export function ProgrammingPreviewDrawer({
   const [availabilityNow] = useState(() => Date.now());
   const [editOpen, setEditOpen] = useState(false);
   const canDirectConfirm = Boolean(
-    item && item.status === "PENDING_CONFIRMATION" &&
-    new Date(item.scheduledAt).valueOf() >= availabilityNow,
+    item && canConfirmProgramming({ ...item, operationStarted: item.dispatches.length > 0, hasPermission: canConfirm }, availabilityNow),
   );
   const canEdit = Boolean(
     item && canEditProgramming({

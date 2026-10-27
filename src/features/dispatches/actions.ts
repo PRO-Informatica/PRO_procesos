@@ -120,8 +120,6 @@ function dispatchError(message: string) {
     return "El producto o servicio seleccionado ya no está disponible en el catálogo de este proyecto.";
   if (value.includes("DISPATCH_CATALOG_TYPE_INVALID"))
     return "Selecciona una categoría de catálogo válida.";
-  if (value.includes("DISPATCH_GUIDE_OPERATIONAL_PRODUCT_REQUIRED"))
-    return "La guía necesita al menos una línea de producto para registrar el volumen operativo.";
   if (value.includes("INVALID_OR_INACTIVE_UNIT_OF_MEASURE"))
     return "Selecciona una UM válida para el producto o servicio.";
   if (value.includes("NOT_DISPATCHED_INCIDENT_REQUIRED"))
@@ -135,7 +133,7 @@ function dispatchError(message: string) {
   if (value.includes("DISPATCH_DEPARTURE_DATE_MISMATCH"))
     return "La hora de salida debe corresponder al día de la programación.";
   if (value.includes("DISPATCH_INVALID_TIME_SEQUENCE"))
-    return "La salida del despacho o de sus guías es anterior a la llegada del despacho. Corrige y guarda la hora de llegada en Información general antes de registrar la guía.";
+    return "La salida ingresada manualmente no puede ser anterior a la llegada del despacho. Los camiones de las guías tienen sus propios horarios.";
   if (value.includes("DISPATCH_EVIDENCE_REQUIRED"))
     return "Carga al menos una evidencia antes de finalizar el despacho.";
   if (value.includes("DISPATCH_ORDER_NUMBER_REQUIRED"))

@@ -55,16 +55,16 @@ begin
     perform public.update_dispatch(v_dispatch,v_version,v_past+interval '1 day',null,'QA receiver',null,null,7,'M3');
     raise exception 'QA_OTHER_DAY_ALLOWED';
   exception when raise_exception then if sqlerrm not in ('DISPATCH_ARRIVAL_DATE_MISMATCH','DISPATCH_INVALID_TIME_SEQUENCE') then raise; end if; end;
-  begin
-    perform public.update_dispatch(v_dispatch,v_version,v_past+interval '46 minutes',null,'QA receiver',null,null,7,'M3');
-    raise exception 'QA_ARRIVAL_AFTER_DEPARTURE_ALLOWED';
-  exception when raise_exception then if sqlerrm<>'DISPATCH_INVALID_TIME_SEQUENCE' then raise; end if; end;
+  v_version:=public.update_dispatch(v_dispatch,v_version,v_past+interval '46 minutes',null,'QA receiver',null,null,7,'M3');
+  execute 'reset role';
+  if not exists(select 1 from public.dispatches where id=v_dispatch and arrival_at=v_past+interval '46 minutes' and departure_at=v_past+interval '45 minutes') then raise exception 'QA_TRUCK_AND_DISPATCH_CLOCKS_COUPLED'; end if;
+  execute 'set local role authenticated';
   begin
     perform public.update_dispatch(v_dispatch,v_version-1,v_past,null,'QA receiver',null,null,7,'M3');
     raise exception 'QA_STALE_VERSION_ALLOWED';
   exception when raise_exception then if sqlerrm<>'DISPATCH_VERSION_CONFLICT' then raise; end if; end;
   execute 'reset role';
-  raise notice 'PASS: actual authenticated arrival correction, audit, earlier truck guide, latest departure, operation day, sequence, version conflict';
+  raise notice 'PASS: actual authenticated arrival correction, audit, earlier truck guide, latest departure, independent clocks, operation day, version conflict';
 end;
 $$;
 rollback;

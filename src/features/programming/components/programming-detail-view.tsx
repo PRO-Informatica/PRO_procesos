@@ -29,6 +29,7 @@ import { mutateProgrammingAction } from "../actions";
 import { deliveryModeLabel, requiresServiceInvoice } from "../invoice-policy";
 import {
   canEditProgramming,
+  canConfirmProgramming,
   canCreateDispatchForProgramming,
   getEffectiveProgrammingStatus,
 } from "../availability";
@@ -222,12 +223,13 @@ export function ProgrammingDetailView({
   const detail = data.detail;
   const operationStarted = detail.dispatches.length > 0;
   const effectiveStatus = getEffectiveProgrammingStatus({
+    version: detail.version,
     status: detail.status,
     scheduledAt: detail.scheduledAt,
     operationStarted,
     timezone: project.timezone,
   }, availabilityNow);
-  const scheduleIsFuture = new Date(detail.scheduledAt).valueOf() >= availabilityNow;
+  const canConfirm = canConfirmProgramming({ ...detail, operationStarted, hasPermission: permissions.canConfirm }, availabilityNow);
   const canEdit = canEditProgramming({
     status: detail.status,
     scheduledAt: detail.scheduledAt,
@@ -298,7 +300,7 @@ export function ProgrammingDetailView({
                 </button>
               );
             })}
-            {detail.status === "PENDING_CONFIRMATION" && permissions.canConfirm && scheduleIsFuture && (
+            {canConfirm && (
               <DirectConfirmButton detail={detail} />
             )}
             {canRegisterDispatch && (
