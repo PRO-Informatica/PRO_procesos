@@ -10,7 +10,7 @@ import { getProgrammingCatalogs, getProgrammingItems } from "./queries";
 import { isDeliveryMode } from "./invoice-policy";
 import {
   extractMixtoProgrammingWorkbook,
-  isApprovedProgrammingDayAllowed,
+  isValidApprovedProgrammingDateTime,
   MIXTO_WORKBOOK_ERROR,
 } from "./mixto-listo-workbook";
 import {
@@ -605,7 +605,6 @@ export async function extractProgrammingWorkbookAction(
     const m3Unit = catalogs.units.find(
       (unit) => unit.code.trim().toUpperCase() === "M3",
     );
-    const today = localDateKey(new Date(), context.activeProject?.timezone || "America/Guatemala");
     return {
       status: "success",
       fileName: file.name,
@@ -616,8 +615,8 @@ export async function extractProgrammingWorkbookAction(
         unitCode: m3Unit?.code ?? "",
         errors: [
           ...row.errors,
-          ...(row.scheduledAt && row.scheduledAt.slice(0, 10) < today
-            ? ["La fecha es anterior a hoy"]
+          ...(!isValidApprovedProgrammingDateTime(row.scheduledAt)
+            ? ["Fecha u hora inválida"]
             : []),
           ...(!defaultSupplier ? ["Selecciona un proveedor"] : []),
           ...(!m3Unit ? ["La unidad M3 no está activa"] : []),
@@ -660,7 +659,6 @@ export async function createProgrammingBatchAction(
     return { status: "error", message: "La carga debe contener entre 1 y 250 filas." };
   }
   const timezone = context.activeProject?.timezone || "America/Guatemala";
-  const today = localDateKey(new Date(), timezone);
   let workbook;
   try {
     workbook = await extractMixtoProgrammingWorkbook(file, {
@@ -692,11 +690,11 @@ export async function createProgrammingBatchAction(
     const quantity = Number(row.quantity);
     const scheduledAt = localDateTimeToIso(row.scheduledAt, timezone);
     if (
-      !scheduledAt || !isApprovedProgrammingDayAllowed(row.scheduledAt, today) ||
+      !scheduledAt || !isValidApprovedProgrammingDateTime(row.scheduledAt) ||
       !Number.isFinite(quantity) || quantity <= 0 ||
       !UUID_PATTERN.test(submitted.supplierId) || !row.orderNumber || !row.concreteType
     ) {
-      return { status: "error", message: `Revisa la fila Excel ${row.sourceRow}; la fecha aprobada debe ser de hoy o posterior y los campos obligatorios deben estar completos.` };
+      return { status: "error", message: `Revisa la fila Excel ${row.sourceRow}; la fecha y hora aprobadas deben ser válidas y los campos obligatorios deben estar completos.` };
     }
     items.push({
       supplier_id: submitted.supplierId,
