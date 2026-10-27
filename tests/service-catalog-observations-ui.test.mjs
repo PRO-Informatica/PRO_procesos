@@ -45,34 +45,6 @@ const shared = {
   "../formatters": { formatDispatchMoney: value => `Q ${value.toFixed(2)}` },
 };
 
-for (const kind of ["SERVICE", "PRODUCT"]) {
-  test(`${kind}: observaciones solo se muestran en servicios y cada botón selecciona el ID y precio correctos`, async () => {
-    const h = hooks();
-    let effect, task, selected;
-    const { DispatchCatalogPickerDialog } = await load("dispatch-catalog-picker-dialog", {
-      ...shared, react: { useState: h.useState, useEffect: callback => { effect = callback; } },
-      "../actions": { searchDispatchCatalogAction: async (project, type) => {
-        assert.equal(project, "project"); assert.equal(type, kind);
-        return { status: "success", items: [service, otherService].map(item => ({ ...item, type: kind })) };
-      } },
-    }, { window: { setTimeout: callback => { task = callback(); return 1; }, clearTimeout() {} } });
-    let tree;
-    const render = () => { h.reset(); tree = DispatchCatalogPickerDialog({ projectId: "project", initialType: kind, onSelect: item => { selected = item; }, onClose() {} }); };
-    render(); effect(); await task; render();
-    assert.equal(tree.props.size, kind === "SERVICE" ? "xl" : "lg");
-    assert.match(nodes(tree).find(node => node.type === "table").props.className, kind === "SERVICE" ? /min-w-\[48rem\]/u : /min-w-\[34rem\]/u);
-    const headers = nodes(tree).filter(node => node.type === "th").map(node => node.props.children);
-    assert.equal(headers.includes("Observaciones"), kind === "SERVICE");
-    const rows = nodes(tree).filter(node => node.type === "tr" && node.key);
-    assert.deepEqual(rows.map(row => row.key), ["service-one", "service-two"]);
-    const cells = nodes(rows[1]).filter(node => node.type === "td").map(node => node.props.children);
-    assert.equal(cells.includes("Doble dosis"), kind === "SERVICE");
-    nodes(rows[1]).find(node => node.type === "button").props.onClick();
-    assert.equal(selected.id, "service-two");
-    assert.equal(selected.price, 21.84);
-  });
-}
-
 test("seleccionar servicio deja descripción, UM, ID y precio en la guía, sin observaciones visibles ni enviadas", async () => {
   const h = hooks();
   const { DispatchGuideDialog } = await load("dispatch-guide-dialog", {
@@ -85,14 +57,12 @@ test("seleccionar servicio deja descripción, UM, ID y precio en la guía, sin o
     "@/lib/notification-messages": { notifications: {} },
     "../actions": {}, "../catalog-selection": { catalogSelectionDefaults },
     "../../platform/project-price-catalogs/service-units": { SERVICE_UNIT_CODES: ["M3", "UN"] },
-    "../types": {}, "./dispatch-catalog-picker-dialog": { DispatchCatalogPickerDialog: "Picker" },
+    "../types": {}, "./dispatch-catalog-combobox": { DispatchCatalogCombobox: "Combobox" },
   });
   let tree;
   const render = () => { h.reset(); tree = DispatchGuideDialog({ projectId: "project", programmingId: "programming", dispatchId: "dispatch", expectedVersion: 1, programmedUnitCode: "M3", units: [{ code: "M3" }], onClose() {} }); };
   render();
-  nodes(tree).find(node => node.type === "button" && nodes(node).some(child => child.props?.children === "Seleccionar del catálogo")).props.onClick();
-  render();
-  nodes(tree).find(node => node.type === "Picker").props.onSelect(otherService);
+  nodes(tree).find(node => node.type === "Combobox").props.onSelect(otherService);
   render();
   assert.equal(nodes(tree).find(node => node.props?.name === "lineProductDescription").props.value, service.description);
   assert.equal(nodes(tree).find(node => node.props?.name === "lineCatalogItemId").props.value, "service-two");

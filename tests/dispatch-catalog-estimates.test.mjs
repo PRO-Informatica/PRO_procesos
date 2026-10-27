@@ -28,7 +28,7 @@ const guideDialog = await readFile(
   "utf8",
 );
 const catalogDialog = await readFile(
-  new URL("../src/features/dispatches/components/dispatch-catalog-picker-dialog.tsx", import.meta.url),
+  new URL("../src/features/dispatches/components/dispatch-catalog-combobox.tsx", import.meta.url),
   "utf8",
 );
 const workspace = await readFile(

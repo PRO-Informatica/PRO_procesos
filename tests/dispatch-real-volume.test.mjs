@@ -100,6 +100,24 @@ test("precarga el total actual y mantiene el campo editable", () => {
   assert.equal(f.input().props.step, "0.001");
 });
 
+test("la llegada inicia con el valor guardado, admite corrección y se envía al guardar y finalizar", () => {
+  const f = fixture({ arrivalAt: "2026-10-23T16:32:00Z", guides: [] });
+  const input = () => f.find(node => node.props?.id === "dispatch-arrival");
+  assert.equal(input().props.value, "10:32");
+  assert.equal(input().props.disabled, false);
+  assert.equal(input().props.readOnly, undefined);
+  input().props.onChange({ target: { value: "07:00" } }); f.render();
+  assert.equal(f.find(node => node.props?.name === "arrivalAt").props.value, "2026-10-23T07:00");
+  f.find(node => node.type === "Button" && node.props.variant === "success").props.onClick(); f.render();
+  // The confirmation dialog reads the same controlled arrival value.
+  assert.equal(f.find(node => node.props?.name === "arrivalAt").props.value, "2026-10-23T07:00");
+  f.render({ arrivalAt: "2026-10-23T13:00:00Z", version: 2 });
+  assert.equal(input().props.value, "07:00");
+  for (const other of [fixture({status:"COMPLETED"}),fixture({}, {canModify:false})]) {
+    assert.equal(other.find(node=>node.props?.id === "dispatch-arrival").props.disabled,true);
+  }
+});
+
 test("sigue el total al crear, editar y eliminar guías sin remontar el formulario", () => {
   const f = fixture({ guides: [] });
   assert.equal(f.input().props.value, "0");

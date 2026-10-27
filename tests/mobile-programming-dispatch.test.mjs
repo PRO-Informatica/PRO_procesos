@@ -38,8 +38,8 @@ test("Finalizar despacho utiliza el botón verde en la acción y confirmación",
 });
 
 test("el editor de guía adapta productos y acciones a pantallas pequeñas", () => {
-  assert.match(guideDialog, /xl:grid-cols-/u);
-  assert.match(guideDialog, /min-\[460px\]:flex-row/u);
+  assert.match(guideDialog, /article key=\{line.key\}/u);
+  assert.match(guideDialog, /sm:grid-cols-2/u);
   assert.match(guideDialog, /min-h-11 w-full/u);
 });
 

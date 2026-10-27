@@ -80,7 +80,7 @@ function dialogFixture({readOnly=false,guide}={}) {
     '../actions': {saveDispatchGuideAction(){}}, '../catalog-selection': {catalogSelectionDefaults(){}},
     '../../platform/project-price-catalogs/service-units': {SERVICE_UNIT_CODES:['M3']},
     '../formatters': {formatDispatchMoney:value=>String(value)}, '../types': {initialDispatchMutationState:{status:'idle'}},
-    './dispatch-catalog-picker-dialog': {DispatchCatalogPickerDialog:'Picker'},
+    './dispatch-catalog-combobox': {DispatchCatalogCombobox:'Picker'},
   }).DispatchGuideDialog;
   return nodes(dialog({projectId,dispatchId,programmingId:projectId,expectedVersion:2,programmedUnitCode:'M3',units:[{code:'M3'}],timezone:'America/Guatemala',guide,readOnly,onClose(){}}));
 }
