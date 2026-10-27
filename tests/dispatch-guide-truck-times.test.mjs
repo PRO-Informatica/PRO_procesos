@@ -52,6 +52,18 @@ for (const [id, rpc] of [['', 'create_dispatch_guide_with_lines'], [guideId, 'up
     assert.ok(f.paths.includes(`/dispatches/${dispatchId}`));
   });
 }
+test('crear y editar admiten una guía formada únicamente por servicios', async () => {
+  for (const id of ['', guideId]) {
+    const f = actionFixture();
+    const result = await f.save({}, form({guideId:id,lineCatalogType:'SERVICE',lineUnitCode:'M2',lineProductDescription:'Aplicación de curador',truckArrivalTime:'07:00',truckDepartureTime:'07:02'}));
+    assert.equal(result.status,'success');
+    assert.equal(f.calls[0].args.p_lines.length,1);
+    assert.equal(f.calls[0].args.p_lines[0].catalog_type,'SERVICE');
+    assert.equal(f.calls[0].args.p_lines[0].unit_code,'M2');
+    assert.equal(f.calls[0].args.p_lines[0].product_description,'Aplicación de curador');
+    assert.equal(f.calls[0].args.p_truck_arrival_time,'07:00');
+  }
+});
 test('no escribe con horarios omitidos, inválidos o sin permisos', async () => {
   for (const overrides of [{truckArrivalTime:''}, {truckDepartureTime:''}, {truckArrivalTime:'18:00'}, {truckDepartureTime:'99:99'}]) {
     const f = actionFixture(); assert.equal((await f.save({},form(overrides))).status,'error'); assert.equal(f.calls.length,0);

@@ -4,6 +4,7 @@ import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { isValidApprovedProgrammingDateTime } from '../src/features/programming/approved-import-validation.ts';
+import { isDeliveryMode } from '../src/features/programming/invoice-policy.ts';
 
 const root = new URL('../',import.meta.url);
 const actionSource = await readFile(new URL('src/features/programming/actions.ts',root),'utf8');
@@ -34,15 +35,15 @@ test('la vista previa permite un día pasado y mantiene los campos obligatorios'
   for(const patch of [{scheduledAt:'2026-02-30T07:00'},{quantity:'0'},{quantity:'text'},{supplierId:''},{unitCode:''},{orderNumber:''},{concreteType:''},{placementElement:''}]) assert.ok(rowErrors({...row,...patch}).length>0);
 });
 
-function fixture({permission=true,activeProjectId=projectId,rows=[row],parserError=null,m3=true,rpcError=null}={}) {
+function fixture({permission=true,permissions=['programming.create'],activeProjectId=projectId,rows=[row],parserError=null,m3=true,rpcError=null}={}) {
   const calls=[],extracts=[],paths=[];
   const actions=load(actionSource,{
     'next/cache':{revalidatePath:p=>paths.push(p)},
     '@/features/auth/queries':{requireActiveProfile:async()=>({id:projectId})},
-    '@/features/projects/queries':{getProjectContext:async()=>({status:'ready',activeProject:{id:activeProjectId,code:'QA',name:'QA',timezone:'America/Guatemala',billingLegalName:'QA, S.A.',address:'QA Address'},projects:[],permissions:permission?['programming.create']:[]})},
-    '@/lib/supabase/server':{createClient:async()=>({rpc:async(name,args)=>{calls.push({name,args});return{data:{programming_ids:[projectId]},error:rpcError};}})},
+    '@/features/projects/queries':{getProjectContext:async()=>({status:'ready',activeProject:{id:activeProjectId,code:'QA',name:'QA',timezone:'America/Guatemala',billingLegalName:'QA, S.A.',address:'QA Address'},projects:[],permissions:permission?permissions:[]})},
+    '@/lib/supabase/server':{createClient:async()=>({from(){return{select(){return this;},eq(){return this;},maybeSingle:async()=>({data:{timezone:'America/Guatemala'},error:null})};},rpc:async(name,args)=>{calls.push({name,args});return{data:{programming_ids:[projectId]},error:rpcError};}})},
     './queries':{getProgrammingCatalogs:async()=>({suppliers:[{id:supplierId,code:'MIXTO',name:'Mixto Listo'}],units:m3?[{code:'M3'}]:[]})},
-    './invoice-policy':{},'./types':{},
+    './invoice-policy':{isDeliveryMode},'./types':{},
     './mixto-listo-workbook':{MIXTO_WORKBOOK_ERROR:'Invalid workbook',isValidApprovedProgrammingDateTime,extractMixtoProgrammingWorkbook:async(file,project)=>{extracts.push({file,project});if(parserError)throw Error(parserError);return{rows,warnings:[]};}},
   });
   return{actions,calls,extracts,paths};
@@ -84,4 +85,35 @@ test('el servidor conserva validaciones de autorización, proyecto, Excel origin
   }
   const f=fixture({rpcError:{message:'PROGRAMMING_BATCH_SUPPLIER_INVALID:1'}});
   assert.equal((await f.actions.createProgrammingBatchAction({},form())).status,'error');assert.equal(f.paths.length,0);
+});
+
+function editForm(patches={}) {
+  const data=new FormData();
+  for(const [key,value] of Object.entries({intent:'edit',projectId,programmingId:projectId,expectedVersion:'3',supplierId,scheduledAt:'2020-01-01T07:00',lineQuantity:'7',lineUnitCode:'M3',lineConcreteType:'CONF4001',orderNumber:'106',reason:'Corregir programación aprobada',deliveryModes:'PUMP',...patches})) data.set(key,value);
+  return data;
+}
+test('editar una programación pasada envía fecha, motivo y versión al RPC autorizado',async()=>{
+  const f=fixture({permissions:['programming.modify']});
+  const result=await f.actions.mutateProgrammingAction({},editForm());
+  assert.equal(result.status,'success');assert.equal(f.calls.length,1);
+  const {name,args}=f.calls[0];
+  assert.equal(name,'update_programming_with_details');
+  assert.equal(args.p_scheduled_at,'2020-01-01T13:00:00.000Z');
+  assert.equal(args.p_expected_version,3);assert.equal(args.p_reason,'Corregir programación aprobada');
+  assert.deepEqual(Array.from(args.p_delivery_modes),['PUMP']);
+});
+test('la edición conserva validación de fecha real, motivo, permiso, cantidad y conflictos',async()=>{
+  for(const patch of [{scheduledAt:'2026-02-30T07:00'},{reason:''},{lineQuantity:'0'},{expectedVersion:'0'},{deliveryModes:'INVALID'}]) {
+    const f=fixture({permissions:['programming.modify']});
+    assert.equal((await f.actions.mutateProgrammingAction({},editForm(patch))).status,'error');
+    assert.equal(f.calls.length,0);
+  }
+  const unauthorized=fixture({permissions:['programming.view']});
+  assert.equal((await unauthorized.actions.mutateProgrammingAction({},editForm())).status,'error');assert.equal(unauthorized.calls.length,0);
+  for(const message of ['PROGRAMMING_VERSION_CONFLICT','PROGRAMMING_EDIT_HAS_DISPATCHES','PROGRAMMING_NOT_EDITABLE']) {
+    const f=fixture({permissions:['programming.modify'],rpcError:{message}});
+    const result=await f.actions.mutateProgrammingAction({},editForm());
+    assert.equal(result.status,'error');assert.equal(f.paths.length,0);
+    if(message==='PROGRAMMING_VERSION_CONFLICT')assert.equal(result.conflict,true);
+  }
 });

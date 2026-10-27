@@ -317,18 +317,14 @@ export async function mutateProgrammingAction(
           project.timezone || "America/Guatemala",
         )
       : null;
-    if (projectError || !project || !scheduledAtIso) {
+    if (
+      projectError || !project || !scheduledAtIso ||
+      !isValidApprovedProgrammingDateTime(scheduledAt)
+    ) {
       return {
         status: "error",
         intent,
         message: "La fecha y hora programadas no son válidas.",
-      };
-    }
-    if (scheduledAt.slice(0, 10) <= localDateKey(new Date(), project.timezone || "America/Guatemala")) {
-      return {
-        status: "error",
-        intent,
-        message: "La edición solo está disponible hasta un día antes de la fecha programada.",
       };
     }
 

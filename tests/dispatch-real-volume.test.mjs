@@ -127,6 +127,16 @@ test("sigue el total al crear, editar y eliminar guías sin remontar el formular
   }
 });
 
+test("las guías de servicios no limitan la llegada del despacho ni suman volumen de concreto", () => {
+  const serviceGuide = {...guide(0),productCount:0,serviceCount:1,truckDepartureAt:"2026-10-23T13:02:00Z"};
+  const f = fixture({arrivalAt:"2026-10-23T13:05:00Z",departureAt:serviceGuide.truckDepartureAt,guides:[serviceGuide]});
+  assert.equal(f.input().props.value,"0");
+  assert.equal(f.find(node=>node.props?.id==='dispatch-arrival').props.max,undefined);
+  assert.equal(f.find(node=>node.props?.id==='dispatch-departure').props.readOnly,true);
+  const manual = fixture({arrivalAt:"2026-10-23T13:05:00Z",departureAt:"2026-10-23T14:00:00Z",guides:[]});
+  assert.equal(manual.find(node=>node.props?.id==='dispatch-arrival').props.max,'08:00');
+});
+
 test("una corrección manual se conserva aunque cambien guías o se refresquen los datos", () => {
   const f = fixture();
   f.edit("14.75");

@@ -24,7 +24,7 @@ import{DispatchGuideDialog}from'${root}/src/features/dispatches/components/dispa
 const product=${JSON.stringify(product)};
 createRoot(document.getElementById('app')!).render(<DispatchGuideDialog
  projectId="project" dispatchId="dispatch" programmingId="programming" expectedVersion={1}
- programmedUnitCode="M3" operationDate="2026-10-24" dispatchArrivalTime="07:00"
+ programmedUnitCode="M3" operationDate="2026-10-24"
  defaultCatalogProduct={product} units={[{code:'M3',name:'Metro cúbico'}]} onClose={()=>{window.guideClosed=true;}}/>);`);
 await new Promise((resolve,reject)=>webpack({mode:'development',target:'web',devtool:false,
  entry:path.join(harness,'entry.tsx'),output:{path:harness,filename:'bundle.js'},
@@ -40,7 +40,7 @@ await writeFile(path.join(harness,'browser-check.js'),String.raw`(async()=>{
  const wait=async fn=>{for(let n=0;n<120;n++){const r=fn();if(r)return r;await pause(50);}throw Error('UI timeout: '+fn);};
  const set=async(el,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));await pause(30);};
  const key=async(el,value)=>{el.dispatchEvent(new KeyboardEvent('keydown',{key:value,bubbles:true,cancelable:true}));await pause(50);};
- const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
+ const button=text=>[...document.querySelectorAll('button')].find(b=>b.getClientRects().length&&b.textContent.trim()===text);
  await wait(()=>document.getElementById('guide-number'));await document.fonts.ready;
  const panel=document.querySelector('[role="dialog"]');
  const dateDefault=document.getElementById('guide-date').value==='2026-10-24';
@@ -80,17 +80,22 @@ await writeFile(path.join(harness,'browser-check.js'),String.raw`(async()=>{
  panel.querySelector('button[type="submit"]').click();await wait(()=>panel.querySelector('[role="alert"]')&&!panel.querySelector('button[type="submit"]').disabled);
  const errorDraftRetained=document.querySelectorAll('[name="lineQuantity"]')[1].value==='7'&&panel.querySelectorAll('select')[1].value==='M3'&&ids()[1].endsWith('000003');
  if(!errorDraftRetained)throw Error('Draft reset: '+JSON.stringify({selects:[...panel.querySelectorAll('select')].map(el=>el.value),quantities:[...panel.querySelectorAll('[name="lineQuantity"]')].map(el=>el.value),ids:ids(),saved:window.savedGuide}));
- window.failGuideSave=false;window.savedGuide=null;
- panel.querySelector('button[type="submit"]').click();await wait(()=>window.savedGuide);
  const values=name=>window.savedGuide.filter(p=>p[0]===name).map(p=>p[1]);
  const payloadCorrect=values('lineCatalogItemId').length===2&&values('lineCatalogItemId')[1].endsWith('000003')&&values('lineUnitCode').every(v=>v==='M3')&&values('truckArrivalTime')[0]==='07:00'&&values('truckDepartureTime')[0]==='07:45'&&!window.savedGuide.some(p=>/observation/i.test(p[0]));
  const bounds=panel.getBoundingClientRect();
+ // Remove the default concrete product and save the service on its own.
+ document.querySelector('[aria-label="Eliminar línea 1"]').click();await wait(()=>ids().length===1);
+ await set(document.getElementById('guide-truck-departure'),'07:02');
+ window.failGuideSave=false;window.savedGuide=null;panel.querySelector('button[type="submit"]').click();await wait(()=>window.guideClosed&&window.savedGuide&&!panel.querySelector('button[type="submit"]').disabled);
+ const serviceOnly=values('lineCatalogType').length===1&&values('lineCatalogType')[0]==='SERVICE'&&values('lineCatalogItemId')[0].endsWith('000003')&&values('truckDepartureTime')[0]==='07:02'&&panel.textContent.includes('no suman volumen de concreto');
+ if(!serviceOnly)throw Error('Service-only payload: '+JSON.stringify(window.savedGuide));
+ const independentArrival=!document.getElementById('guide-truck-arrival').min&&!document.getElementById('guide-truck-arrival').max&&!panel.textContent.includes('Corrige y guarda la llegada');
  const data={width:innerWidth,pageFits:document.documentElement.scrollWidth<=innerWidth,
  panelFits:bounds.left>=0&&bounds.right<=innerWidth&&bounds.top>=0&&bounds.bottom<=innerHeight,
  contentsFit:[...panel.querySelectorAll('input:not([type="hidden"]),select,textarea,label')].every(el=>{const r=el.getBoundingClientRect();return r.left>=bounds.left&&r.right<=bounds.right;}),
- cardsSeparated,searchFits,keyboardSelect,variantSelected,observationsNotCopied,lineIsolation,touchSelect,dateDefault,errorDraftRetained,noNestedDialog:document.querySelectorAll('[role="dialog"]').length===1,payloadCorrect};
+ cardsSeparated,searchFits,keyboardSelect,variantSelected,observationsNotCopied,lineIsolation,touchSelect,dateDefault,errorDraftRetained,noNestedDialog:document.querySelectorAll('[role="dialog"]').length===1,payloadCorrect,serviceOnly,independentArrival};
  // Capture an open dropdown with service variants, just as on the user's phone.
- combos[1].focus();combos[1].click();await set(combos[1],'dosis');await wait(()=>document.querySelectorAll('[role="option"]').length===2);
+ combos=[...document.querySelectorAll('[role="combobox"]')];combos[0].focus();combos[0].click();await set(combos[0],'dosis');await wait(()=>document.querySelectorAll('[role="option"]').length===2);
  document.querySelector('[role="listbox"]').scrollIntoView({block:'center'});await pause(100);
  return data;
 })()`);
@@ -155,7 +160,7 @@ try {
       socket?.close();
       child.kill();
     }
-    for (const key of ["pageFits", "panelFits", "contentsFit", "cardsSeparated", "searchFits", "keyboardSelect", "variantSelected", "observationsNotCopied", "lineIsolation", "touchSelect", "dateDefault", "errorDraftRetained", "noNestedDialog", "payloadCorrect"]) assert.equal(data[key], true, `${width}/${theme}: ${key} ${JSON.stringify(data.headerHits)}`);
+    for (const key of ["pageFits", "panelFits", "contentsFit", "cardsSeparated", "searchFits", "keyboardSelect", "variantSelected", "observationsNotCopied", "lineIsolation", "touchSelect", "dateDefault", "errorDraftRetained", "noNestedDialog", "payloadCorrect", "serviceOnly", "independentArrival"]) assert.equal(data[key], true, `${width}/${theme}: ${key} ${JSON.stringify(data.headerHits)}`);
     delete data.headerHits;
     console.log(JSON.stringify({ status: "PASS", ...data, theme, horizontal, screenshot }));
   }
