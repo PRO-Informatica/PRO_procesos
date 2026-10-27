@@ -61,7 +61,8 @@ export function canCreateDispatchForProgramming(
 ) {
   if (!programming.hasPermission) return false;
   const effectiveStatus = getEffectiveProgrammingStatus(programming, now);
-  return effectiveStatus === "CONFIRMED" || effectiveStatus === "IN_EXECUTION";
+  // Expiry is an informational alert; the confirmed operation remains usable.
+  return ["CONFIRMED", "EXPIRED", "IN_EXECUTION"].includes(effectiveStatus);
 }
 
 export function canEditProgramming(

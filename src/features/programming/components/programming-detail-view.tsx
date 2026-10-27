@@ -246,7 +246,7 @@ export function ProgrammingDetailView({
   }, availabilityNow);
   const canCancel =
     permissions.canCancel &&
-    !["EXPIRED", "CANCELLED"].includes(effectiveStatus) &&
+    effectiveStatus !== "CANCELLED" &&
     ["PENDING_CONFIRMATION", "CONFIRMED"].includes(detail.status) &&
     !(detail.status === "CONFIRMED" && detail.dispatches.length > 0);
   const relevantRevisions = detail.revisions.filter(
@@ -312,10 +312,10 @@ export function ProgrammingDetailView({
         </div>
 
         {effectiveStatus === "EXPIRED" && (
-          <div className="flex gap-3 rounded-xl border border-slate-300 bg-slate-100 p-4 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+          <div role="status" className="flex gap-3 rounded-xl border border-slate-300 bg-slate-100 p-4 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
             <AlertTriangle aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
             <p>
-              Esta programación venció el {formatProgrammingDateTime(detail.scheduledAt, project.timezone)} y ya no acepta nuevos despachos.
+              La fecha programada ({formatProgrammingDateTime(detail.scheduledAt, project.timezone)}) ya pasó. Puedes iniciar el despacho y registrar sus guías.
             </p>
           </div>
         )}
