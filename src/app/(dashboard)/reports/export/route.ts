@@ -21,7 +21,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-const COLORS = { ink: "FF17191F", muted: "FF667085", border: "FFE4E7EC", white: "FFFFFFFF", surface: "FFF7F8FA", red: "FFED1B2F" } as const;
+const COLORS = { ink: "FF17191F", muted: "FF667085", border: "FFE4E7EC", white: "FFFFFFFF", surface: "FFF7F8FA", red: "FFED1B2F", green: "FF15803D", greenSoft: "FFDCFCE7" } as const;
 
 type Column = { header: string; key: string; width: number; kind?: "date" | "datetime" | "quantity" | "money" | "integer" };
 
@@ -49,6 +49,7 @@ const REPORT_COLUMNS: Column[] = [
   { header: "Documentos operativos", key: "documentCount", width: 20, kind: "integer" },
   { header: "Despacho registrado por", key: "dispatchCreatedBy", width: 25 },
   { header: "Fecha registro despacho", key: "dispatchCreatedAt", width: 21, kind: "datetime" },
+  { header: "Validado por", key: "dispatchValidatedBy", width: 27 },
   { header: "Estado conciliación", key: "reconciliationStatus", width: 23 },
   { header: "Diferencia", key: "difference", width: 15, kind: "quantity" },
   { header: "Facturas vigentes", key: "invoiceCount", width: 16, kind: "integer" },
@@ -115,6 +116,7 @@ function addStyledRow(sheet: Worksheet, values: Record<string, unknown>) {
   row.alignment = { vertical: "middle", wrapText: true };
   if ((row.number - REPORT_TABLE_HEADER_ROW) % 2 === 0) row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.surface } };
   row.eachCell((cell) => { cell.border = { bottom: { style: "thin", color: { argb: COLORS.border } } }; });
+  return row;
 }
 
 function invoiceRow(programming: ProgrammingReportItem, dispatch: ProgrammingReportItem["dispatches"][number], invoice: ReportInvoice) {
@@ -163,6 +165,9 @@ async function buildWorkbook(
   setupReportSheet(reportSheet, REPORT_COLUMNS, header);
   setupReportSheet(productSheet, INVOICE_COLUMNS, header);
   setupReportSheet(serviceSheet, INVOICE_COLUMNS, header);
+  reportSheet.getRow(REPORT_TABLE_HEADER_ROW).getCell("dispatchValidatedBy").fill = {
+    type: "pattern", pattern: "solid", fgColor: { argb: COLORS.green },
+  };
   applyColumnFormats(reportSheet, REPORT_COLUMNS);
   applyColumnFormats(productSheet, INVOICE_COLUMNS);
   applyColumnFormats(serviceSheet, INVOICE_COLUMNS);
@@ -170,7 +175,7 @@ async function buildWorkbook(
   for (const programming of report.programming) {
     const dispatches = programming.dispatches.length ? programming.dispatches : [null];
     for (const dispatch of dispatches) {
-      addStyledRow(reportSheet, {
+      const reportRow = addStyledRow(reportSheet, {
         companyName: programming.companyName,
         projectBillingLegalName: programming.projectBillingLegalName ?? "No configurada",
         projectName: programming.projectName,
@@ -194,6 +199,7 @@ async function buildWorkbook(
         documentCount: dispatch?.documentCount ?? 0,
         dispatchCreatedBy: dispatch?.registeredByName ?? "",
         dispatchCreatedAt: excelDate(dispatch?.createdAt),
+        dispatchValidatedBy: dispatch?.completedByName ?? "",
         reconciliationStatus: dispatch ? formatStatusLabel(dispatch.reconciliationStatus) : "Pendiente de despacho",
         difference: dispatch?.difference ?? null,
         invoiceCount: dispatch?.invoiceCount ?? 0,
@@ -206,6 +212,9 @@ async function buildWorkbook(
         serviceInvoiceDate: excelDate(dispatch?.serviceInvoice?.date),
         serviceTotal: dispatch?.serviceInvoice?.total ?? null,
       });
+      reportRow.getCell("dispatchValidatedBy").fill = {
+        type: "pattern", pattern: "solid", fgColor: { argb: COLORS.greenSoft },
+      };
       if (dispatch?.productInvoice) addStyledRow(productSheet, invoiceRow(programming, dispatch, dispatch.productInvoice));
       if (dispatch?.serviceInvoice) addStyledRow(serviceSheet, invoiceRow(programming, dispatch, dispatch.serviceInvoice));
     }
