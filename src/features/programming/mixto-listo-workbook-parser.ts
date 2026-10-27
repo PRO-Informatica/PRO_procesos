@@ -64,18 +64,6 @@ function cellDisplayText(cell: Cell) {
   return displayed || cellText(cell.value);
 }
 
-export function isApprovedProgrammingDayAllowed(
-  scheduledAt: string,
-  projectToday: string,
-) {
-  const scheduledDate = scheduledAt.match(/^(\d{4}-\d{2}-\d{2})T/)?.[1];
-  return Boolean(
-    scheduledDate &&
-    /^\d{4}-\d{2}-\d{2}$/.test(projectToday) &&
-    scheduledDate >= projectToday
-  );
-}
-
 function sheetText(sheet: Worksheet) {
   const values: string[] = [];
   sheet.eachRow((row) => {

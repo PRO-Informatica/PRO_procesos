@@ -14,6 +14,7 @@ import {
   extractProgrammingWorkbookAction,
 } from "../actions";
 import { deliveryModeLabel, requiresServiceInvoice } from "../invoice-policy";
+import { isValidApprovedProgrammingDateTime } from "../approved-import-validation";
 import {
   initialCreateProgrammingBatchState,
   initialExtractProgrammingWorkbookState,
@@ -21,10 +22,9 @@ import {
   type ProgrammingSupplier,
 } from "../types";
 
-function rowErrors(row: BulkProgrammingPreviewRow, today: string) {
+function rowErrors(row: BulkProgrammingPreviewRow) {
   const errors: string[] = [];
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(row.scheduledAt)) errors.push("Fecha u hora inválida");
-  else if (row.scheduledAt.slice(0, 10) < today) errors.push("La fecha es anterior a hoy");
+  if (!isValidApprovedProgrammingDateTime(row.scheduledAt)) errors.push("Fecha u hora inválida");
   if (!Number.isFinite(Number(row.quantity)) || Number(row.quantity) <= 0) errors.push("Volumen inválido");
   if (!row.unitCode) errors.push("Falta unidad");
   if (!row.supplierId) errors.push("Selecciona un proveedor");
@@ -48,7 +48,6 @@ export function BulkProgrammingDialog({
   billingLegalName,
   timezone,
   suppliers,
-  today,
   onClose,
   onCreated,
 }: {
@@ -57,7 +56,6 @@ export function BulkProgrammingDialog({
   billingLegalName: string | null;
   timezone: string;
   suppliers: ProgrammingSupplier[];
-  today: string;
   onClose: () => void;
   onCreated: (count: number) => void;
 }) {
@@ -90,8 +88,8 @@ export function BulkProgrammingDialog({
   }, [batchState.programmingIds, batchState.status, onCreated, rows.length]);
 
   const validatedRows = useMemo(
-    () => rows.map((row) => ({ ...row, errors: rowErrors(row, today) })),
-    [rows, today],
+    () => rows.map((row) => ({ ...row, errors: rowErrors(row) })),
+    [rows],
   );
   const valid = validatedRows.length > 0 && validatedRows.every((row) => row.errors.length === 0);
   const update = (index: number, patch: Partial<BulkProgrammingPreviewRow>, rebuildNotes = false) => {

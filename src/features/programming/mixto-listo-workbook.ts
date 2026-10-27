@@ -2,17 +2,17 @@ import "server-only";
 
 import {
   extractMixtoProgrammingWorkbookBuffer,
-  isApprovedProgrammingDayAllowed,
   MIXTO_APPROVED_WORKBOOK_ERROR,
   MIXTO_WORKBOOK_ERROR,
   type MixtoWorkbookProject,
 } from "./mixto-listo-workbook-parser";
 
 export {
-  isApprovedProgrammingDayAllowed,
   MIXTO_APPROVED_WORKBOOK_ERROR,
   MIXTO_WORKBOOK_ERROR,
 };
+
+export { isValidApprovedProgrammingDateTime } from "./approved-import-validation";
 
 const MAX_WORKBOOK_BYTES = 10 * 1024 * 1024;
 

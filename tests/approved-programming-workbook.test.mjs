@@ -6,8 +6,8 @@ import ExcelJS from "exceljs";
 
 import {
   extractMixtoProgrammingWorkbookBuffer,
-  isApprovedProgrammingDayAllowed,
 } from "../src/features/programming/mixto-listo-workbook-parser.ts";
+import { isValidApprovedProgrammingDateTime } from "../src/features/programming/approved-import-validation.ts";
 
 const project = {
   billingLegalName: "INMOBILIARIA LOS ANTURIOS, S.A.",
@@ -141,15 +141,15 @@ test("permite una hora pasada del día actual en una carga aprobada", () => {
   const approvedDateTime = "2026-10-07T08:00";
   assert.ok(approvedDateTime < currentProjectDateTime);
   assert.equal(
-    isApprovedProgrammingDayAllowed(approvedDateTime, "2026-10-07"),
+    isValidApprovedProgrammingDateTime(approvedDateTime),
     true,
   );
 });
 
-test("rechaza un día anterior en una carga aprobada", () => {
+test("permite un día anterior en una carga aprobada", () => {
   assert.equal(
-    isApprovedProgrammingDayAllowed("2026-10-06T23:59", "2026-10-07"),
-    false,
+    isValidApprovedProgrammingDateTime("2026-10-06T23:59"),
+    true,
   );
 });
 
