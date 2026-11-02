@@ -14,18 +14,21 @@ const harness=await mkdtemp(path.join(tmpdir(),'pro-dispatch-entry-harness-'));
 const product={id:'00000000-0000-4000-8000-000000000001',type:'PRODUCT',code:'86131064',reference:'CONF4001',description:null,observations:null,unitCode:null,price:1224.16,currency:'GTQ'};
 const service={id:'00000000-0000-4000-8000-000000000002',type:'SERVICE',code:'86180185',reference:null,description:'Dosis extra de retardante',observations:'Una dosis por metro cúbico',unitCode:'M3',price:10.92,currency:'GTQ'};
 const variant={...service,id:'00000000-0000-4000-8000-000000000003',observations:'Doble dosis por metro cúbico, aplicar según especificación de obra',price:21.84};
-await writeFile(path.join(harness,'actions.js'),`export async function searchDispatchCatalogAction(project,type,query){await new Promise(r=>setTimeout(r,80));return {status:'success',items:${JSON.stringify([product,service,variant])}.filter(i=>(type==='ALL'||i.type===type)&&[i.code,i.reference,i.description,i.observations].some(v=>(v||'').toLowerCase().includes(query.toLowerCase())))};} export async function saveDispatchGuideAction(_state,data){window.savedGuide=[...data.entries()];return window.failGuideSave?{status:'error',message:'Prueba de conservación del formulario'}:{status:'success'};}`);
-await writeFile(path.join(harness,'navigation.js'),`export const useRouter=()=>({refresh(){}});`);
+await writeFile(path.join(harness,'actions.js'),`export async function searchDispatchCatalogAction(project,type,query){await new Promise(r=>setTimeout(r,80));return {status:'success',items:${JSON.stringify([product,service,variant])}.filter(i=>(type==='ALL'||i.type===type)&&[i.code,i.reference,i.description,i.observations].some(v=>(v||'').toLowerCase().includes(query.toLowerCase())))};} export async function saveDispatchGuideAction(_state,data){window.savedGuide=[...data.entries()];window.guideCalls=(window.guideCalls||[]).concat([window.savedGuide]);if(window.failGuideSave)return{status:'error',message:'Prueba de conservación del formulario'};const version=Number(data.get('expectedVersion'));if(version!==(window.serverVersion||1))return{status:'error',message:'Conflicto de versión'};window.serverVersion=version+1;window.successfulGuides=(window.successfulGuides||[]).concat([window.savedGuide]);return{status:'success',newVersion:window.serverVersion,guideId:'saved-guide-'+window.serverVersion};}`);
+await writeFile(path.join(harness,'navigation.js'),`export const useRouter=()=>({refresh(){window.dispatchEvent(new Event('qa-refresh'));}});`);
 await writeFile(path.join(harness,'notification.js'),`export function useActionNotification(){}`);
 await writeFile(path.join(harness,'loader.cjs'),`const ts=require(${JSON.stringify(require.resolve('typescript'))});module.exports=function(source){return ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText}`);
 await writeFile(path.join(harness,'entry.tsx'),`
-import React from 'react';import{createRoot}from'react-dom/client';
+import React,{useEffect,useState} from 'react';import{createRoot}from'react-dom/client';
 import{DispatchGuideDialog}from'${root}/src/features/dispatches/components/dispatch-guide-dialog';
 const product=${JSON.stringify(product)};
-createRoot(document.getElementById('app')!).render(<DispatchGuideDialog
- projectId="project" dispatchId="dispatch" programmingId="programming" expectedVersion={1}
+const editing=new URLSearchParams(location.search).has('edit');
+const guide=editing?{id:'existing-guide',guideNumber:'EDIT-1',guideDate:'2026-10-24',truckArrivalAt:'2026-10-24T13:00:00Z',truckDepartureAt:'2026-10-24T13:45:00Z',lines:[{id:'existing-line',quantity:7,unitCode:'M3',catalogType:'PRODUCT',catalogItemId:product.id,productCode:product.code,catalogReference:product.reference,productDescription:product.reference,unitPrice:product.price,currency:product.currency}]}:undefined;
+function Harness(){const[version,setVersion]=useState(1);useEffect(()=>{const update=()=>setVersion(window.serverVersion||1);window.addEventListener('qa-refresh',update);return()=>window.removeEventListener('qa-refresh',update);},[]);return <DispatchGuideDialog
+ projectId="project" dispatchId="dispatch" programmingId="programming" expectedVersion={version} guide={guide}
  programmedUnitCode="M3" operationDate="2026-10-24"
- defaultCatalogProduct={product} units={[{code:'M3',name:'Metro cúbico'}]} onClose={()=>{window.guideClosed=true;}}/>);`);
+ defaultCatalogProduct={product} units={[{code:'M3',name:'Metro cúbico'}]} onClose={()=>{window.guideClosed=true;}}/>;}
+createRoot(document.getElementById('app')!).render(<Harness/>);`);
 await new Promise((resolve,reject)=>webpack({mode:'development',target:'web',devtool:false,
  entry:path.join(harness,'entry.tsx'),output:{path:harness,filename:'bundle.js'},
  resolve:{extensions:['.tsx','.ts','.js','.json'],modules:[path.join(root,'node_modules'),'node_modules'],alias:{'@/components/feedback/use-action-notification':path.join(harness,'notification.js'),'@':path.join(root,'src'),'next/navigation':path.join(harness,'navigation.js')}},
@@ -44,6 +47,15 @@ await writeFile(path.join(harness,'browser-check.js'),String.raw`(async()=>{
  await wait(()=>document.getElementById('guide-number'));await document.fonts.ready;
  const panel=document.querySelector('[role="dialog"]');
  const dateDefault=document.getElementById('guide-date').value==='2026-10-24';
+ if(new URLSearchParams(location.search).has('edit')){
+   await set(document.getElementById('guide-number'),'EDIT-2');
+   window.failGuideSave=true;panel.querySelector('button[type="submit"]').click();
+   await wait(()=>panel.querySelector('[role="alert"]')&&!panel.querySelector('button[type="submit"]').disabled);
+   const editErrorRetained=!window.guideClosed&&document.getElementById('guide-number').value==='EDIT-2'&&document.querySelector('[name="lineQuantity"]').value==='7';
+   window.failGuideSave=false;panel.querySelector('button[type="submit"]').click();await wait(()=>window.guideClosed&&window.successfulGuides?.length===1);
+   return{editing:true,editErrorRetained,editCloses:window.guideClosed&&document.getElementById('guide-number').value==='EDIT-2'&&window.savedGuide.some(([key,value])=>key==='guideId'&&value==='existing-guide')};
+ }
+ await set(document.getElementById('guide-date'),'2026-10-30');
  await set(document.getElementById('guide-number'),'1234');
  await set(document.getElementById('guide-truck-arrival'),'07:00');
  await set(document.getElementById('guide-truck-departure'),'07:45');
@@ -86,14 +98,29 @@ await writeFile(path.join(harness,'browser-check.js'),String.raw`(async()=>{
  // Remove the default concrete product and save the service on its own.
  document.querySelector('[aria-label="Eliminar línea 1"]').click();await wait(()=>ids().length===1);
  await set(document.getElementById('guide-truck-departure'),'07:02');
- window.failGuideSave=false;window.savedGuide=null;panel.querySelector('button[type="submit"]').click();await wait(()=>window.guideClosed&&window.savedGuide&&!panel.querySelector('button[type="submit"]').disabled);
- const serviceOnly=values('lineCatalogType').length===1&&values('lineCatalogType')[0]==='SERVICE'&&values('lineCatalogItemId')[0].endsWith('000003')&&values('truckDepartureTime')[0]==='07:02'&&panel.textContent.includes('no suman volumen de concreto');
+ window.failGuideSave=false;window.savedGuide=null;panel.querySelector('button[type="submit"]').click();await wait(()=>window.successfulGuides?.length===1&&window.savedGuide&&!panel.querySelector('button[type="submit"]').disabled&&document.getElementById('guide-number').value==='');
+ const serviceOnly=values('lineCatalogType').length===1&&values('lineCatalogType')[0]==='SERVICE'&&values('lineCatalogItemId')[0].endsWith('000003')&&values('truckDepartureTime')[0]==='07:02';
  if(!serviceOnly)throw Error('Service-only payload: '+JSON.stringify(window.savedGuide));
+ const freshFields=()=>document.getElementById('guide-number').value===''&&document.getElementById('guide-truck-arrival').value===''&&document.getElementById('guide-truck-departure').value===''&&document.querySelector('[name="lineQuantity"]').value==='';
+ const newGuideReady=!window.guideClosed&&freshFields()&&document.querySelectorAll('article').length===1&&ids()[0].endsWith('000001')&&document.getElementById('guide-date').value==='2026-10-30'&&document.activeElement.id==='guide-number'&&document.querySelector('[name="expectedVersion"]').value==='2';
+ if(!newGuideReady)throw Error('Next guide not ready: '+panel.textContent);
+ await set(document.getElementById('guide-number'),'1235');
+ await set(document.getElementById('guide-truck-arrival'),'23:22');await set(document.getElementById('guide-truck-departure'),'03:20');
+ await set(document.querySelector('[name="lineQuantity"]'),'8');
+ window.failGuideSave=true;panel.querySelector('button[type="submit"]').click();
+ await wait(()=>panel.querySelector('[role="alert"]')&&!panel.querySelector('button[type="submit"]').disabled);
+ const secondErrorRetained=document.getElementById('guide-number').value==='1235'&&document.getElementById('guide-truck-departure').value==='03:20'&&document.querySelector('[name="lineQuantity"]').value==='8'&&document.querySelector('[name="expectedVersion"]').value==='2';
+ window.failGuideSave=false;panel.querySelector('button[type="submit"]').click();
+ await wait(()=>window.successfulGuides?.length===2&&!panel.querySelector('button[type="submit"]').disabled&&freshFields());
+ const sequentialCreates=!window.guideClosed&&values('expectedVersion')[0]==='2'&&values('guideNumber')[0]==='1235'&&values('guideId')[0]===''&&values('truckDepartureTime')[0]==='03:20'&&document.querySelector('[name="expectedVersion"]').value==='3';
+ await set(document.getElementById('guide-number'),'NEXT-DRAFT');await set(document.querySelector('[name="lineQuantity"]'),'9');
+ window.dispatchEvent(new Event('qa-refresh'));await pause(200);
+ const refreshKeepsDraft=document.getElementById('guide-number').value==='NEXT-DRAFT'&&document.querySelector('[name="lineQuantity"]').value==='9';
  const independentArrival=!document.getElementById('guide-truck-arrival').min&&!document.getElementById('guide-truck-arrival').max&&!panel.textContent.includes('Corrige y guarda la llegada');
  const data={width:innerWidth,pageFits:document.documentElement.scrollWidth<=innerWidth,
  panelFits:bounds.left>=0&&bounds.right<=innerWidth&&bounds.top>=0&&bounds.bottom<=innerHeight,
  contentsFit:[...panel.querySelectorAll('input:not([type="hidden"]),select,textarea,label')].every(el=>{const r=el.getBoundingClientRect();return r.left>=bounds.left&&r.right<=bounds.right;}),
- cardsSeparated,searchFits,keyboardSelect,variantSelected,observationsNotCopied,lineIsolation,touchSelect,dateDefault,errorDraftRetained,noNestedDialog:document.querySelectorAll('[role="dialog"]').length===1,payloadCorrect,serviceOnly,independentArrival};
+ cardsSeparated,searchFits,keyboardSelect,variantSelected,observationsNotCopied,lineIsolation,touchSelect,dateDefault,errorDraftRetained,noNestedDialog:document.querySelectorAll('[role="dialog"]').length===1,payloadCorrect,serviceOnly,independentArrival,newGuideReady,secondErrorRetained,sequentialCreates,refreshKeepsDraft};
  // Capture an open dropdown with service variants, just as on the user's phone.
  combos=[...document.querySelectorAll('[role="combobox"]')];combos[0].focus();combos[0].click();await set(combos[0],'dosis');await wait(()=>document.querySelectorAll('[role="option"]').length===2);
  document.querySelector('[role="listbox"]').scrollIntoView({block:'center'});await pause(100);
@@ -109,7 +136,7 @@ await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 await mkdir("tmp", { recursive: true });
 const directory = await mkdtemp(path.join(root, "tmp/dispatch-guide-entry-ui-"));
 try {
-  for (const [width, height, theme, horizontal] of [[320, 700, "light", "left"], [390, 844, "light", "left"], [820, 1100, "light", "left"], [1440, 1000, "light", "left"], [390, 844, "dark", "left"]]) {
+  for (const [width, height, theme, horizontal] of [[320, 700, "light", "left"], [390, 844, "light", "left"], [820, 1100, "light", "left"], [1440, 1000, "light", "left"], [390, 844, "dark", "left"], [390, 844, "light", "edit"], [1440, 1000, "light", "edit"]]) {
     const screenshot = path.join(directory, `${width}-${theme}-${horizontal}.png`);
     const profile = await mkdtemp(path.join(directory, "chrome-profile-"));
     const child = spawn("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", ["--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--disable-extensions", "--disable-sync", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"]);
@@ -149,7 +176,7 @@ try {
       await send("Page.enable", {}, sessionId);
       await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false }, sessionId);
       await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }, sessionId);
-      await send("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/?theme=${theme}` }, sessionId);
+      await send("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/?theme=${theme}${horizontal==='edit'?'&edit=1':''}` }, sessionId);
       const result = await send("Runtime.evaluate", { expression: await readFile(path.join(harness,"browser-check.js"),"utf8"), awaitPromise: true, returnByValue: true }, sessionId);
       assert.ok(!result.exceptionDetails, JSON.stringify(result.exceptionDetails));
       data = result.result.value;
@@ -160,7 +187,7 @@ try {
       socket?.close();
       child.kill();
     }
-    for (const key of ["pageFits", "panelFits", "contentsFit", "cardsSeparated", "searchFits", "keyboardSelect", "variantSelected", "observationsNotCopied", "lineIsolation", "touchSelect", "dateDefault", "errorDraftRetained", "noNestedDialog", "payloadCorrect", "serviceOnly", "independentArrival"]) assert.equal(data[key], true, `${width}/${theme}: ${key} ${JSON.stringify(data.headerHits)}`);
+    for (const key of (data.editing ? ["editErrorRetained", "editCloses"] : ["pageFits", "panelFits", "contentsFit", "cardsSeparated", "searchFits", "keyboardSelect", "variantSelected", "observationsNotCopied", "lineIsolation", "touchSelect", "dateDefault", "errorDraftRetained", "noNestedDialog", "payloadCorrect", "serviceOnly", "independentArrival", "newGuideReady", "secondErrorRetained", "sequentialCreates", "refreshKeepsDraft"])) assert.equal(data[key], true, `${width}/${theme}: ${key} ${JSON.stringify(data.headerHits)}`);
     delete data.headerHits;
     console.log(JSON.stringify({ status: "PASS", ...data, theme, horizontal, screenshot }));
   }

@@ -16,6 +16,33 @@ import {
 
 const billingLegalName = "Las Campanales - Sociedad Anónima";
 
+test("Excel acepta una dirección secundaria y mantiene el aislamiento entre proyectos", () => {
+  const input = {
+    projectId: "a", projectAddress: "10 CALLE 3-42 ZONA 8 GUATEMALA",
+    projectAdditionalAddresses: ["9 CALLE 5A-62 ZONA 9 QUETZALTENANGO"],
+    workbookAddress: "9 CALLE 5A-62 ZONA 9 QUETZALTENANGO",
+    billingLegalName, invoiceRecipient: billingLegalName,
+    candidateProjects: [{ id: "a", label: "Proyecto A", address: "10 CALLE 3-42 ZONA 8 GUATEMALA", additionalAddresses: ["9 CALLE 5A-62 ZONA 9 QUETZALTENANGO"], billingLegalName }],
+  };
+  const result = validateMixtoProjectReference(input);
+  assert.equal(result.comparison.result, "MATCH");
+  assert.equal(result.matchedAddress, input.projectAdditionalAddresses[0]);
+  assert.throws(() => validateMixtoProjectReference({ ...input, projectId: "b", projectAddress: "CALLE 3 ZONA 7 GUATEMALA", projectAdditionalAddresses: [] }), /proyecto diferente/u);
+  assert.throws(() => validateMixtoProjectReference({ ...input, workbookAddress: "9 CALLE 5A-63 ZONA 9 QUETZALTENANGO" }), /no corresponde/u);
+});
+
+test("Excel no resuelve arbitrariamente una dirección secundaria compartida", () => {
+  const shared = "9 CALLE 5A-62 ZONA 9 QUETZALTENANGO";
+  assert.throws(() => validateMixtoProjectReference({
+    projectId: "a", projectAddress: "CALLE 1 ZONA 1 GUATEMALA", projectAdditionalAddresses: [shared],
+    workbookAddress: shared, billingLegalName, invoiceRecipient: billingLegalName,
+    candidateProjects: [
+      { id: "a", label: "A", address: "CALLE 1 ZONA 1 GUATEMALA", additionalAddresses: [shared], billingLegalName },
+      { id: "b", label: "B", address: "CALLE 2 ZONA 2 GUATEMALA", additionalAddresses: [shared], billingLegalName },
+    ],
+  }), /más de un proyecto/u);
+});
+
 test("normaliza únicamente formato y abreviaciones conocidas", () => {
   const equivalentValues = [
     "Las Campanales - S.A.",

@@ -10,7 +10,7 @@ import { resolveReconciliationQuantityBasis, selectValidProgrammedQuantity } fro
 import { resolveInvoiceUploadSlot } from "@/features/invoices/reinvoicing";
 import { decideInvoiceRecipientException, type RecipientExceptionDecision } from "@/features/invoices/recipient-exception-service";
 import { getOperationalProjectAccessForProject } from "@/features/projects/queries";
-import { addressesMatch } from "@/lib/address-identity";
+import { projectAddressMatches } from "@/lib/address-identity";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -88,7 +88,7 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
   const [dispatchResult, batchResult, projectResult, reconciliationResult] = await Promise.all([
     admin.from("dispatches").select("id, project_id, programming_id, supplier_id, order_number, real_volume, real_unit_code, status, result").eq("id", dispatchId).eq("project_id", projectId).maybeSingle(),
     admin.from("batches").select("id, project_id, accounting_period").eq("id", batchId).eq("project_id", projectId).maybeSingle(),
-    admin.from("projects").select("id, company_id, address, billing_legal_name, billing_tax_id, timezone").eq("id", projectId).maybeSingle(),
+    admin.from("projects").select("id, company_id, address, additional_addresses, billing_legal_name, billing_tax_id, timezone").eq("id", projectId).maybeSingle(),
     admin.from("dispatch_reconciliations").select("status, current_product_invoice_id, current_service_invoice_id, service_status").eq("dispatch_id", dispatchId).eq("project_id", projectId).maybeSingle(),
   ]);
   if (!dispatchResult.data || !batchResult.data || !projectResult.data) return null;
@@ -126,6 +126,7 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
     billingLegalName: projectResult.data.billing_legal_name,
     billingTaxId: projectResult.data.billing_tax_id,
     projectAddress: projectResult.data.address,
+    projectAdditionalAddresses: projectResult.data.additional_addresses ?? [],
     accountingPeriod: batchResult.data.accounting_period,
     projectTimezone: projectResult.data.timezone,
     expectedQuantity: quantityBasis.quantity,
@@ -259,9 +260,9 @@ export async function inspectBatchInvoicePdf(projectId: string, batchId: string,
     const raw = await extractMixtoListoInvoicePdf(await file.arrayBuffer());
     if (raw.detected_invoice_numbers.length > 1) return { fileName: file.name, dispatchId: null, requestedType: null, status: "REQUIRES_REVIEW", message: "El PDF contiene más de una factura y no puede procesarse automáticamente.", payload: null, duplicate: false };
     const admin = createAdminClient();
-    const project = await admin.from("projects").select("address").eq("id", projectId).maybeSingle();
+    const project = await admin.from("projects").select("address, additional_addresses").eq("id", projectId).maybeSingle();
     if (!project.data?.address?.trim()) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "El proyecto actual no tiene configurada su Dirección exacta de Obra.", payload: null, duplicate: false };
-    if (!addressesMatch(project.data.address, raw.shipping_address)) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "La Dirección de Envío de la factura no corresponde a la Dirección exacta de Obra del proyecto.", payload: null, duplicate: false };
+    if (!projectAddressMatches({ address: project.data.address, additionalAddresses: project.data.additional_addresses }, raw.shipping_address)) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "La Dirección de Envío de la factura no corresponde a ninguna de las direcciones de la obra del proyecto.", payload: null, duplicate: false };
     const orderNumber = orderNumberFromMixtoListoPca(raw.pca_original);
     if (!orderNumber) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "No se detectó un PCA válido.", payload: null, duplicate: false };
     const relations = await admin.from("batch_dispatches").select("dispatch_id").eq("project_id", projectId).eq("batch_id", batchId).is("removed_at", null);

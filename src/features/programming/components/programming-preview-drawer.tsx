@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, CheckCircle2, ExternalLink, PackageOpen, Pencil, Truck, X } from "lucide-react";
+import { CalendarClock, CheckCircle2, ExternalLink, PackageOpen, Pencil, Truck, X, XCircle } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
@@ -11,7 +11,7 @@ import { notifications } from "@/lib/notification-messages";
 import { formatStatusLabel } from "@/lib/status-labels";
 
 import { mutateProgrammingAction } from "../actions";
-import { canConfirmProgramming, canEditProgramming } from "../availability";
+import { canCancelProgramming, canConfirmProgramming, canEditProgramming } from "../availability";
 
 import {
   formatProgrammingDateTime,
@@ -26,6 +26,7 @@ import {
   type ProgrammingUnit,
 } from "../types";
 import { ProgrammingEditDialog } from "./programming-edit-dialog";
+import { ProgrammingCancelDialog } from "./programming-cancel-dialog";
 
 function Detail({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -43,6 +44,7 @@ export function ProgrammingPreviewDrawer({
   timezone,
   canConfirm,
   canModify,
+  canCancel,
   suppliers,
   units,
   onUpdated,
@@ -52,6 +54,7 @@ export function ProgrammingPreviewDrawer({
   timezone: string;
   canConfirm: boolean;
   canModify: boolean;
+  canCancel: boolean;
   suppliers: ProgrammingSupplier[];
   units: ProgrammingUnit[];
   onUpdated: () => void;
@@ -59,6 +62,8 @@ export function ProgrammingPreviewDrawer({
 }) {
   const [availabilityNow] = useState(() => Date.now());
   const [editOpen, setEditOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const cancellable = Boolean(item && canCancelProgramming({ ...item, operationStarted: item.dispatches.length > 0, timezone, hasPermission: canCancel }, availabilityNow));
   const canDirectConfirm = Boolean(
     item && canConfirmProgramming({ ...item, operationStarted: item.dispatches.length > 0, hasPermission: canConfirm }, availabilityNow),
   );
@@ -277,6 +282,11 @@ export function ProgrammingPreviewDrawer({
                     <Pencil aria-hidden="true" className="size-4" /> Editar programación
                   </button>
                 ) : null}
+                {cancellable && (
+                  <button type="button" onClick={() => setCancelOpen(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-destructive/30 px-4 text-sm font-semibold text-destructive hover:bg-destructive-soft">
+                    <XCircle aria-hidden="true" className="size-4" /> Cancelar programación
+                  </button>
+                )}
                 {canDirectConfirm && canConfirm ? (
                   <form action={confirmAction}>
                     <input type="hidden" name="intent" value="confirm" />
@@ -306,6 +316,7 @@ export function ProgrammingPreviewDrawer({
           }}
         />
       )}
+      {item && cancelOpen && cancellable && <ProgrammingCancelDialog key={item.id} item={item} onClose={() => setCancelOpen(false)} onCancelled={() => { setCancelOpen(false); onUpdated(); }} />}
     </>
   );
 }

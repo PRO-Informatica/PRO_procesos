@@ -49,7 +49,7 @@ test("seleccionar servicio deja descripción, UM, ID y precio en la guía, sin o
   const h = hooks();
   const { DispatchGuideDialog } = await load("dispatch-guide-dialog", {
     ...shared,
-    react: { useState: h.useState, useEffect() {}, useMemo: fn => fn(), useActionState: () => [{ status: "idle" }, () => {}, false] },
+    react: { useState: h.useState, useRef: value => ({current:value}), useEffect() {}, useMemo: fn => fn(), useActionState: () => [{ status: "idle" }, () => {}, false] },
     "next/navigation": { useRouter: () => ({}) },
     "@/components/feedback/loading-button": { LoadingButton: "LoadingButton" },
     "@/components/feedback/use-action-notification": { useActionNotification() {} },

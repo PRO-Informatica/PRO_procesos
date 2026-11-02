@@ -29,6 +29,7 @@ type ProjectRow = {
   billing_legal_name: string | null;
   billing_tax_id: string | null;
   address: string;
+  additional_addresses: string[];
   status: ProjectStatus;
   timezone: string | null;
 };
@@ -60,7 +61,7 @@ type PlatformAdminOperationalViewAccess = {
 };
 
 const PROJECT_COLUMNS =
-  "id, company_id, name, code, address, billing_legal_name, billing_tax_id, status, timezone";
+  "id, company_id, name, code, address, additional_addresses, billing_legal_name, billing_tax_id, status, timezone";
 
 async function getPlatformAdminOperationalViewAccess(
   userId: string,
@@ -385,6 +386,7 @@ export async function getOperationalProjectAccess(
     name: project.name,
     code: project.code,
     address: project.address,
+    additionalAddresses: project.additional_addresses ?? [],
     billingLegalName: project.billing_legal_name,
     billingTaxId: project.billing_tax_id,
     status: project.status,
@@ -426,6 +428,7 @@ export async function getOperationalProjectAccessForProject(
     name: row.name,
     code: row.code,
     address: row.address,
+    additionalAddresses: row.additional_addresses ?? [],
     billingLegalName: row.billing_legal_name,
     billingTaxId: row.billing_tax_id,
     status: row.status,
@@ -474,6 +477,7 @@ export async function getProjectContext(userId: string): Promise<ProjectContextS
         billingLegalName: project.billing_legal_name,
         billingTaxId: project.billing_tax_id,
         address: project.address,
+        additionalAddresses: project.additional_addresses ?? [],
         status: project.status,
         timezone: project.timezone ?? "America/Guatemala",
       }))

@@ -2,7 +2,7 @@
 
 import { PackageOpen, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { startTransition, useActionState, useEffect, useState } from "react";
+import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 
 import { LoadingButton } from "@/components/feedback/loading-button";
 import { useActionNotification } from "@/components/feedback/use-action-notification";
@@ -17,6 +17,7 @@ import { SERVICE_UNIT_CODES } from "../../platform/project-price-catalogs/servic
 import { formatDispatchMoney } from "../formatters";
 import {
   initialDispatchMutationState,
+  type DispatchMutationState,
   type DispatchCatalogOption,
   type DispatchCatalogType,
   type DispatchGuide,
@@ -118,8 +119,9 @@ export function DispatchGuideDialog({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [state, action, pending] = useActionState(saveDispatchGuideAction, initialDispatchMutationState);
-  useActionNotification({ pending, status: state.status, success: notifications.guideSaved, error: notifications.saveFailed });
+  const guideNumberRef = useRef<HTMLInputElement>(null);
+  const handledResult = useRef<DispatchMutationState | null>(null);
+  const [savedVersion, setSavedVersion] = useState(expectedVersion);
   const [guideNumber, setGuideNumber] = useState(guide?.guideNumber ?? "");
   const [guideDate, setGuideDate] = useState(guide?.guideDate ?? operationDate ?? today());
   const [truckArrivalTime, setTruckArrivalTime] = useState(truckTime(guide?.truckArrivalAt, timezone));
@@ -141,13 +143,33 @@ export function DispatchGuideDialog({
         }))
       : [initialLine(programmedUnitCode, defaultProductDescription ?? "", defaultCatalogProduct)],
   );
+  const [state, action, pending] = useActionState(async (previous: DispatchMutationState, data: FormData) => {
+    const result = await saveDispatchGuideAction(previous, data);
+    if (result.status === "success" && !guide) {
+      if (result.newVersion !== undefined) setSavedVersion(result.newVersion);
+      setGuideNumber("");
+      setTruckArrivalTime("");
+      setTruckDepartureTime("");
+      // A fresh key also clears the catalog search draft for the next guide.
+      setLines([{
+        ...initialLine(programmedUnitCode, defaultProductDescription ?? "", defaultCatalogProduct),
+        key: `new-line-${result.guideId ?? result.newVersion}`,
+      }]);
+    }
+    return result;
+  }, initialDispatchMutationState);
+  useActionNotification({ pending, status: state.status, success: notifications.guideSaved, error: notifications.saveFailed });
 
   useEffect(() => {
-    if (state.status === "success") {
-      router.refresh();
-      onClose();
+    if (pending || state.status !== "success" || handledResult.current === state) return;
+    handledResult.current = state;
+    router.refresh();
+    if (guide) onClose();
+    else {
+      guideNumberRef.current?.focus();
+      guideNumberRef.current?.scrollIntoView({ block: "center" });
     }
-  }, [onClose, router, state.status]);
+  }, [guide, onClose, pending, router, state]);
 
   const update = (
     key: string,
@@ -188,11 +210,12 @@ export function DispatchGuideDialog({
         <input type="hidden" name="projectId" value={projectId} />
         <input type="hidden" name="programmingId" value={programmingId} />
         <input type="hidden" name="dispatchId" value={dispatchId} />
-        <input type="hidden" name="expectedVersion" value={expectedVersion} />
+        <input type="hidden" name="expectedVersion" value={Math.max(expectedVersion, savedVersion)} />
         <input type="hidden" name="guideId" value={guide?.id ?? ""} />
         <div className="space-y-5 p-4 sm:p-6">
+          {!guide && state.status === "success" && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">Guía guardada. Puedes ingresar la siguiente o cerrar esta ventana.</p>}
           <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-            <div className="min-w-0"><label className="form-label" htmlFor="guide-number">Número de guía *</label><input id="guide-number" name="guideNumber" required maxLength={120} value={guideNumber} onChange={(event) => setGuideNumber(event.target.value)} disabled={readOnly || pending} className="form-input min-w-0 disabled:bg-muted" /></div>
+            <div className="min-w-0"><label className="form-label" htmlFor="guide-number">Número de guía *</label><input ref={guideNumberRef} id="guide-number" name="guideNumber" required maxLength={120} value={guideNumber} onChange={(event) => setGuideNumber(event.target.value)} disabled={readOnly || pending} className="form-input min-w-0 disabled:bg-muted" /></div>
             <div className="min-w-0"><label className="form-label" htmlFor="guide-date">Fecha *</label><input id="guide-date" name="guideDate" type="date" required value={guideDate} onChange={(event) => setGuideDate(event.target.value)} disabled={readOnly || pending} className="form-input min-w-0 disabled:bg-muted" /></div>
             <div className="min-w-0"><label className="form-label" htmlFor="guide-truck-arrival">Llegada del camión *</label><input id="guide-truck-arrival" name="truckArrivalTime" type="time" required value={truckArrivalTime} onChange={(event) => setTruckArrivalTime(event.target.value)} disabled={readOnly || pending} className="form-input min-w-0 disabled:bg-muted" /></div>
             <div className="min-w-0"><label className="form-label" htmlFor="guide-truck-departure">Salida del camión *</label><input id="guide-truck-departure" name="truckDepartureTime" type="time" required value={truckDepartureTime} onChange={(event) => setTruckDepartureTime(event.target.value)} disabled={readOnly || pending} className="form-input min-w-0 disabled:bg-muted" /></div>

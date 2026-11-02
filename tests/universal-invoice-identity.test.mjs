@@ -45,14 +45,14 @@ const serviceLine = { quantity: 15.5, unit_code: "M3", code: "SERV0250", descrip
 
 function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = false, savedLines = [product], secondDispatch = false,
   sameConcrete = false, queryFailure = "", expectedCode = product.code, expectedReference = "CONF5001", authorized = true,
-  allowCommit = false, storedServiceComparison = null } = {}) {
+  allowCommit = false, storedServiceComparison = null, projectAddress, additionalAddresses = [] } = {}) {
   const projectId = "project-ado", dispatchId = "dispatch-ado", batchId = "batch-ado";
   const raw = { invoice_number: lines[0]?.code.startsWith("SERV") ? "187584486" : "853688342", invoice_date: "2026-10-14",
     currency: "GTQ", subtotal: 20120.24, total: 20120.24, pca_original: pca, lines, detected_invoice_numbers: ["one"],
     supplier_legal_name: "MEZCLADORA, S.A.", supplier_tax_id: "32709-3", billing_legal_name: "LAS CAMPANELAS, SOCIEDAD ANONIMA",
     billing_tax_id: "106650653", shipping_address: "1 CALLE ZONA 1 QUETZALTENANGO", authorization_number: "AA-BB-CC", series: "S1" };
   const scopes = authorized ? [{ project: { id: projectId, status: "ACTIVE", code: "ADO-PRO", name: "ADO", companyCode: "PRO-ADO",
-    address: raw.shipping_address, billingLegalName: raw.billing_legal_name, billingTaxId: raw.billing_tax_id, timezone: "America/Guatemala" },
+    address: projectAddress ?? raw.shipping_address, additionalAddresses, billingLegalName: raw.billing_legal_name, billingTaxId: raw.billing_tax_id, timezone: "America/Guatemala" },
     permissions: ["invoice.universal", "invoice.view", "invoice.create", "invoice.match"] }] : [];
   const dispatch = { id: dispatchId, project_id: projectId, programming_id: "programming-ado", supplier_id: "supplier-ado",
     order_number: "47", real_volume: 15.5, real_unit_code: "M3", status: "COMPLETED", result: "DISPATCHED" };
@@ -151,8 +151,48 @@ function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = 
     uploadedRaw.set(name, { ...raw, ...overrides });
     return new File([name], `${name}.pdf`, { type: "application/pdf" });
   }
-  return { api, file, reads, writes, tables, processor, raw, upload, authorizations };
+  return { api, file, reads, writes, tables, processor, raw, upload, authorizations, scopes };
 }
+
+test("Universal clasifica y revalida una dirección adicional antes de guardar", async () => {
+  const secondary = "1 CALLE ZONA 1 QUETZALTENANGO";
+  const f = fixture({ projectAddress: "CALLE 7 ZONA 8 GUATEMALA", additionalAddresses: [secondary], allowCommit: true });
+  const preview = await f.api.classifyUniversalInvoice(f.file);
+  assert.equal(preview.status, "READY");
+  assert.equal(preview.projectId, "project-ado");
+  assert.equal(f.writes.length, 0);
+  f.scopes[0].project.additionalAddresses = [];
+  const rejected = await f.api.commitUniversalInvoice(f.file, { projectId: "project-ado", dispatchId: "dispatch-ado" });
+  assert.equal(rejected.saved, false);
+  assert.equal(rejected.status, "PROJECT_NOT_FOUND");
+  assert.equal(f.writes.length, 0);
+});
+
+test("Universal mantiene ambigüedad cuando dos proyectos comparten una dirección secundaria", async () => {
+  const secondary = "1 CALLE ZONA 1 QUETZALTENANGO";
+  const f = fixture({ projectAddress: "CALLE 7 ZONA 8 GUATEMALA", additionalAddresses: [secondary] });
+  f.scopes.push({ ...f.scopes[0], project: { ...f.scopes[0].project, id: "other", address: "CALLE 6 ZONA 8 GUATEMALA" } });
+  const preview = await f.api.classifyUniversalInvoice(f.file);
+  assert.equal(preview.status, "PROJECT_AMBIGUOUS");
+  assert.equal(preview.candidateProjects.length, 2);
+  assert.equal(f.reads.length, 0);
+});
+
+test("el procesador individual registra la dirección adicional coincidente para conciliación", () => {
+  const f = fixture();
+  const processed = f.processor.processExtractedInvoice(f.raw, {
+    expectedType: "PRODUCT", companyCode: "PRO-ADO", orderNumber: "47",
+    supplierName: f.raw.supplier_legal_name, supplierTaxId: f.raw.supplier_tax_id,
+    billingLegalName: f.raw.billing_legal_name, billingTaxId: f.raw.billing_tax_id,
+    projectAddress: "CALLE 7 ZONA 8 GUATEMALA", projectAdditionalAddresses: [f.raw.shipping_address],
+    accountingPeriod: "2026-10-01", projectTimezone: "America/Guatemala",
+    expectedQuantity: 15.5, expectedUnitCode: "M3", expectedQuantitySource: "REAL_VOLUME", realVolume: 15.5,
+    expectedProducts: [{ code: product.code, reference: "CONF5001" }], productInvoicePca: null, productInvoiceIdentityValid: false,
+  });
+  assert.equal(processed.status, "success");
+  assert.equal(processed.payload.validations.project_valid, true);
+  assert.equal(processed.payload.matched_project_address, f.raw.shipping_address);
+});
 
 test("clasifica el producto correcto y rechaza CONF4001 antes de preparar documentos", async () => {
   const good = fixture();

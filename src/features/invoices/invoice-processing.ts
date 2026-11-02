@@ -6,7 +6,7 @@ import {
   normalizeBusinessIdentity,
   normalizeTaxIdentity,
 } from "@/lib/business-identity";
-import { compareAddresses, normalizeAddressIdentity } from "@/lib/address-identity";
+import { compareProjectAddresses, normalizeAddressIdentity } from "@/lib/address-identity";
 
 import { classifyInvoiceLine, classifyInvoiceLines } from "./invoice-classification";
 import { matchInvoiceProducts, sameFullPca, type DispatchInvoiceIdentity } from "./dispatch-invoice-identity";
@@ -29,6 +29,7 @@ export type InvoiceProcessingContext = DispatchInvoiceIdentity & {
   billingLegalName: string | null;
   billingTaxId: string | null;
   projectAddress: string | null;
+  projectAdditionalAddresses?: readonly string[];
   accountingPeriod: string;
   projectTimezone: string;
   expectedQuantity: number | null;
@@ -52,6 +53,7 @@ export type InvoiceProcessingPayload = {
   supplier_tax_id: string | null;
   shipping_address: string | null;
   shipping_address_normalized: string | null;
+  matched_project_address: string | null;
   project_match_method: "EXACT_ADDRESS" | "CANONICAL_ADDRESS" | "TOLERANT_ADDRESS";
   authorization_number: string | null;
   series: string | null;
@@ -171,10 +173,11 @@ export function processExtractedInvoice(
   const expectedSupplierName = normalizeBusinessIdentity(context.supplierName);
   const supplierTax = normalizeTaxId(extracted.supplier_tax_id);
   const expectedSupplierTax = normalizeTaxId(context.supplierTaxId);
-  const addressComparison = compareAddresses(
-    context.projectAddress,
+  const matchedAddress = compareProjectAddresses(
+    { address: context.projectAddress, additionalAddresses: context.projectAdditionalAddresses },
     extracted.shipping_address,
   );
+  const addressComparison = matchedAddress.comparison;
   const projectValid = addressComparison.result === "MATCH";
   const configuredBillingNameMatches = Boolean(
     normalizeBusinessIdentity(context.billingLegalName) &&
@@ -202,7 +205,7 @@ export function processExtractedInvoice(
   const warnings: string[] = [];
   if (projectValid && addressComparison.matchMethod !== "EXACT") {
     warnings.push(
-      `${addressComparison.warnings[0]} Dirección configurada: "${context.projectAddress?.trim() ?? ""}". Dirección detectada: "${extracted.shipping_address?.trim() ?? ""}".${addressComparison.differences.length ? ` ${addressComparison.differences.join(" ")}` : ""}`,
+      `${addressComparison.warnings[0]} Dirección configurada: "${matchedAddress.address ?? ""}". Dirección detectada: "${extracted.shipping_address?.trim() ?? ""}".${addressComparison.differences.length ? ` ${addressComparison.differences.join(" ")}` : ""}`,
     );
   }
   const period = evaluateInvoicePeriod({
@@ -273,6 +276,7 @@ export function processExtractedInvoice(
       supplier_tax_id: extracted.supplier_tax_id,
       shipping_address: extracted.shipping_address,
       shipping_address_normalized: normalizeAddressIdentity(extracted.shipping_address) || null,
+      matched_project_address: matchedAddress.address,
       project_match_method: addressComparison.matchMethod === "EXACT"
         ? "EXACT_ADDRESS"
         : addressComparison.matchMethod === "CANONICAL"

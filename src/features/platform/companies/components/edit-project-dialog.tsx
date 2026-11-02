@@ -10,6 +10,7 @@ import { notifications } from "@/lib/notification-messages";
 
 import { updateCompanyProject } from "../actions";
 import type { CompanyProject, CompanyStatus, ProjectActionState } from "../types";
+import { ProjectAddressFields } from "./project-address-fields";
 
 const INITIAL_STATE: ProjectActionState = { status: "idle" };
 
@@ -86,21 +87,11 @@ function EditProjectForm({
                 className="form-input font-mono uppercase"
               />
             </div>
-            <div className="sm:col-span-2">
-              <label className="form-label" htmlFor={`edit-project-address-${project.id}`}>
-                Dirección exacta de Obra *
-              </label>
-              <input
-                id={`edit-project-address-${project.id}`}
-                name="address"
-                required
-                minLength={5}
-                maxLength={300}
-                defaultValue={values?.address ?? project.address ?? ""}
-                className="form-input"
-                placeholder="Dirección que aparece como Dirección de Envío"
-              />
-            </div>
+            <ProjectAddressFields
+              address={values?.address ?? project.address}
+              additionalAddresses={values?.additionalAddresses ?? project.additionalAddresses}
+              pending={pending}
+            />
             <div>
               <label className="form-label" htmlFor={`edit-project-billing-name-${project.id}`}>Razón social de facturación *</label>
               <input id={`edit-project-billing-name-${project.id}`} name="billingLegalName" required minLength={2} maxLength={200} defaultValue={values?.billingLegalName ?? project.billingLegalName ?? ""} className="form-input" placeholder="Receptor de la factura" />

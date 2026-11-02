@@ -1,6 +1,6 @@
 import { normalizeBusinessIdentity } from "../../lib/business-identity.ts";
 import {
-  compareAddresses,
+  compareProjectAddresses,
   resolveAddressCandidates,
   type AddressComparison,
 } from "../../lib/address-identity.ts";
@@ -33,6 +33,7 @@ export type MixtoProjectAddressCandidate = {
   id: string;
   label: string;
   address: string;
+  additionalAddresses?: readonly string[];
   billingLegalName: string | null;
 };
 
@@ -87,23 +88,25 @@ export function validateMixtoProjectReference(input: {
   projectId?: string;
   projectLabel?: string;
   projectAddress: string;
+  projectAdditionalAddresses?: readonly string[];
   workbookAddress: string;
   billingLegalName: string;
   invoiceRecipient: string;
   candidateProjects?: MixtoProjectAddressCandidate[];
 }) {
-  if (!input.projectAddress.trim()) throw new Error(MIXTO_PROJECT_ADDRESS_MISSING_ERROR);
+  const matched = compareProjectAddresses({ address: input.projectAddress, additionalAddresses: input.projectAdditionalAddresses }, input.workbookAddress);
+  if (!matched.address) throw new Error(MIXTO_PROJECT_ADDRESS_MISSING_ERROR);
   if (!input.workbookAddress.trim()) throw new Error(MIXTO_WORKBOOK_ADDRESS_MISSING_ERROR);
 
   const expectedName = normalizeBusinessIdentity(input.billingLegalName);
   const actualName = normalizeBusinessIdentity(input.invoiceRecipient);
   const billingNameMatches = Boolean(expectedName && actualName && expectedName === actualName);
-  const comparison = compareAddresses(input.projectAddress, input.workbookAddress);
+  const comparison = matched.comparison;
   const candidates = input.candidateProjects ?? [];
   const candidateResolution = candidates.length
     ? resolveAddressCandidates(
         input.workbookAddress,
-        candidates.map((candidate) => ({ id: candidate.id, address: candidate.address })),
+        candidates.map((candidate) => ({ id: candidate.id, address: candidate.address, additionalAddresses: candidate.additionalAddresses })),
       )
     : null;
   const exactBillingCandidates = candidateResolution?.candidates.filter(({ id }) => {
@@ -144,7 +147,7 @@ export function validateMixtoProjectReference(input: {
   }
   if (comparison.result === "REQUIRES_REVIEW" && !billingNameMatches) {
     throw new Error(
-      `${MIXTO_PROJECT_ADDRESS_REVIEW_ERROR} Dirección configurada: "${input.projectAddress.trim()}". Dirección detectada: "${input.workbookAddress.trim()}". ${comparisonDetails(comparison)}`,
+      `${MIXTO_PROJECT_ADDRESS_REVIEW_ERROR} Dirección configurada: "${matched.address}". Dirección detectada: "${input.workbookAddress.trim()}". ${comparisonDetails(comparison)}`,
     );
   }
 
@@ -152,7 +155,7 @@ export function validateMixtoProjectReference(input: {
   if (comparison.matchMethod !== "EXACT") {
     warnings.push(tolerantAddressWarning({
       projectLabel: input.projectLabel,
-      projectAddress: input.projectAddress,
+      projectAddress: matched.address,
       workbookAddress: input.workbookAddress,
       comparison,
     }));
@@ -164,6 +167,7 @@ export function validateMixtoProjectReference(input: {
   }
   return {
     comparison,
+    matchedAddress: matched.address,
     warnings,
     warning: warnings[0] ?? null,
   };

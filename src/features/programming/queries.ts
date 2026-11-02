@@ -133,7 +133,10 @@ export function getInitialProgrammingRange(
   timezone = DEFAULT_TIMEZONE,
 ): ProgrammingRange {
   const now = dateParts(new Date(), timezone);
-  const start = dateKey(now.year, now.month, 1);
+  // The month grid includes the previous month's days in its first week.
+  const firstVisibleDay = new Date(Date.UTC(now.year, now.month - 1, 1));
+  firstVisibleDay.setUTCDate(1 - (firstVisibleDay.getUTCDay() + 6) % 7);
+  const start = dateKey(firstVisibleDay.getUTCFullYear(), firstVisibleDay.getUTCMonth() + 1, firstVisibleDay.getUTCDate());
   const end = dateKey(now.year, now.month + 1, 8);
   return {
     start: zonedMidnightIso(start, timezone),

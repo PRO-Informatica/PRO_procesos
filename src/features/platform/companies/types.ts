@@ -31,6 +31,7 @@ export type CompanyProject = {
   name: string;
   code: string;
   address: string | null;
+  additionalAddresses: string[];
   status: string;
   timezone: string;
   startDate: string | null;
@@ -84,6 +85,7 @@ export type ProjectActionState = {
     name?: string;
     code?: string;
     address?: string;
+    additionalAddresses?: string[];
     timezone?: string;
     startDate?: string;
     estimatedEndDate?: string;
