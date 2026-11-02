@@ -15,6 +15,8 @@ import * as parser from "../src/features/batches/mixto-listo-parser.ts";
 import * as business from "../src/lib/business-identity.ts";
 import * as address from "../src/lib/address-identity.ts";
 import * as pairing from "../src/features/invoices/universal/upload-pairing.ts";
+import * as comparison from "../src/features/invoices/universal/reconciliation-comparison.ts";
+import * as serviceSummary from "../src/features/invoices/service-reconciliation.ts";
 
 async function compile(path) {
   return ts.transpileModule(await readFile(new URL(path, import.meta.url), "utf8"), {
@@ -24,6 +26,7 @@ async function compile(path) {
 const serviceCode = await compile("../src/features/invoices/universal/service.ts");
 const processorCode = await compile("../src/features/invoices/invoice-processing.ts");
 const queriesCode = await compile("../src/features/invoices/dispatch-invoice-identity-queries.ts");
+const comparisonQueriesCode = await compile("../src/features/invoices/universal/reconciliation-queries.ts");
 
 function load(code, imports) {
   const exports = {};
@@ -34,12 +37,15 @@ function load(code, imports) {
   return exports;
 }
 const queries = load(queriesCode, { "server-only": {}, "./dispatch-invoice-identity": identity });
+const comparisonQueries = load(comparisonQueriesCode, { "server-only": {}, "../dispatch-invoice-identity-queries": queries,
+  "../service-reconciliation": serviceSummary, "./reconciliation-comparison": comparison });
 const product = { quantity: 15.5, unit_code: "M3", code: "86131066", description: 'CONF5001 FLUIDO 5000 PSI TNM 3/8"' };
 const wrongProduct = { quantity: 8, unit_code: "M3", code: "86131064", description: 'CONF4001 FLUIDO 4000 PSI TNM 3/8"' };
 const serviceLine = { quantity: 15.5, unit_code: "M3", code: "SERV0250", description: "BOMBA + OPERADOR ( M³)" };
 
 function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = false, savedLines = [product], secondDispatch = false,
-  sameConcrete = false, queryFailure = "", expectedCode = product.code, expectedReference = "CONF5001", authorized = true } = {}) {
+  sameConcrete = false, queryFailure = "", expectedCode = product.code, expectedReference = "CONF5001", authorized = true,
+  allowCommit = false, storedServiceComparison = null } = {}) {
   const projectId = "project-ado", dispatchId = "dispatch-ado", batchId = "batch-ado";
   const raw = { invoice_number: lines[0]?.code.startsWith("SERV") ? "187584486" : "853688342", invoice_date: "2026-10-14",
     currency: "GTQ", subtotal: 20120.24, total: 20120.24, pca_original: pca, lines, detected_invoice_numbers: ["one"],
@@ -54,7 +60,8 @@ function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = 
     dispatches: [dispatch],
     project_product_prices: [{ id: "price-1", project_id: projectId, code: expectedCode, reference: expectedReference }],
     dispatch_guides: [{ id: "guide-1", project_id: projectId, dispatch_id: dispatchId }],
-    dispatch_guide_lines: [{ id: "line-1", project_id: projectId, guide_id: "guide-1", catalog_type: "PRODUCT", product_code: expectedCode, catalog_reference: expectedReference }],
+    dispatch_guide_lines: [{ id: "line-1", project_id: projectId, guide_id: "guide-1", catalog_type: "PRODUCT", product_code: expectedCode, catalog_reference: expectedReference },
+      { id: "service-1", project_id: projectId, guide_id: "guide-1", catalog_type: "SERVICE", unit_price: 1, estimated_subtotal: "20120.2400", currency: "GTQ" }],
     programming_lines: [{ id: "pl-1", programming_id: dispatch.programming_id, concrete_type: expectedReference }],
     dispatch_reconciliations: [{ dispatch_id: dispatchId, project_id: projectId, current_product_invoice_id: savedProduct ? "invoice-product" : null,
       current_service_invoice_id: null, status: "NOT_STARTED" }],
@@ -72,6 +79,7 @@ function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = 
     tables.dispatches.push({ ...dispatch, id: "dispatch-other", programming_id: "programming-other" });
     tables.dispatch_guides.push({ id: "guide-2", project_id: projectId, dispatch_id: "dispatch-other" });
     tables.dispatch_guide_lines.push({ id: "line-2", project_id: projectId, guide_id: "guide-2", catalog_type: "PRODUCT", product_code: secondCode, catalog_reference: secondReference });
+    tables.dispatch_guide_lines.push({ id: "service-2", project_id: projectId, guide_id: "guide-2", catalog_type: "SERVICE", unit_price: 1, estimated_subtotal: "20120.2400", currency: "GTQ" });
     tables.programming.push({ ...tables.programming[0], id: "programming-other" });
     tables.batch_dispatches.push({ id: "bd-2", project_id: projectId, dispatch_id: "dispatch-other", batch_id: batchId, removed_at: null });
   }
@@ -98,6 +106,26 @@ function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = 
     };
     return query;
   } };
+  let uploadedPayload;
+  const server = {
+    async rpc(name, args) {
+      writes.push({ name, args });
+      if (name === "prepare_dispatch_invoice_upload_v2") {
+        uploadedPayload = args.p_payload;
+        return { data: [{ invoice_id: "invoice-new-service", document_id: "document", version_id: "version", storage_bucket: "private-documents", storage_path: "fixture.pdf" }], error: null };
+      }
+      if (name === "complete_dispatch_invoice_processing") tables.dispatch_reconciliations[0].current_service_invoice_id = "invoice-new-service";
+      if (name === "reconcile_dispatch_service") {
+        Object.assign(tables.dispatch_reconciliations[0], { service_status: "WITH_DIFFERENCES", service_comparison: {
+          ...storedServiceComparison, invoice_total: uploadedPayload.total, invoice_currency: uploadedPayload.currency,
+          currency: "GTQ", snapshots_complete: true, checked_at: "2026-11-02T17:00:00Z",
+        } });
+        return { data: "WITH_DIFFERENCES", error: null };
+      }
+      return { data: null, error: null };
+    },
+  };
+  admin.storage = { from() { return { async upload() { writes.push("upload"); return { error: null }; } }; } };
   const processor = load(processorCode, {
     "server-only": {}, "@/features/batches/mixto-listo-extractor": {}, "@/features/batches/mixto-listo-parser": parser,
     "@/lib/business-identity": business, "@/lib/address-identity": address, "./invoice-classification": classification,
@@ -111,11 +139,12 @@ function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = 
     "@/features/projects/queries": { getOperationalProjectAccess: async () => { authorizations.push("authorized"); return scopes; } },
     "@/lib/address-identity": address, "@/lib/business-identity": business,
     "@/lib/supabase/admin": { createAdminClient: () => admin },
-    "@/lib/supabase/server": { createClient() { writes.push("createClient"); throw new Error("Unexpected persistence"); } },
+    "@/lib/supabase/server": { createClient() { if (allowCommit) return server; writes.push("createClient"); throw new Error("Unexpected persistence"); } },
     "../invoice-classification": classification, "../dispatch-invoice-identity": identity,
     "../dispatch-invoice-identity-queries": queries, "../invoice-identity": fiscal,
     "../invoice-processing": processor, "../reconciliation-quantity": quantity, "../reinvoicing": reinvoicing,
     "./upload-pairing": pairing,
+    "./reconciliation-comparison": comparison, "./reconciliation-queries": comparisonQueries,
   });
   const file = new File(["synthetic PDF"], "invoice.pdf", { type: "application/pdf" });
   function upload(name, overrides = {}) {
@@ -348,4 +377,77 @@ test("el procesador común también bloquea la carga individual del concreto equ
     expectedQuantity: 8, expectedUnitCode: "M3", expectedQuantitySource: "REAL_VOLUME", realVolume: 8,
     expectedProducts: [{ code: product.code, reference: "CONF5001" }], productInvoicePca: null, productInvoiceIdentityValid: false });
   assert.equal(result.status, "error"); assert.match(result.details.join(" "), /código y la referencia/u);
+});
+
+test("Servicio alerta antes de guardar usando todos los snapshots del despacho, sin cambiar datos", async () => {
+  const f = fixture({ lines: [serviceLine], savedProduct: true });
+  f.raw.total = 1477;
+  f.tables.dispatch_guide_lines.find(line => line.catalog_type === "SERVICE").estimated_subtotal = "2121.5600";
+  const result = await f.api.classifyUniversalInvoice(f.file);
+  assert.equal(result.status, "READY_WITH_DIFFERENCES");
+  assert.equal(result.comparison.expected, 2121.56);
+  assert.equal(result.comparison.invoiced, 1477);
+  assert.equal(result.comparison.difference, -644.56);
+  assert.equal(f.writes.length, 0);
+});
+
+test("Producto alerta por cantidad, y no por comparar importes monetarios", async () => {
+  const f = fixture(); f.raw.lines = [{ ...product, quantity: 8 }];
+  const result = await f.api.classifyUniversalInvoice(f.file);
+  assert.equal(result.status, "READY_WITH_DIFFERENCES");
+  assert.equal(result.comparison.expected, 15.5);
+  assert.equal(result.comparison.invoiced, 8);
+  assert.equal(result.comparison.difference, -7.5);
+  assert.equal(result.comparison.expectedUnit, "M3");
+});
+
+test("una factura duplicada muestra su conciliación vigente, pero continúa bloqueada para guardar", async () => {
+  const f = fixture({ lines: [serviceLine] });
+  f.tables.invoices.push({ id: "service-existing", project_id: "project-ado", dispatch_id: "dispatch-ado", invoice_type: "SERVICE",
+    fiscal_document_key: fiscal.buildFiscalDocumentKey({ issuerTaxId: f.raw.supplier_tax_id, authorizationNumber: f.raw.authorization_number }) });
+  Object.assign(f.tables.dispatch_reconciliations[0], { current_service_invoice_id: "service-existing", service_status: "WITH_DIFFERENCES",
+    service_comparison: { estimated_total: 2121.56, invoice_total: 1477, difference: -644.56, currency: "GTQ", invoice_currency: "GTQ", snapshots_complete: true, checked_at: "2026-11-02" } });
+  const result = await f.api.commitUniversalInvoice(f.file);
+  assert.equal(result.status, "DUPLICATE"); assert.equal(result.saved, false);
+  assert.equal(result.dispatchId, "dispatch-ado"); assert.equal(result.reconciliationStatus, "WITH_DIFFERENCES");
+  assert.equal(result.comparison.difference, -644.56); assert.equal(f.writes.length, 0);
+  f.tables.invoices[0].project_id = "another-project";
+  const foreign = await f.api.classifyUniversalInvoice(f.file);
+  assert.equal(foreign.status, "DUPLICATE"); assert.equal(foreign.comparison, null); assert.equal(foreign.dispatchId, null);
+});
+
+test("un PDF anterior no recibe la diferencia de la factura que lo reemplazó", async () => {
+  const f = fixture({ lines: [serviceLine] });
+  f.tables.invoices.push({ id: "service-old", project_id: "project-ado", dispatch_id: "dispatch-ado", invoice_type: "SERVICE",
+    fiscal_document_key: fiscal.buildFiscalDocumentKey({ issuerTaxId: f.raw.supplier_tax_id, authorizationNumber: f.raw.authorization_number }) });
+  f.tables.dispatch_reconciliations[0].current_service_invoice_id = "service-new";
+  const result = await f.api.classifyUniversalInvoice(f.file);
+  assert.equal(result.status, "DUPLICATE"); assert.equal(result.comparison, null); assert.equal(f.writes.length, 0);
+});
+
+test("al guardar, Universal devuelve el resultado persistido de la conciliación y conserva su alerta", async () => {
+  const f = fixture({ lines: [serviceLine], savedProduct: true, allowCommit: true,
+    storedServiceComparison: { estimated_total: 22000, difference: -1879.76 } });
+  const result = await f.api.commitUniversalInvoice(f.file);
+  assert.equal(result.saved, true);
+  assert.equal(result.reconciliationStatus, "WITH_DIFFERENCES");
+  assert.equal(result.comparison.expected, 22000);
+  assert.equal(result.comparison.difference, -1879.76);
+  assert.equal(comparison.hasReconciliationDifferences(result), true);
+  assert.equal(f.writes.filter(write => write.name === "reconcile_dispatch_service").length, 1);
+});
+
+test("el estimado de Servicio pagina todas las líneas y excluye otro proyecto o despacho", async () => {
+  const f = fixture({ lines: [serviceLine], savedProduct: true });
+  f.raw.total = 5.01;
+  const base = f.tables.dispatch_guide_lines.find(line => line.catalog_type === "SERVICE");
+  f.tables.dispatch_guide_lines = f.tables.dispatch_guide_lines.filter(line => line.catalog_type !== "SERVICE");
+  f.tables.dispatch_guide_lines.push(...Array.from({ length: 501 }, (_, i) => ({ ...base, id: `service-${i}`, estimated_subtotal: "0.0100" })));
+  f.tables.dispatch_guide_lines.push({ ...base, id: "foreign", project_id: "other-project", estimated_subtotal: "100000.0000" });
+  f.tables.dispatch_guides.push({ id: "other-guide", project_id: "project-ado", dispatch_id: "other-dispatch" });
+  f.tables.dispatch_guide_lines.push({ ...base, id: "other-line", guide_id: "other-guide", estimated_subtotal: "100000.0000" });
+  const result = await f.api.classifyUniversalInvoice(f.file);
+  assert.equal(result.status, "READY"); assert.equal(result.comparison.expected, 5.01); assert.equal(result.comparison.matches, true);
+  assert.equal(f.reads.filter(read => read.table === "dispatch_guide_lines" && read.filters.some(([, key, value]) => key === "catalog_type" && value === "SERVICE")).length, 2);
+  assert.equal(f.writes.length, 0);
 });

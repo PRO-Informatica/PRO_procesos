@@ -161,7 +161,13 @@ export async function addDispatchToBatchAction(_previous: BatchMutationState, fo
   ].filter(Boolean))];
   if (![projectId, batchId].every((id) => UUID.test(id)) || !dispatchIds.length || dispatchIds.length > 200 || !dispatchIds.every((id) => UUID.test(id))) return { status: "error", message: "Selecciona al menos un despacho válido para modificar el lote." };
   if (!(await authorize(projectId, "batch.modify"))) return { status: "error", message: "No tienes permiso para modificar el lote." };
-  const { data, error } = await (await createClient()).rpc("add_dispatches_to_batch", { p_batch_id: batchId, p_dispatch_ids: dispatchIds });
+  const supabase = await createClient();
+  const dispatches = await supabase.from("dispatches").select("id, status").eq("project_id", projectId).in("id", dispatchIds);
+  if (dispatches.error) return { status: "error", message: "No fue posible verificar el estado de los despachos. Intenta nuevamente." };
+  if (dispatches.data?.length !== dispatchIds.length || dispatches.data.some((dispatch) => dispatch.status !== "COMPLETED")) {
+    return { status: "error", message: "Solo puedes agregar despachos completados al lote. Actualiza la lista e intenta nuevamente." };
+  }
+  const { data, error } = await supabase.rpc("add_dispatches_to_batch", { p_batch_id: batchId, p_dispatch_ids: dispatchIds });
   if (error) return { status: "error", message: batchError(error.message) };
   refresh(batchId);
   dispatchIds.forEach((dispatchId) => revalidatePath(`/dispatches/${dispatchId}`));
