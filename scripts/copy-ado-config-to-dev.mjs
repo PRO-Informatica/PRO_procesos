@@ -49,7 +49,7 @@ const snapshotQuery = `select jsonb_build_object(
  'incidents',coalesce((select jsonb_agg(jsonb_build_object('code',i.code,'name',i.name,'active',i.active)
    order by i.code) from public.incident_types i where i.company_id=c.id),'[]'),
  'projects',coalesce((select jsonb_agg(jsonb_build_object('sourceId',p.id,'code',p.code,'name',p.name,
-   'status',p.status,'address',p.address,'timezone',p.timezone,'start_date',p.start_date,
+   'status',p.status,'address',p.address,'additionalAddresses',coalesce(to_jsonb(p)->'additional_addresses','[]'::jsonb),'timezone',p.timezone,'start_date',p.start_date,
    'estimated_end_date',p.estimated_end_date,'billing_legal_name',p.billing_legal_name,'billing_tax_id',p.billing_tax_id,
    'suppliers',coalesce((select jsonb_agg(jsonb_build_object('code',s.code,'active',ps.active,'is_default',ps.is_default)
      order by s.code) from public.project_suppliers ps join public.suppliers s on s.id=ps.supplier_id
@@ -148,8 +148,8 @@ begin
    on conflict(company_id,code) do update set name=excluded.name,active=excluded.active;
  end loop;
  for v_p in select * from jsonb_array_elements(v_payload->'projects') loop
-   insert into public.projects(company_id,name,code,address,timezone,status,start_date,estimated_end_date,billing_legal_name,billing_tax_id)
-   values(v_company,v_p->>'name',v_p->>'code',v_p->>'address',v_p->>'timezone',(v_p->>'status')::public.project_status,
+   insert into public.projects(company_id,name,code,address,additional_addresses,timezone,status,start_date,estimated_end_date,billing_legal_name,billing_tax_id)
+   values(v_company,v_p->>'name',v_p->>'code',v_p->>'address',array(select jsonb_array_elements_text(v_p->'additionalAddresses')),v_p->>'timezone',(v_p->>'status')::public.project_status,
      (v_p->>'start_date')::date,(v_p->>'estimated_end_date')::date,v_p->>'billing_legal_name',v_p->>'billing_tax_id')
    returning id into v_project;
    insert into public.project_suppliers(company_id,project_id,supplier_id,active,is_default)

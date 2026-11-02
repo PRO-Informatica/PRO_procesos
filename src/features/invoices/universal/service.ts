@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { extractMixtoListoInvoicePdf } from "@/features/batches/mixto-listo-extractor";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { getOperationalProjectAccess } from "@/features/projects/queries";
-import { addressesMatch } from "@/lib/address-identity";
+import { projectAddressMatches } from "@/lib/address-identity";
 import { normalizeBusinessIdentity, normalizeTaxIdentity } from "@/lib/business-identity";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -159,7 +159,7 @@ async function classifyInternal(
   }
 
   const addressMatches = scopes.filter(({ project }) =>
-    addressesMatch(project.address, raw.shipping_address),
+    projectAddressMatches(project, raw.shipping_address),
   );
   const namedMatches = addressMatches.filter(({ project }) =>
     normalizeBusinessIdentity(project.billingLegalName) ===
@@ -444,6 +444,7 @@ async function classifyInternal(
     billingLegalName: project.billingLegalName,
     billingTaxId: project.billingTaxId,
     projectAddress: project.address,
+    projectAdditionalAddresses: project.additionalAddresses,
     accountingPeriod: batch.accounting_period,
     projectTimezone: project.timezone,
     expectedQuantity: quantityBasis.quantity,

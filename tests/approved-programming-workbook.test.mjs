@@ -37,12 +37,21 @@ async function workbookBuffer(overrides = {}) {
     H12: "Coordinar Bomba", I12: "07.10.2030", J12: "13:00", K12: "28",
     ...overrides.row,
   };
+  for (const [cell, value] of Object.entries(overrides.worksite ?? {})) sheet.getCell(cell).value = value;
   for (const [cell, value] of Object.entries(row)) sheet.getCell(cell).value = value;
   for (const [cell, numFmt] of Object.entries(overrides.formats ?? {})) {
     sheet.getCell(cell).numFmt = numFmt;
   }
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
+
+test("la carga de Excel reconoce otra dirección registrada del mismo proyecto", async () => {
+  const alternate = "CALLE PRINCIPAL LOTE 2 CASA 18 ZONA 4";
+  const buffer = await workbookBuffer({ worksite: { B3: alternate } });
+  const parsed = await extractMixtoProgrammingWorkbookBuffer(buffer, { ...project, additionalAddresses: [alternate] });
+  assert.equal(parsed.rows.length, 1);
+  await assert.rejects(() => extractMixtoProgrammingWorkbookBuffer(buffer, project), /no corresponde/u);
+});
 
 test("usa DÍA/HORA PROGRAMADA y Pedido No. de la segunda fila de encabezados", async () => {
   const result = await extractMixtoProgrammingWorkbookBuffer(await workbookBuffer(), project);

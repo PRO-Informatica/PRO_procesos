@@ -4,6 +4,9 @@ import test from "node:test";
 import {
   addressesMatch,
   compareAddresses,
+  compareProjectAddresses,
+  getProjectAddresses,
+  projectAddressMatches,
   resolveAddressCandidates,
 } from "../src/lib/address-identity.ts";
 
@@ -11,6 +14,37 @@ const adoConfigured =
   "1RA CALLE BOULBEARD PRINCIPAL LABOR XELA ZONA 1 LA ESPERANZA QUETZALTENANGO";
 const adoWorkbook =
   "1ra. Calle Boulebart Principal Labor Xela, Zona 1 del Municipio de la Ezperanza, Quetzaltenango";
+
+test("acepta cualquiera de las direcciones de obra y conserva la que coincidió", () => {
+  const project = { address: "10 CALLE 3-42 ZONA 8 GUATEMALA", additionalAddresses: [adoConfigured, "9 CALLE 5A-62 ZONA 9 QUETZALTENANGO"] };
+  assert.equal(projectAddressMatches(project, project.address), true);
+  assert.equal(projectAddressMatches(project, adoWorkbook), true);
+  assert.equal(compareProjectAddresses(project, adoWorkbook).address, adoConfigured);
+  assert.equal(projectAddressMatches(project, "9 CALLE 5A-63 ZONA 9 QUETZALTENANGO"), false);
+});
+
+test("una coincidencia exacta adicional gana sobre otra dirección con tolerancia", () => {
+  const match = compareProjectAddresses({ address: adoConfigured, additionalAddresses: [adoWorkbook] }, adoWorkbook);
+  assert.equal(match.comparison.matchMethod, "EXACT");
+  assert.equal(match.address, adoWorkbook);
+});
+
+test("varias direcciones del mismo proyecto no lo convierten en candidatos distintos", () => {
+  const resolution = resolveAddressCandidates(adoWorkbook, [{ id: "ado", address: adoConfigured, additionalAddresses: [adoWorkbook] }]);
+  assert.equal(resolution.result, "MATCH");
+  assert.equal(resolution.selectedId, "ado");
+  assert.equal(resolution.candidates.length, 1);
+  assert.deepEqual(getProjectAddresses({ address: " CALLE 1 ", additionalAddresses: ["calle 1", "CALLE 2", ""] }), ["CALLE 1", "CALLE 2"]);
+});
+
+test("una dirección compartida por dos proyectos sigue siendo ambigua aunque sea adicional", () => {
+  const resolution = resolveAddressCandidates(adoWorkbook, [
+    { id: "ado", address: "CALLE 2 ZONA 8 GUATEMALA", additionalAddresses: [adoWorkbook] },
+    { id: "other", address: adoWorkbook },
+  ]);
+  assert.equal(resolution.result, "REQUIRES_REVIEW");
+  assert.equal(resolution.selectedId, null);
+});
 
 test("acepta el caso ADO mediante tolerancia ortográfica controlada", () => {
   const comparison = compareAddresses(adoConfigured, adoWorkbook);

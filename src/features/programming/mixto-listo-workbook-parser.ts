@@ -20,10 +20,12 @@ export type MixtoWorkbookProject = {
   label?: string;
   billingLegalName: string;
   address: string;
+  additionalAddresses?: readonly string[];
   candidateProjects?: Array<{
     id: string;
     label: string;
     address: string;
+    additionalAddresses?: readonly string[];
     billingLegalName: string | null;
   }>;
 };
@@ -228,6 +230,7 @@ export async function extractMixtoProgrammingWorkbookBuffer(
     projectId: project.id,
     projectLabel: project.label,
     projectAddress: project.address,
+    projectAdditionalAddresses: project.additionalAddresses,
     workbookAddress: extractProjectAddress(sheet),
     billingLegalName: project.billingLegalName,
     invoiceRecipient: extractInvoiceRecipient(sheet),

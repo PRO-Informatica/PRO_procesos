@@ -583,12 +583,14 @@ export async function extractProgrammingWorkbookAction(
           : undefined,
         billingLegalName: context.activeProject?.billingLegalName?.trim() ?? "",
         address: context.activeProject?.address?.trim() ?? "",
+        additionalAddresses: context.activeProject?.additionalAddresses,
         candidateProjects: context.projects
           .filter((project) => project.status === "ACTIVE")
           .map((project) => ({
             id: project.id,
             label: `${project.code} · ${project.name}`,
             address: project.address,
+            additionalAddresses: project.additionalAddresses,
             billingLegalName: project.billingLegalName,
           })),
       }),
@@ -662,10 +664,12 @@ export async function createProgrammingBatchAction(
       label: context.activeProject ? `${context.activeProject.code} · ${context.activeProject.name}` : undefined,
       billingLegalName: context.activeProject?.billingLegalName?.trim() ?? "",
       address: context.activeProject?.address?.trim() ?? "",
+      additionalAddresses: context.activeProject?.additionalAddresses,
       candidateProjects: context.projects.filter((project) => project.status === "ACTIVE").map((project) => ({
         id: project.id,
         label: `${project.code} · ${project.name}`,
         address: project.address,
+        additionalAddresses: project.additionalAddresses,
         billingLegalName: project.billingLegalName,
       })),
     });

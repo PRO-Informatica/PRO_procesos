@@ -34,6 +34,7 @@ export type AddressComparison = {
 export type AddressCandidate = {
   id: string;
   address: string | null | undefined;
+  additionalAddresses?: readonly string[];
 };
 
 export type AddressCandidateResolution = {
@@ -350,7 +351,7 @@ export function resolveAddressCandidates(
   const ranked = candidates
     .map((candidate) => ({
       id: candidate.id,
-      comparison: compareAddresses(candidate.address, actual),
+      comparison: compareProjectAddresses(candidate, actual).comparison,
     }))
     .filter(({ comparison }) => comparison.result !== "NO_MATCH")
     .sort((left, right) => right.comparison.confidence - left.comparison.confidence);
@@ -368,6 +369,43 @@ export function resolveAddressCandidates(
     selectedId: null,
     candidates: ranked,
   };
+}
+
+export type ProjectAddressSource = {
+  address: string | null | undefined;
+  additionalAddresses?: readonly string[] | null;
+};
+
+export function getProjectAddresses(project: ProjectAddressSource): string[] {
+  const seen = new Set<string>();
+  return [project.address, ...(project.additionalAddresses ?? [])].flatMap((value) => {
+    const address = value?.trim() ?? "";
+    const key = normalizeAddressIdentity(address);
+    if (!key || seen.has(key)) return [];
+    seen.add(key);
+    return [address];
+  });
+}
+
+export function compareProjectAddresses(
+  project: ProjectAddressSource,
+  actual: string | null | undefined,
+) {
+  const priority = { MATCH: 2, REQUIRES_REVIEW: 1, NO_MATCH: 0 } as const;
+  const ranked = getProjectAddresses(project)
+    .map((address) => ({ address, comparison: compareAddresses(address, actual) }))
+    .sort((left, right) =>
+      priority[right.comparison.result] - priority[left.comparison.result] ||
+      right.comparison.confidence - left.comparison.confidence,
+    );
+  return ranked[0] ?? { address: null, comparison: compareAddresses(null, actual) };
+}
+
+export function projectAddressMatches(
+  project: ProjectAddressSource,
+  actual: string | null | undefined,
+) {
+  return compareProjectAddresses(project, actual).comparison.result === "MATCH";
 }
 
 export function addressesMatch(

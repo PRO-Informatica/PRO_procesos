@@ -11,6 +11,7 @@ import { notifications } from "@/lib/notification-messages";
 
 import { createCompanyProject } from "../actions";
 import type { ProjectActionState } from "../types";
+import { ProjectAddressFields } from "./project-address-fields";
 
 const INITIAL_PROJECT_ACTION_STATE: ProjectActionState = { status: "idle" };
 
@@ -144,21 +145,7 @@ export function CreateProjectDialog({
                       placeholder="Ej. LAS CAMPANELAS, S. A."
                     />
                   </div>
-                  <div className="sm:col-span-2">
-                    <label className="form-label" htmlFor="project-address">
-                      Dirección exacta de Obra *
-                    </label>
-                    <input
-                      id="project-address"
-                      name="address"
-                      required
-                      minLength={5}
-                      maxLength={300}
-                      defaultValue={state.fields?.address}
-                      className="form-input"
-                      placeholder="Dirección que aparece como Dirección de Envío"
-                    />
-                  </div>
+                  <ProjectAddressFields address={state.fields?.address} additionalAddresses={state.fields?.additionalAddresses} pending={pending} />
                   <div>
                     <label className="form-label" htmlFor="project-billing-name">Razón social de facturación *</label>
                     <input id="project-billing-name" name="billingLegalName" required minLength={2} maxLength={200} defaultValue={state.fields?.billingLegalName} className="form-input" placeholder="Receptor de la factura" />

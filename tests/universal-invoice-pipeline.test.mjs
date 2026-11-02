@@ -76,7 +76,7 @@ test("identidad fiscal prioriza NIT + autorización y tiene fallback estable", (
 
 test("Universal limita proyectos, no selecciona coincidencias ambiguas y exige lote abierto", () => {
   assert.match(service, /REQUIRED_PERMISSIONS\.every/u);
-  assert.match(service, /addressesMatch\(project\.address, raw\.shipping_address\)/u);
+  assert.match(service, /projectAddressMatches\(project, raw\.shipping_address\)/u);
   assert.match(service, /PROJECT_AMBIGUOUS/u);
   assert.match(service, /DISPATCH_AMBIGUOUS/u);
   assert.match(service, /NO_ACTIVE_BATCH/u);
