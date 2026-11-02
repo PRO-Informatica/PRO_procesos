@@ -83,7 +83,7 @@ function fixture(overrides = {}, permissions = { canModify: true }) {
   const input = () => find(node => node.props?.id === "dispatch-real-volume");
   render();
   return {
-    render, input, find,
+    render, input, find, all: () => all(tree),
     edit(value) { input().props.onChange({ target: { value } }); render(); },
     guides(quantities) { render({ guides: quantities.map(guide) }); },
     result(value) { find(node => node.props?.id === "dispatch-result").props.onChange({ target: { value } }); render(); },
@@ -134,7 +134,7 @@ test("las guías de servicios no limitan la llegada del despacho ni suman volume
   assert.equal(f.find(node=>node.props?.id==='dispatch-arrival').props.max,undefined);
   assert.equal(f.find(node=>node.props?.id==='dispatch-departure').props.readOnly,true);
   const manual = fixture({arrivalAt:"2026-10-23T13:05:00Z",departureAt:"2026-10-23T14:00:00Z",guides:[]});
-  assert.equal(manual.find(node=>node.props?.id==='dispatch-arrival').props.max,'08:00');
+  assert.equal(manual.find(node=>node.props?.id==='dispatch-arrival').props.max,undefined);
 });
 
 test("una corrección manual se conserva aunque cambien guías o se refresquen los datos", () => {
@@ -221,4 +221,22 @@ test("guías históricas sin horarios conservan la salida existente y el ajuste 
   f.render({ departureAt: "2026-10-23T22:15:00Z", guides: [{ ...guide(5), truckDepartureAt: "2026-10-23T22:15:00Z" }] });
   assert.equal(input().props.value, "16:15");
   assert.equal(input().props.readOnly, true);
+});
+
+test("guardar y finalizar conservan la fecha real de salida automática después de medianoche", () => {
+  const overnight = {...guide(8),guideDate:'2026-10-23',truckDepartureAt:'2026-10-24T09:20:00Z'};
+  const f = fixture({arrivalAt:'2026-10-24T01:15:00Z',departureAt:overnight.truckDepartureAt,guides:[overnight]});
+  assert.equal(f.find(n=>n.props?.name==='departureAt').props.value,'2026-10-24T03:20');
+  assert.equal(f.find(n=>n.props?.id==='dispatch-arrival').props.max,undefined);
+  f.find(n=>n.type==='Button'&&n.props.variant==='success').props.onClick();f.render();
+  const submitted=f.all().filter(n=>n.props?.name==='departureAt');
+  assert.equal(submitted.length,2);
+  assert.ok(submitted.every(n=>n.props.value==='2026-10-24T03:20'));
+});
+test("una salida manual de madrugada se envía al día siguiente y admite corregir la llegada", () => {
+  const f=fixture({arrivalAt:'2026-10-24T01:15:00Z',departureAt:null,guides:[]});
+  f.find(n=>n.props?.id==='dispatch-departure').props.onChange({target:{value:'03:00'}});f.render();
+  assert.equal(f.find(n=>n.props?.name==='departureAt').props.value,'2026-10-24T03:00');
+  f.find(n=>n.props?.id==='dispatch-arrival').props.onChange({target:{value:'23:00'}});f.render();
+  assert.equal(f.find(n=>n.props?.name==='departureAt').props.value,'2026-10-24T03:00');
 });

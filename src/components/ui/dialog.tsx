@@ -85,6 +85,7 @@ export function Dialog({
   children,
   size = "md",
   tone = "default",
+  contentClassName,
 }: {
   title: string;
   description?: string;
@@ -94,6 +95,7 @@ export function Dialog({
   children: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl" | "full";
   tone?: "default" | "destructive";
+  contentClassName?: string;
 }) {
   const titleId = useId();
   const descriptionId = useId();
@@ -158,7 +160,7 @@ export function Dialog({
               </span>
             )}
             <div className="min-w-0">
-              <h2 id={titleId} className="font-semibold text-foreground">{title}</h2>
+              <h2 id={titleId} className="line-clamp-3 break-words font-semibold text-foreground [overflow-wrap:anywhere]" title={title}>{title}</h2>
               {description && <p id={descriptionId} className="mt-1 text-xs leading-5 text-foreground-muted">{description}</p>}
             </div>
           </div>
@@ -166,7 +168,7 @@ export function Dialog({
             <X aria-hidden="true" className="size-5" />
           </IconButton>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className={cn("min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain", contentClassName)}>
           {children}
         </div>
       </motion.div>

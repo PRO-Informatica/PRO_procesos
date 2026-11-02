@@ -8,10 +8,12 @@ export function Tooltip({
   content,
   children,
   side = "top",
+  align = "center",
 }: {
   content: string;
   children: React.ReactNode;
   side?: "top" | "bottom";
+  align?: "center" | "end";
 }) {
   const id = useId();
 
@@ -22,7 +24,8 @@ export function Tooltip({
         id={id}
         role="tooltip"
         className={cn(
-          "pointer-events-none absolute left-1/2 z-[120] w-max max-w-56 -translate-x-1/2 scale-[0.98] rounded-md bg-foreground px-2 py-1 text-center text-[11px] font-medium leading-4 text-surface opacity-0 shadow-md transition-[opacity,transform] duration-150 group-hover/tooltip:scale-100 group-hover/tooltip:opacity-100 group-focus-within/tooltip:scale-100 group-focus-within/tooltip:opacity-100",
+          "pointer-events-none absolute z-[120] w-max max-w-56 scale-[0.98] break-words rounded-md bg-foreground px-2 py-1 text-center text-[11px] font-medium leading-4 text-surface opacity-0 shadow-md transition-[opacity,transform] duration-150 [overflow-wrap:anywhere] group-hover/tooltip:scale-100 group-hover/tooltip:opacity-100 group-focus-within/tooltip:scale-100 group-focus-within/tooltip:opacity-100",
+          align === "end" ? "right-0" : "left-1/2 -translate-x-1/2",
           side === "top" ? "bottom-full mb-2" : "top-full mt-2",
         )}
       >

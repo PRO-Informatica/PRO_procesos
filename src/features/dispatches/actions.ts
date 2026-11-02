@@ -82,12 +82,14 @@ function localToIso(value: string, timezone: string) {
 
 function dispatchError(message: string) {
   const value = message.toUpperCase();
+  if (value.includes("GUIDE_DATE_REQUIRED"))
+    return "Registra una fecha válida para la guía.";
   if (value.includes("GUIDE_TRUCK_TIMES_REQUIRED"))
     return "Registra las horas de llegada y salida del camión. Si no ves los campos, recarga la página.";
   if (value.includes("GUIDE_TRUCK_INVALID_TIME_SEQUENCE"))
     return "La salida del camión no puede ser anterior a su llegada.";
   if (value.includes("GUIDE_TRUCK_DATE_MISMATCH"))
-    return "Los horarios del camión deben corresponder al día de la programación.";
+    return "Revisa la fecha de llegada del camión en la guía. La salida puede ser al día siguiente.";
   if (value.includes("DISPATCH_VERSION_CONFLICT"))
     return "El despacho cambió. Recarga la página antes de continuar.";
   if (value.includes("PROGRAMMING_DISPATCH_ALREADY_EXISTS"))
@@ -143,7 +145,7 @@ function dispatchError(message: string) {
   if (value.includes("DISPATCH_GUIDE_REQUIRED"))
     return "Agrega al menos una guía antes de finalizar.";
   if (value.includes("DISPATCH_GUIDE_INCOMPLETE"))
-    return "Todas las guías deben tener número y al menos un producto válido.";
+    return "Todas las guías deben tener número y al menos un producto o servicio válido.";
   if (value.includes("PERMISSION_DENIED")) return "No tienes permiso para realizar esta acción.";
   return "No fue posible completar la operación. Revisa los datos e intenta nuevamente.";
 }
