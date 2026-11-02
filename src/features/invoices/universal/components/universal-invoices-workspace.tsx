@@ -156,7 +156,7 @@ function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending, ope
           )}
           {!pending && entry.result?.operation === "REINVOICE" && (
             <div className="mt-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-xs text-warning">
-              <p className="font-semibold">Nueva Factura de Producto · Tipo: Refacturación</p>
+              <p className="font-semibold">Nueva Factura de {entry.result.detectedType === "SERVICE" ? "Servicio" : "Producto"} · Tipo: Refacturación</p>
               <p className="mt-0.5">Reemplaza la factura {entry.result.replacesInvoiceNumber ?? "vigente"}.</p>
             </div>
           )}

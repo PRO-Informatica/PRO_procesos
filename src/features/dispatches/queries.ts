@@ -1,4 +1,5 @@
 import "server-only";
+import { serviceReconciliationSummary } from "@/features/invoices/service-reconciliation";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -498,7 +499,7 @@ export async function getDispatchDetail(
         .eq("dispatch_id", dispatchId),
       supabase
         .from("dispatch_reconciliations")
-        .select("status, current_product_invoice_id, current_service_invoice_id")
+        .select("status, current_product_invoice_id, current_service_invoice_id, service_status, service_comparison")
         .eq("project_id", projectId)
         .eq("dispatch_id", dispatchId)
         .maybeSingle(),
@@ -753,6 +754,7 @@ export async function getDispatchDetail(
     batches,
     reconciliation: reconciliationResult.data ? {
       status: reconciliationResult.data.status,
+      serviceReconciliation: serviceReconciliationSummary(reconciliationResult.data),
       productInvoice: reconciliationResult.data.current_product_invoice_id
         ? invoiceById.get(reconciliationResult.data.current_product_invoice_id) ?? null
         : null,

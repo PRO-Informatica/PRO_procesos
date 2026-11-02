@@ -1,3 +1,4 @@
+import type { ServiceReconciliationSummary } from "@/features/invoices/service-reconciliation";
 export type GlobalReconciliationItem = {
   id: string;
   dispatchId: string;
@@ -16,6 +17,7 @@ export type GlobalReconciliationItem = {
   hasServiceInvoice: boolean;
   reconciliationStatus: string;
   difference: number | null;
+  serviceReconciliation?: ServiceReconciliationSummary;
 };
 export type GlobalReconciliationData = {
   items: GlobalReconciliationItem[];

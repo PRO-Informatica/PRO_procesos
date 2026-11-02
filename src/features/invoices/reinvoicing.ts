@@ -8,6 +8,7 @@ export type InvoiceUploadSlot = {
 type ResolveInvoiceUploadSlotInput = {
   invoiceType: "PRODUCT" | "SERVICE";
   reconciliationStatus: string | null | undefined;
+  serviceReconciliationStatus?: string | null;
   currentProductInvoiceId: string | null | undefined;
   currentServiceInvoiceId: string | null | undefined;
 };
@@ -15,16 +16,15 @@ type ResolveInvoiceUploadSlotInput = {
 export function resolveInvoiceUploadSlot({
   invoiceType,
   reconciliationStatus,
+  serviceReconciliationStatus,
   currentProductInvoiceId,
   currentServiceInvoiceId,
 }: ResolveInvoiceUploadSlotInput): InvoiceUploadSlot {
   const currentInvoiceId = invoiceType === "PRODUCT"
     ? currentProductInvoiceId ?? null
     : currentServiceInvoiceId ?? null;
-  const replacesInvoiceId = invoiceType === "PRODUCT" &&
-      reconciliationStatus === "PENDING_REINVOICING"
-    ? currentProductInvoiceId ?? null
-    : null;
+  const status = invoiceType === "PRODUCT" ? reconciliationStatus : serviceReconciliationStatus;
+  const replacesInvoiceId = status === "PENDING_REINVOICING" ? currentInvoiceId : null;
 
   return {
     currentInvoiceId,

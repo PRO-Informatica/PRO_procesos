@@ -1,3 +1,4 @@
+import { serviceReconciliationSummary } from "../src/features/invoices/service-reconciliation.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -66,6 +67,7 @@ function detailQuery({ missingProject = false } = {}) {
   runInNewContext(compiled, {
     exports,
     require(path) {
+      if (path === "@/features/invoices/service-reconciliation") return { serviceReconciliationSummary };
       assert.ok(Object.hasOwn(imports, path), `Unexpected import: ${path}`);
       return imports[path];
     },

@@ -364,7 +364,7 @@ async function classifyInternal(
   const batch = openBatches[0];
   const reconciliation = await admin
     .from("dispatch_reconciliations")
-    .select("status, current_product_invoice_id, current_service_invoice_id")
+    .select("status, current_product_invoice_id, current_service_invoice_id, service_status")
     .eq("project_id", project.id)
     .eq("dispatch_id", selectedDispatch.id)
     .maybeSingle();
@@ -373,6 +373,7 @@ async function classifyInternal(
   const invoiceSlot = resolveInvoiceUploadSlot({
     invoiceType: detectedType,
     reconciliationStatus: reconciliation.data?.status,
+    serviceReconciliationStatus: reconciliation.data?.service_status,
     currentProductInvoiceId: reconciliation.data?.current_product_invoice_id,
     currentServiceInvoiceId: reconciliation.data?.current_service_invoice_id,
   });
@@ -385,9 +386,9 @@ async function classifyInternal(
       .select("invoice_number")
       .eq("id", currentInvoiceId)
       .eq("dispatch_id", selectedDispatch.id)
-      .eq("invoice_type", "PRODUCT")
+      .eq("invoice_type", detectedType)
       .maybeSingle();
-    if (!previousInvoice.data) throw new Error("No fue posible recuperar la Factura de Producto vigente.");
+    if (!previousInvoice.data) throw new Error(`No fue posible recuperar la Factura de ${detectedType === "SERVICE" ? "Servicio" : "Producto"} vigente.`);
     replacesInvoiceNumber = previousInvoice.data.invoice_number;
   }
 
@@ -462,7 +463,7 @@ async function classifyInternal(
     message: processed.payload.recipient_exception_required
       ? "La factura puede guardarse, pero Compras debe decidir si acepta C14 o solicita refacturación."
       : isReinvoicing
-      ? "Lista para reemplazar la Factura de Producto anterior."
+      ? `Lista para reemplazar la Factura de ${detectedType === "SERVICE" ? "Servicio" : "Producto"} anterior.`
       : processed.payload.warnings.length ? "Lista con observaciones." : "Lista para conciliar.",
     warnings: processed.payload.warnings,
     operation: isReinvoicing ? "REINVOICE" : "NEW",
@@ -526,8 +527,8 @@ export async function commitUniversalInvoice(file: File, selection?: Selection, 
   }
   let reconciliationStatus: string | undefined;
   const warnings = [...classified.warnings];
-  if (classified.detectedType === "PRODUCT" && !classified.payload.recipient_exception_required) {
-    const reconciled = await supabase.rpc("reconcile_dispatch", { p_dispatch_id: classified.dispatchId });
+  if (!classified.payload.recipient_exception_required) {
+    const reconciled = await supabase.rpc(classified.detectedType === "SERVICE" ? "reconcile_dispatch_service" : "reconcile_dispatch", { p_dispatch_id: classified.dispatchId });
     if (reconciled.error) warnings.push("La factura se guardó, pero la conciliación debe reintentarse.");
     else reconciliationStatus = String(reconciled.data);
   }
@@ -535,13 +536,15 @@ export async function commitUniversalInvoice(file: File, selection?: Selection, 
     ...publicResult(classified),
     message: classified.payload.recipient_exception_required
       ? "Factura guardada. Compras debe aceptar la excepción C14 o solicitar refacturación."
+      : !reconciliationStatus
+      ? "La factura se guardó, pero la conciliación debe reintentarse."
       : classified.detectedType === "PRODUCT"
       ? reconciliationStatus === "WITH_DIFFERENCES"
         ? "Factura guardada; la conciliación detectó diferencias."
         : classified.operation === "REINVOICE"
           ? "Factura refacturada guardada y conciliación ejecutada."
           : "Factura guardada y conciliación ejecutada."
-      : "Factura de Servicio guardada.",
+      : reconciliationStatus === "WITH_DIFFERENCES" ? "Factura de Servicio guardada; el total no coincide con el estimado de servicios." : "Factura de Servicio guardada y conciliación ejecutada.",
     warnings,
     saved: true,
     invoiceId: String(row.invoice_id),
