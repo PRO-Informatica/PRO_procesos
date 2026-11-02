@@ -74,12 +74,14 @@ export function ProgrammingWorkspace({
   canCreate,
   canConfirm,
   canModify,
+  canCancel,
   initialData,
 }: {
   project: ProjectSummary;
   canCreate: boolean;
   canConfirm: boolean;
   canModify: boolean;
+  canCancel: boolean;
   initialData: ProgrammingPageData;
 }) {
   const [view, setView] = useState<ViewMode>("calendar");
@@ -394,10 +396,12 @@ export function ProgrammingWorkspace({
       </MotionSection>
 
       <ProgrammingPreviewDrawer
+        key={selected?.id ?? "none"}
         item={selected}
         timezone={project.timezone}
         canConfirm={canConfirm}
         canModify={canModify}
+        canCancel={canCancel}
         suppliers={initialData.suppliers}
         units={initialData.units}
         onUpdated={() => {

@@ -137,6 +137,15 @@ export function ProgrammingCalendar({
         },
       },
       callbacks: {
+        onRender(app) {
+          // Schedule-X only calls onRangeUpdate after a navigation/change.
+          // Load the actual visible range on first render as well.
+          const range = app.calendarState.range.value;
+          if (range) onRangeChange({
+            start: range.start.toInstant().toString(),
+            end: range.end.toInstant().toString(),
+          });
+        },
         onEventClick(event) {
           onSelect(String(event.id));
         },
@@ -155,10 +164,10 @@ export function ProgrammingCalendar({
           });
         },
       },
-      events: [],
+      events: items.map((item) => toCalendarEvent(item, timezone)),
       };
     },
-    [onCreateAt, onRangeChange, onSelect, timezone],
+    [items, onCreateAt, onRangeChange, onSelect, timezone],
   );
   const calendarApp = useNextCalendarApp(config);
 

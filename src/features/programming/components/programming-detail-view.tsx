@@ -31,6 +31,7 @@ import {
   canEditProgramming,
   canConfirmProgramming,
   canCreateDispatchForProgramming,
+  canCancelProgramming,
   getEffectiveProgrammingStatus,
 } from "../availability";
 import {
@@ -244,11 +245,7 @@ export function ProgrammingDetailView({
     timezone: project.timezone,
     hasPermission: permissions.canCreateDispatch,
   }, availabilityNow);
-  const canCancel =
-    permissions.canCancel &&
-    effectiveStatus !== "CANCELLED" &&
-    ["PENDING_CONFIRMATION", "CONFIRMED"].includes(detail.status) &&
-    !(detail.status === "CONFIRMED" && detail.dispatches.length > 0);
+  const canCancel = canCancelProgramming({ ...detail, operationStarted, hasPermission: permissions.canCancel }, availabilityNow);
   const relevantRevisions = detail.revisions.filter(
     (revision) => revision.action !== "PROGRAMMING_BASELINE",
   );
@@ -261,7 +258,7 @@ export function ProgrammingDetailView({
     if (detail.status === "IN_EXECUTION" && permissions.canClose) {
       result.push({ intent: "close", label: "Cerrar programación", icon: ClipboardCheck });
     }
-    if (canCancel) result.push({ intent: "cancel", label: "Cancelar", icon: XCircle });
+    if (canCancel) result.push({ intent: "cancel", label: "Cancelar programación", icon: XCircle });
     return result;
   }, [canCancel, canEdit, detail.status, permissions.canClose]);
 

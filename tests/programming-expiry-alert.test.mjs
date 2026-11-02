@@ -40,7 +40,7 @@ test('el detalle vencido muestra aviso informativo y abre Iniciar despacho con l
  const alert=f.all().find(n=>n.props?.role==='status');
  assert.ok(alert);assert.match(content(alert),/Puedes iniciar el despacho y registrar sus guías/u);assert.doesNotMatch(content(alert),/ya no acepta/u);
  assert.ok(f.all().some(n=>content(n)==='Vencido'));
- assert.ok(f.button('Editar'));assert.ok(f.button('Cancelar'));
+ assert.ok(f.button('Editar'));assert.ok(f.button('Cancelar programación'));
  const start=f.button('Registrar despacho');assert.ok(start);assert.notEqual(start.props.disabled,true);start.props.onClick();f.render();
  const dialog=f.all().find(n=>n.type==='StartDispatchDialog');assert.ok(dialog);
  assert.equal(dialog.props.programming.scheduledAt,expired.scheduledAt);assert.equal(dialog.props.programming.programmingStatus,'CONFIRMED');
