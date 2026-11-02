@@ -174,9 +174,6 @@ export function DispatchGuideDialog({
 
   const productCount = lines.filter((line) => line.catalogType === "PRODUCT").length;
   const serviceCount = lines.filter((line) => line.catalogType === "SERVICE").length;
-  const estimate = (type: DispatchCatalogType) => lines.reduce((total, line) =>
-    line.catalogType === type && line.unitPrice !== null && Number.isFinite(Number(line.quantity))
-      ? total + line.unitPrice * Number(line.quantity) : total, 0);
   const addLine = () => setLines((current) => [...current, emptyLine(crypto.randomUUID())]);
 
   return (
@@ -198,9 +195,10 @@ export function DispatchGuideDialog({
             <div className="min-w-0"><label className="form-label" htmlFor="guide-number">Número de guía *</label><input id="guide-number" name="guideNumber" required maxLength={120} value={guideNumber} onChange={(event) => setGuideNumber(event.target.value)} disabled={readOnly || pending} className="form-input min-w-0 disabled:bg-muted" /></div>
             <div className="min-w-0"><label className="form-label" htmlFor="guide-date">Fecha *</label><input id="guide-date" name="guideDate" type="date" required value={guideDate} onChange={(event) => setGuideDate(event.target.value)} disabled={readOnly || pending} className="form-input min-w-0 disabled:bg-muted" /></div>
             <div className="min-w-0"><label className="form-label" htmlFor="guide-truck-arrival">Llegada del camión *</label><input id="guide-truck-arrival" name="truckArrivalTime" type="time" required value={truckArrivalTime} onChange={(event) => setTruckArrivalTime(event.target.value)} disabled={readOnly || pending} className="form-input min-w-0 disabled:bg-muted" /></div>
-            <div className="min-w-0"><label className="form-label" htmlFor="guide-truck-departure">Salida del camión *</label><input id="guide-truck-departure" name="truckDepartureTime" type="time" required min={truckArrivalTime || undefined} value={truckDepartureTime} onChange={(event) => setTruckDepartureTime(event.target.value)} disabled={readOnly || pending} className="form-input min-w-0 disabled:bg-muted" /></div>
+            <div className="min-w-0"><label className="form-label" htmlFor="guide-truck-departure">Salida del camión *</label><input id="guide-truck-departure" name="truckDepartureTime" type="time" required value={truckDepartureTime} onChange={(event) => setTruckDepartureTime(event.target.value)} disabled={readOnly || pending} className="form-input min-w-0 disabled:bg-muted" /></div>
           </div>
-          <p className="text-xs leading-5 text-foreground-muted">Horarios del camión en el día de la programación, independientes de la hora de inicio del despacho. La salida del despacho toma la salida más tardía de sus guías.</p>
+          <p className="text-xs leading-5 text-foreground-muted">La fecha de la guía corresponde a la llegada del camión. Si la hora de salida es menor que la de llegada, se registra al día siguiente. Los horarios son independientes del inicio del despacho.</p>
+          {truckArrivalTime && truckDepartureTime && truckDepartureTime < truckArrivalTime && <p role="status" className="rounded-lg bg-muted px-3 py-2 text-xs text-foreground">El camión sale al día siguiente de la fecha de la guía.</p>}
           <section className="space-y-3" aria-labelledby="guide-lines-heading">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><h3 id="guide-lines-heading" className="font-semibold">Productos y servicios</h3><p className="mt-1 text-xs text-foreground-muted">{productCount} producto(s) · {serviceCount} servicio(s). El precio se guarda como histórico.</p></div>
@@ -239,10 +237,6 @@ export function DispatchGuideDialog({
               );
             })}
             {!readOnly && <button type="button" onClick={addLine} disabled={pending} className="secondary-button guide-add-mobile min-h-11 w-full gap-2 border-dashed"><Plus aria-hidden="true" className="size-4" /> Agregar producto / servicio</button>}
-            <div className="grid gap-3 rounded-xl bg-muted/50 p-3 text-sm sm:grid-cols-2 sm:p-4">
-              <p className="flex flex-wrap justify-between gap-2"><span className="text-foreground-muted">Productos</span><strong>{formatDispatchMoney(estimate("PRODUCT"), "GTQ")}</strong></p>
-              <p className="flex flex-wrap justify-between gap-2"><span className="text-foreground-muted">Servicios</span><strong>{formatDispatchMoney(estimate("SERVICE"), "GTQ")}</strong></p>
-            </div>
           </section>
           {state.status === "error" && <p role="alert" className="rounded-lg bg-destructive-soft px-4 py-3 text-sm text-destructive">{state.message}</p>}
         </div>

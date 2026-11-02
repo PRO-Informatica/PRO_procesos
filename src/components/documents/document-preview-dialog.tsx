@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Eye, LoaderCircle } from "lucide-react";
+import { Download, ExternalLink, Eye, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Dialog } from "@/components/ui/dialog";
@@ -48,30 +48,29 @@ export function FilePreviewDialog({
   onClose,
 }: FilePreviewDialogProps) {
   return (
-    <Dialog title={fileName} description="Vista previa privada" onClose={onClose} size="full">
-      <section className="flex h-[calc(100dvh-7rem)] max-h-[50rem] flex-col overflow-hidden">
-        {downloadUrl && (
-          <header className="flex shrink-0 justify-end border-b border-border px-4 py-3 sm:px-5">
-            <a
+    <Dialog title={fileName} description="Vista previa privada" onClose={onClose} size="full" contentClassName="flex flex-col overflow-hidden">
+      <section className="flex h-[75dvh] max-h-[50rem] min-h-0 min-w-0 w-full flex-col overflow-hidden">
+        <header className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-border px-4 py-3 sm:px-5">
+            {downloadUrl && <a
               href={downloadUrl}
               className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold text-foreground hover:bg-muted"
             >
               <Download aria-hidden="true" className="size-4" />
               <span>Descargar</span>
-            </a>
-          </header>
-        )}
-        <div className="min-h-0 flex-1 overflow-auto bg-muted/40 p-2 sm:p-4">
+            </a>}
+          <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted"><ExternalLink aria-hidden="true" className="size-4" />Abrir archivo</a>
+        </header>
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto bg-muted/40 p-2 sm:p-4">
           {isPdf(mimeType, fileName) && (
             <iframe
               src={url}
               title={`Vista previa de ${fileName}`}
-              className="h-full min-h-[70vh] w-full rounded-lg border-0 bg-white"
+              className="h-full min-h-0 w-full rounded-lg border-0 bg-white"
             />
           )}
           {isImage(mimeType, fileName) && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={url} alt={`Vista previa de ${fileName}`} className="mx-auto max-h-full max-w-full rounded-lg object-contain" />
+            <img src={url} alt={`Vista previa de ${fileName}`} className="mx-auto h-full w-full rounded-lg object-contain" />
           )}
           {!isPdf(mimeType, fileName) && !isImage(mimeType, fileName) && (
             <div className="grid h-full place-items-center px-6 text-center text-sm text-foreground-muted">
@@ -169,15 +168,16 @@ function DocumentPreviewDialog({
   }, [documentId, getSignedUrl, projectId]);
 
   return (
-    <Dialog title={fileName} description="Vista previa privada" onClose={onClose} size="full">
-      <section className="flex h-[calc(100dvh-7rem)] max-h-[50rem] flex-col overflow-hidden">
-        <header className="flex shrink-0 justify-end border-b border-border px-4 py-3 sm:px-5">
+    <Dialog title={fileName} description="Vista previa privada" onClose={onClose} size="full" contentClassName="flex flex-col overflow-hidden">
+      <section className="flex h-[75dvh] max-h-[50rem] min-h-0 min-w-0 w-full flex-col overflow-hidden">
+        <header className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-border px-4 py-3 sm:px-5">
           <button type="button" onClick={onDownload} disabled={downloadBusy} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50">
             {downloadBusy ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /> : <Download className="size-4" />}
-            <span className="hidden sm:inline">Descargar</span>
+            <span>Descargar</span>
           </button>
+          {url && <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted"><ExternalLink aria-hidden="true" className="size-4" />Abrir archivo</a>}
         </header>
-        <div className="min-h-0 flex-1 overflow-auto bg-muted/40 p-2 sm:p-4">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto bg-muted/40 p-2 sm:p-4">
           {!url && !error && (
             <div className="grid h-full place-items-center text-sm text-foreground-muted" aria-live="polite">
               <span className="inline-flex items-center gap-2"><LoaderCircle className="size-5 animate-spin motion-reduce:animate-none" /> Cargando vista previa…</span>
@@ -188,10 +188,10 @@ function DocumentPreviewDialog({
               <div><p className="font-semibold text-foreground">{error}</p><p className="mt-2 text-sm text-foreground-muted">Puedes intentar descargarlo o cerrar esta ventana.</p></div>
             </div>
           )}
-          {url && isPdf(mimeType, fileName) && <iframe src={url} title={`Vista previa de ${fileName}`} className="h-full min-h-[70vh] w-full rounded-lg border-0 bg-white" />}
+          {url && isPdf(mimeType, fileName) && <iframe src={url} title={`Vista previa de ${fileName}`} className="h-full min-h-0 w-full rounded-lg border-0 bg-white" />}
           {url && isImage(mimeType, fileName) && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={url} alt={`Vista previa de ${fileName}`} className="mx-auto max-h-full max-w-full rounded-lg object-contain" />
+            <img src={url} alt={`Vista previa de ${fileName}`} className="mx-auto h-full w-full rounded-lg object-contain" />
           )}
           {url && !isPdf(mimeType, fileName) && !isImage(mimeType, fileName) && (
             <div className="grid h-full place-items-center px-6 text-center text-sm text-foreground-muted">Este formato no admite vista previa. Usa Descargar para abrir el archivo.</div>

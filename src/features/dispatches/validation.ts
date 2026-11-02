@@ -8,9 +8,6 @@ export function validateGuideTruckTimes(arrival: string, departure: string) {
   if (!time.test(arrival) || !time.test(departure)) {
     return "Registra una hora de llegada y una hora de salida válidas para el camión.";
   }
-  if (departure < arrival) {
-    return "La salida del camión no puede ser anterior a su llegada, en el mismo día.";
-  }
   return null;
 }
 

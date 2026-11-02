@@ -12,11 +12,12 @@ export const IconButton = forwardRef<HTMLButtonElement, HTMLMotionProps<"button"
   label: string;
   tone?: "neutral" | "destructive";
   tooltipSide?: "top" | "bottom";
-}>(function IconButton({ label, tone = "neutral", tooltipSide, className, type = "button", ...props }, ref) {
+  tooltipAlign?: "center" | "end";
+}>(function IconButton({ label, tone = "neutral", tooltipSide, tooltipAlign, className, type = "button", ...props }, ref) {
   const reduceMotion = useReducedMotion();
 
   return (
-    <Tooltip content={label} side={tooltipSide}>
+    <Tooltip content={label} side={tooltipSide} align={tooltipAlign}>
       <motion.button
         ref={ref}
         type={type}
