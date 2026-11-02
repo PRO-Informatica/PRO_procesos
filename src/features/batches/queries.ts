@@ -252,7 +252,7 @@ export async function getBatchDetail(
     }];
   });
   const activeDispatchIds = new Set((activeProjectRelationsResult.data ?? []).map((row) => row.dispatch_id));
-  const eligibleDispatches: EligibleBatchDispatch[] = dispatches.filter((dispatch) => !activeDispatchIds.has(dispatch.id)).map((dispatch) => ({
+  const eligibleDispatches: EligibleBatchDispatch[] = dispatches.filter((dispatch) => dispatch.status === "COMPLETED" && !activeDispatchIds.has(dispatch.id)).map((dispatch) => ({
     dispatchId: dispatch.id, programmingCode: formatProgrammingCode(dispatch.programming_id),
     orderNumber: dispatch.order_number,
     supplierName: supplierNames.get(dispatch.supplier_id) ?? "Proveedor no disponible",

@@ -15,6 +15,8 @@ import { notify } from "@/lib/notify";
 
 import type { UniversalCommitResult, UniversalInvoiceResult } from "../types";
 import { classifyProductFirst, COMMITTABLE_INVOICE_STATUSES, uploadedProductForService, type InvoiceClassificationStage } from "../upload-pairing";
+import { hasReconciliationDifferences } from "../reconciliation-comparison";
+import { InvoiceComparisonAlert } from "./invoice-comparison-alert";
 
 type Entry = {
   id: string;
@@ -57,6 +59,7 @@ const toneByStatus: Record<string, BadgeTone> = {
   DUPLICATE: "info",
   NO_ACTIVE_BATCH: "warning",
   SAVED: "success",
+  WITH_DIFFERENCES: "warning",
 };
 
 const labelByStatus: Record<string, string> = {
@@ -78,6 +81,7 @@ const labelByStatus: Record<string, string> = {
   DUPLICATE: "Duplicada",
   ERROR: "Error",
   SAVED: "Procesada",
+  WITH_DIFFERENCES: "Con diferencias",
 };
 
 function sizeLabel(size: number) {
@@ -126,7 +130,9 @@ function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending, ope
 }) {
   const pending = entry.phase === "WAITING" || entry.phase === "CLASSIFYING" || entry.phase === "SAVING";
   const showPending = useDelayedPending(pending);
-  const status = pending ? undefined : entry.phase === "SAVED" ? "SAVED" : entry.result?.status;
+  const differences = hasReconciliationDifferences(entry.result);
+  const phaseStatus = entry.phase === "SAVED" ? "SAVED" : entry.result?.status;
+  const status = pending ? undefined : differences && ["SAVED", "READY", "READY_WITH_DIFFERENCES"].includes(phaseStatus ?? "") ? "WITH_DIFFERENCES" : phaseStatus;
   const exceptionStatus = entry.result && "recipientExceptionStatus" in entry.result
     ? entry.result.recipientExceptionStatus
     : null;
@@ -138,10 +144,12 @@ function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending, ope
           <div className="flex flex-wrap items-center gap-2">
             <p className="min-w-0 break-all text-sm font-semibold">{entry.file.name}</p>
             {status && <Badge tone={toneByStatus[status] ?? "danger"}>{labelByStatus[status] ?? status}</Badge>}
+            {!pending && differences && status !== "WITH_DIFFERENCES" && <Badge tone="warning">Con diferencias</Badge>}
             {!status && showPending && <Badge tone="info"><LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" />{entry.phase === "SAVING" ? "Guardando" : entry.phase === "WAITING" ? "En espera" : "Clasificando"}</Badge>}
           </div>
           <p className="mt-1 text-xs text-foreground-muted">{sizeLabel(entry.file.size)}{entry.result?.invoiceNumber ? ` · Factura ${entry.result.invoiceNumber}` : ""}{entry.result?.detectedType && entry.result.detectedType !== "UNKNOWN" ? ` · ${entry.result.detectedType === "PRODUCT" ? "Producto" : "Servicio"}` : ""}</p>
           {entry.result?.pcaOriginal && <p className="mt-1 break-all text-xs text-foreground-muted">PCA: {entry.result.pcaOriginal}</p>}
+          {!pending && differences && <InvoiceComparisonAlert comparison={entry.result?.comparison} saved={entry.phase === "SAVED"} duplicate={entry.result?.status === "DUPLICATE"} />}
           {!pending && entry.result?.status === "REQUIRES_RECIPIENT_EXCEPTION" && (
             <div className="mt-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-xs text-warning">
               <p className="font-semibold">{exceptionStatus === "APPROVED" ? "Excepción C14 aceptada" : exceptionStatus === "REINVOICE_REQUESTED" ? "Refacturación solicitada" : "Decisión de Compras pendiente"}</p>
@@ -214,7 +222,9 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
     if (entry.phase !== "CLASSIFIED" && entry.phase !== "SAVED") return counts;
     const status = entry.phase === "SAVED" ? "SAVED" : entry.result?.status;
     if (!status) return counts;
-    if (SUCCESS_STATUSES.has(status)) counts.success += 1;
+    const exceptionPending = entry.result && "recipientExceptionStatus" in entry.result && entry.result.recipientExceptionStatus === "PENDING";
+    if (hasReconciliationDifferences(entry.result) || exceptionPending) counts.attention += 1;
+    else if (SUCCESS_STATUSES.has(status)) counts.success += 1;
     else if (ATTENTION_STATUSES.has(status)) counts.attention += 1;
     else counts.error += 1;
     return counts;
@@ -368,7 +378,8 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
         result: {
           ...result,
           recipientExceptionStatus: body.exceptionStatus,
-          reconciliationStatus: body.reconciliationStatus,
+          // The C14 decision RPC returns Product's status, even for a Service.
+          reconciliationStatus: result.detectedType === "PRODUCT" ? body.reconciliationStatus : result.reconciliationStatus,
           message: body.message,
         },
       } : item));

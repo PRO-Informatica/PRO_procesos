@@ -1,4 +1,5 @@
 import type { ProcessedInvoiceType } from "../invoice-processing";
+import type { UniversalInvoiceComparison } from "./reconciliation-comparison";
 
 export type UniversalInvoiceStatus =
   | "IDENTIFIED"
@@ -44,6 +45,8 @@ export type UniversalInvoiceResult = {
   operation: "NEW" | "REINVOICE";
   replacesInvoiceId: string | null;
   replacesInvoiceNumber: string | null;
+  comparison?: UniversalInvoiceComparison | null;
+  reconciliationStatus?: string;
 };
 
 export type UniversalCommitResult = UniversalInvoiceResult & {

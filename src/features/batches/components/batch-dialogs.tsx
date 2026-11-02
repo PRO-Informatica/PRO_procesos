@@ -50,7 +50,8 @@ export function CreateBatchDialog({ project, onClose }: { project: ProjectSummar
   </Modal>;
 }
 
-export function AddDispatchDialog({ projectId, batchId, dispatches, onClose, onSuccess }: { projectId: string; batchId: string; dispatches: EligibleBatchDispatch[]; onClose: () => void; onSuccess?: () => void | Promise<void> }) {
+export function AddDispatchDialog({ projectId, batchId, dispatches: candidates, onClose, onSuccess }: { projectId: string; batchId: string; dispatches: EligibleBatchDispatch[]; onClose: () => void; onSuccess?: () => void | Promise<void> }) {
+  const dispatches = candidates.filter((dispatch) => dispatch.operationalStatus === "COMPLETED");
   const router = useRouter();
   const successHandled = useRef(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -72,7 +73,7 @@ export function AddDispatchDialog({ projectId, batchId, dispatches, onClose, onS
   }
 
   return (
-    <Modal title="Agregar despachos" description="Selecciona uno o varios despachos disponibles para agregarlos al lote en una sola operación." icon={Plus} onClose={onClose} pending={pending}>
+    <Modal title="Agregar despachos" description="Selecciona uno o varios despachos completados para agregarlos al lote en una sola operación." icon={Plus} onClose={onClose} pending={pending}>
       <form action={action}>
         <input type="hidden" name="projectId" value={projectId} />
         <input type="hidden" name="batchId" value={batchId} />
