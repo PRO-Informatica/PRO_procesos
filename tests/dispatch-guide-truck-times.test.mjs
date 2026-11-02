@@ -83,7 +83,7 @@ function dialogFixture({readOnly=false,guide}={}) {
   const jsx = (type, props) => ({type,props});
   const dialog = load(dialogSource, {
     'react/jsx-runtime': {jsx,jsxs:jsx},
-    react: { useActionState: () => [{status:'idle'},()=>{},false], useState: value => [typeof value==='function'?value():value,()=>{}], useEffect(){}, useMemo: fn=>fn() },
+    react: { useActionState: () => [{status:'idle'},()=>{},false], useState: value => [typeof value==='function'?value():value,()=>{}], useRef: value => ({current:value}), useEffect(){}, useMemo: fn=>fn() },
     'next/navigation': {useRouter:()=>({refresh(){}})},
     'lucide-react': {PackageOpen:'Icon',Plus:'Icon',Search:'Icon',Trash2:'Icon'},
     '@/components/feedback/loading-button': {LoadingButton:'LoadingButton'},
