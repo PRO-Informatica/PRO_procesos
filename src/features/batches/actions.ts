@@ -66,6 +66,8 @@ function invoiceError(message: string) {
   if (error.includes("ACTIVE_DISPATCH_INVOICE")) return "Ya existe una factura activa de ese tipo para el despacho.";
   if (error.includes("TYPE_MISMATCH")) return "El tipo detectado no coincide con el tipo de factura seleccionado.";
   if (error.includes("CRITICAL_VALIDATION")) return "El PDF no corresponde al proyecto, proveedor o pedido del despacho.";
+  if (error.includes("SERVICE_INVOICE_REQUIRED")) return "Carga la factura de servicio antes de conciliar.";
+  if (error.includes("SERVICE_REINVOICING_CONTEXT_INVALID")) return "La Factura de Servicio vigente cambió; vuelve a validar el PDF.";
   if (error.includes("PRODUCT_INVOICE_REQUIRED")) return "Carga la factura de producto antes de conciliar.";
   if (error.includes("FISCAL_DOCUMENT_ALREADY_EXISTS")) return "Esta factura fiscal ya fue procesada anteriormente.";
   if (error.includes("REINVOICING_NOT_AVAILABLE")) return "La conciliación ya no está disponible para solicitar refacturación.";
@@ -79,7 +81,7 @@ function validPdf(file: FormDataEntryValue | null): file is File {
   return file instanceof File && file.size > 0 && file.size <= MAX_PDF_SIZE && file.type.toLowerCase() === "application/pdf" && file.name.toLowerCase().endsWith(".pdf");
 }
 
-type DispatchInvoiceContext = InvoiceProcessingContext & { projectId: string; batchId: string; dispatchId: string; operationalStatus: "IN_EXECUTION" | "COMPLETED"; productInvoiceId: string | null; serviceInvoiceId: string | null; reconciliationStatus: string };
+type DispatchInvoiceContext = InvoiceProcessingContext & { projectId: string; batchId: string; dispatchId: string; operationalStatus: "IN_EXECUTION" | "COMPLETED"; productInvoiceId: string | null; serviceInvoiceId: string | null; reconciliationStatus: string; serviceReconciliationStatus: string };
 
 async function invoiceContext(projectId: string, batchId: string, dispatchId: string): Promise<DispatchInvoiceContext | null> {
   const admin = createAdminClient();
@@ -87,7 +89,7 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
     admin.from("dispatches").select("id, project_id, programming_id, supplier_id, order_number, real_volume, real_unit_code, status, result").eq("id", dispatchId).eq("project_id", projectId).maybeSingle(),
     admin.from("batches").select("id, project_id, accounting_period").eq("id", batchId).eq("project_id", projectId).maybeSingle(),
     admin.from("projects").select("id, company_id, address, billing_legal_name, billing_tax_id, timezone").eq("id", projectId).maybeSingle(),
-    admin.from("dispatch_reconciliations").select("status, current_product_invoice_id, current_service_invoice_id").eq("dispatch_id", dispatchId).eq("project_id", projectId).maybeSingle(),
+    admin.from("dispatch_reconciliations").select("status, current_product_invoice_id, current_service_invoice_id, service_status").eq("dispatch_id", dispatchId).eq("project_id", projectId).maybeSingle(),
   ]);
   if (!dispatchResult.data || !batchResult.data || !projectResult.data) return null;
   const [relationResult, supplierResult, companyResult, programmingResult, incidentsResult] = await Promise.all([
@@ -133,6 +135,7 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
     productInvoiceId: reconciliationResult.data?.current_product_invoice_id ?? null,
     serviceInvoiceId: reconciliationResult.data?.current_service_invoice_id ?? null,
     reconciliationStatus: reconciliationResult.data?.status ?? "NOT_STARTED",
+    serviceReconciliationStatus: reconciliationResult.data?.service_status ?? "NOT_STARTED",
   };
 }
 
@@ -199,21 +202,22 @@ export async function inspectDispatchInvoicePdf(projectId: string, batchId: stri
     const invoiceSlot = resolveInvoiceUploadSlot({
       invoiceType: requestedType,
       reconciliationStatus: context.reconciliationStatus,
+      serviceReconciliationStatus: context.serviceReconciliationStatus,
       currentProductInvoiceId: context.productInvoiceId,
       currentServiceInvoiceId: context.serviceInvoiceId,
     });
     const reinvoicing = invoiceSlot.operation === "REINVOICE";
     const duplicate = invoiceSlot.occupied;
     let replacesInvoiceNumber: string | null = null;
-    if (reinvoicing && context.productInvoiceId) {
+    if (reinvoicing && invoiceSlot.currentInvoiceId) {
       const previous = await createAdminClient()
         .from("invoices")
         .select("invoice_number")
-        .eq("id", context.productInvoiceId)
+        .eq("id", invoiceSlot.currentInvoiceId)
         .eq("dispatch_id", dispatchId)
-        .eq("invoice_type", "PRODUCT")
+        .eq("invoice_type", requestedType)
         .maybeSingle();
-      if (!previous.data) return { fileName: file.name, dispatchId, requestedType, status: "ERROR", message: "No fue posible recuperar la Factura de Producto vigente.", payload: null, duplicate: false };
+      if (!previous.data) return { fileName: file.name, dispatchId, requestedType, status: "ERROR", message: `No fue posible recuperar la Factura de ${requestedType === "SERVICE" ? "Servicio" : "Producto"} vigente.`, payload: null, duplicate: false };
       replacesInvoiceNumber = previous.data.invoice_number;
     }
     return {
@@ -226,7 +230,7 @@ export async function inspectDispatchInvoicePdf(projectId: string, batchId: stri
       message: processed.payload.recipient_exception_required
         ? "La factura puede guardarse; Compras debe aceptar la excepción C14 o solicitar refacturación."
         : reinvoicing
-        ? "Factura refacturada lista para reemplazar la Factura de Producto anterior."
+        ? `Factura refacturada lista para reemplazar la Factura de ${requestedType === "PRODUCT" ? "Producto" : "Servicio"} anterior.`
         : duplicate
         ? `Ya existe una factura de ${requestedType === "PRODUCT" ? "producto" : "servicio"} cargada para este despacho.`
         : processed.payload.warnings.join(" ") || "Factura lista para guardar.",
@@ -278,6 +282,7 @@ export async function saveDispatchInvoice(projectId: string, batchId: string, di
   const expectedReplacementId = resolveInvoiceUploadSlot({
     invoiceType: requestedType,
     reconciliationStatus: context.reconciliationStatus,
+    serviceReconciliationStatus: context.serviceReconciliationStatus,
     currentProductInvoiceId: context.productInvoiceId,
     currentServiceInvoiceId: context.serviceInvoiceId,
   }).replacesInvoiceId;
@@ -313,11 +318,11 @@ export async function saveDispatchInvoice(projectId: string, batchId: string, di
     return { status: "error" as const, message: invoiceError(completed.error.message) };
   }
   let reconciliationStatus: string | undefined;
-  if (effectiveReplacementId) {
-    const reconciled = await supabase.rpc("reconcile_dispatch", { p_dispatch_id: dispatchId });
+  if ((effectiveReplacementId || requestedType === "SERVICE") && !processed.payload.recipient_exception_required) {
+    const reconciled = await supabase.rpc(requestedType === "SERVICE" ? "reconcile_dispatch_service" : "reconcile_dispatch", { p_dispatch_id: dispatchId });
     if (reconciled.error) {
       refresh(batchId, dispatchId);
-      return { status: "error" as const, message: "La factura refacturada se guardó, pero la conciliación debe reintentarse." };
+      return { status: "error" as const, message: "La factura se guardó, pero la conciliación debe reintentarse." };
     }
     reconciliationStatus = String(reconciled.data);
   }
@@ -340,7 +345,9 @@ export async function saveDispatchInvoice(projectId: string, batchId: string, di
 export async function requestDispatchReinvoicingAction(_previous: BatchMutationState, formData: FormData): Promise<BatchMutationState> {
   const projectId = value(formData, "projectId"), batchId = value(formData, "batchId"), dispatchId = value(formData, "dispatchId");
   if (![projectId, batchId, dispatchId].every((id) => UUID.test(id)) || !(await authorize(projectId, "invoice.review"))) return { status: "error", message: "No tienes permiso para solicitar refacturación." };
-  const { error } = await (await createClient()).rpc("request_dispatch_reinvoicing", { p_dispatch_id: dispatchId, p_reason: value(formData, "reason") });
+  const invoiceType = value(formData, "invoiceType") || "PRODUCT";
+  if (!["PRODUCT", "SERVICE"].includes(invoiceType)) return { status: "error", message: "Selecciona un tipo de factura válido." };
+  const { error } = await (await createClient()).rpc(invoiceType === "SERVICE" ? "request_dispatch_service_reinvoicing" : "request_dispatch_reinvoicing", { p_dispatch_id: dispatchId, p_reason: value(formData, "reason") });
   if (error) return { status: "error", message: invoiceError(error.message) };
   refresh(batchId, dispatchId);
   return { status: "success", message: "Refacturación solicitada; la factura anterior se conserva." };
@@ -357,9 +364,10 @@ export async function decideInvoiceRecipientExceptionAction(
   return result;
 }
 
-export async function reconcileDispatchAction(projectId: string, batchId: string, dispatchId: string) {
+export async function reconcileDispatchAction(projectId: string, batchId: string, dispatchId: string, invoiceType: InvoiceType = "PRODUCT") {
   if (![projectId, batchId, dispatchId].every((id) => UUID.test(id)) || !(await authorize(projectId, "invoice.match"))) return { status: "error" as const, message: "No tienes permiso para conciliar." };
-  const { data, error } = await (await createClient()).rpc("reconcile_dispatch", { p_dispatch_id: dispatchId });
+  if (!["PRODUCT", "SERVICE"].includes(invoiceType)) return { status: "error" as const, message: "Selecciona un tipo de factura válido." };
+  const { data, error } = await (await createClient()).rpc(invoiceType === "SERVICE" ? "reconcile_dispatch_service" : "reconcile_dispatch", { p_dispatch_id: dispatchId });
   if (error) return { status: "error" as const, message: invoiceError(error.message) };
   refresh(batchId, dispatchId);
   return { status: "success" as const, reconciliationStatus: String(data) };

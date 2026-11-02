@@ -1,3 +1,4 @@
+import { serviceReconciliationSummary } from "../src/features/invoices/service-reconciliation.ts";
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -113,7 +114,7 @@ test('editar/ver usa la zona del proyecto y conserva modo de solo lectura', () =
 test('las consultas trasladan horarios nuevos e históricos sin fabricar datos', async () => {
   const queries = await readFile(new URL('src/features/dispatches/queries.ts',root),'utf8');
   const loadedQueries = load(queries+'\nexport { buildGuides as testBuildGuides };', {
-    'server-only':{}, '@/lib/supabase/admin':{}, '@/lib/supabase/server':{}, './formatters':{},
+    '@/features/invoices/service-reconciliation':{serviceReconciliationSummary},'server-only':{}, '@/lib/supabase/admin':{}, '@/lib/supabase/server':{}, './formatters':{},
   });
   const guide={id:guideId,guide_number:'1234',guide_date:'2026-10-26',quantity:5,unit_code:'M3',truck_arrival_at:'2026-10-26T21:30:00Z',truck_departure_at:'2026-10-26T22:10:00Z'};
   const row=loadedQueries.testBuildGuides([guide],[])[0];

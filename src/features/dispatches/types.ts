@@ -1,3 +1,4 @@
+import type { ServiceReconciliationSummary } from "@/features/invoices/service-reconciliation";
 export const DISPATCH_STATUSES = ["IN_EXECUTION", "COMPLETED"] as const;
 export const DISPATCH_RESULTS = ["DISPATCHED", "NOT_DISPATCHED"] as const;
 
@@ -177,6 +178,7 @@ export type DispatchDetail = {
   batches: DispatchBatchRelation[];
   reconciliation: {
     status: string;
+    serviceReconciliation?: ServiceReconciliationSummary;
     productInvoice: DispatchInvoiceSummary | null;
     serviceInvoice: DispatchInvoiceSummary | null;
     latestDifference: number | null;

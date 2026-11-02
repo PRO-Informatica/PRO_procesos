@@ -1,3 +1,4 @@
+import type { ServiceReconciliationSummary } from "@/features/invoices/service-reconciliation";
 import type { InvoiceProcessingPayload } from "@/features/invoices/invoice-processing";
 import type { ProjectSummary } from "@/features/projects/types";
 
@@ -68,6 +69,7 @@ export type BatchDispatchRelation = {
   reconciliationId: string | null; reconciliationStatus: ReconciliationStatus;
   productInvoice: BatchInvoice | null; serviceInvoice: BatchInvoice | null;
   serviceInvoiceRequired: boolean;
+  serviceReconciliation?: ServiceReconciliationSummary;
   latestAttempt: ReconciliationAttempt | null;
 };
 

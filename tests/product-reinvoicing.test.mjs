@@ -31,7 +31,7 @@ test("Universal conserva el bloqueo si hay factura activa fuera de refacturació
 
 test("la preview Universal explica el reemplazo al usuario", () => {
   assert.match(universalTypes, /operation: "NEW" \| "REINVOICE"/u);
-  assert.match(universalWorkspace, /Nueva Factura de Producto · Tipo: Refacturación/u);
+  assert.match(universalWorkspace, /Nueva Factura de[\s\S]*Producto[\s\S]*Tipo: Refacturación/u);
   assert.match(universalWorkspace, /Reemplaza la factura/u);
 });
 
@@ -149,8 +149,8 @@ test("la Factura de Servicio se conserva independientemente", () => {
 });
 
 test("la nueva Producto se reconcilia automáticamente contra Volumen Real", () => {
-  assert.match(universalService, /classified\.detectedType === "PRODUCT"[\s\S]*reconcile_dispatch/u);
-  assert.match(batchActions, /if \(effectiveReplacementId\)[\s\S]*reconcile_dispatch/u);
+  assert.match(universalService, /classified\.detectedType === "SERVICE" \? "reconcile_dispatch_service" : "reconcile_dispatch"/u);
+  assert.match(batchActions, /effectiveReplacementId \|\| requestedType === "SERVICE"[\s\S]*"reconcile_dispatch"/u);
   assert.match(reinvoicingMigration, /v_difference := v_invoice_quantity - v_dispatch\.real_volume/u);
 });
 
