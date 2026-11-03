@@ -24,7 +24,7 @@ import 'temporal-polyfill/global';
 const timezone='America/Guatemala';const now=Temporal.Now.zonedDateTimeISO(timezone);const today=now.toPlainDate();const first=today.with({day:1});const boundary=first.subtract({days:(first.dayOfWeek-1)||1});
 const stamp=date=>date.toZonedDateTime({timeZone:timezone,plainTime:Temporal.PlainTime.from('07:00')}).toInstant().toString();
 const item=(id,date,name,status='CONFIRMED')=>({id,version:2,projectId:'project',supplierId:'supplier',supplierName:name,orderNumber:'123',scheduledAt:stamp(date),requestedQuantity:5,confirmedQuantity:5,unitCode:'M3',placementGroup:null,requiresPumping:false,deliveryModes:['DIRECT'],estimatedWorkItemId:null,estimatedWorkItemLabel:null,status,effectiveStatus:status,notes:null,createdByName:'QA',confirmedAt:stamp(date),confirmedByName:'QA',lines:[{id:'line',quantity:5,unitCode:'M3',concreteType:'CONF4001',position:1}],dispatches:[]});
-window.todayItem=item('today-item',today,'QA HOY');window.boundaryItem=item('boundary-item',boundary,'QA PRIMERA SEMANA');window.fixtures=[window.todayItem,window.boundaryItem];
+const started=new URLSearchParams(location.search).has('started');window.todayItem=item('today-item',today,'QA HOY',started?'IN_EXECUTION':'CONFIRMED');if(started)window.todayItem.dispatches=[{id:'empty-dispatch',status:'IN_EXECUTION',result:null,guideNumber:null,guideDate:null,quantity:0,unitCode:null,createdAt:stamp(today)}];window.boundaryItem=item('boundary-item',boundary,'QA PRIMERA SEMANA');window.fixtures=[window.todayItem,window.boundaryItem];
 createRoot(document.getElementById('app')!).render(<ProgrammingWorkspace project={{id:'project',name:'QA',companyName:'QA',timezone}} canCreate={false} canConfirm={false} canModify={false} canCancel={true} initialData={{items:[window.todayItem],range:{start:stamp(first),end:stamp(first.add({months:1,days:7}))},suppliers:[],units:[]}}/>);`);
 await new Promise((resolve,reject)=>webpack({mode:'development',target:'web',devtool:false,
  entry:path.join(harness,'entry.tsx'),output:{path:harness,filename:'bundle.js'},
@@ -57,12 +57,12 @@ await writeFile(path.join(harness,'browser-check.js'),String.raw`(async()=>{
  document.querySelector('[data-event-id="today-item"]').click();await wait(()=>button('Cancelar programación'));const cancelVisible=true;
  button('Cancelar programación').click();await wait(()=>document.getElementById('programming-cancel-reason'));
  const reason=document.getElementById('programming-cancel-reason');const form=reason.closest('form');const submit=form.querySelector('[type="submit"]');
- const reasonRequired=reason.required&&submit.disabled;
+ const reasonRequired=reason.required&&submit.disabled;const dialog=reason.closest('[role="dialog"]');const bounds=dialog.getBoundingClientRect();const cancelFits=bounds.left>=0&&bounds.right<=innerWidth&&bounds.top>=0&&bounds.bottom<=innerHeight;const preservesDispatchMessage=!new URLSearchParams(location.search).has('started')||dialog.textContent.includes('No despachado');
  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(reason,'Prueba cancelación con comentario');reason.dispatchEvent(new Event('input',{bubbles:true}));await pause(50);
  window.failCancel=true;submit.click();await wait(()=>form.querySelector('[role="alert"]')&&!submit.disabled);
  const errorRetained=reason.value==='Prueba cancelación con comentario';window.failCancel=false;submit.click();await wait(()=>!document.getElementById('programming-cancel-reason'));
  const cancelSuccess=window.cancelPayload.some(([key,value])=>key==='reason'&&value==='Prueba cancelación con comentario')&&window.cancelPayload.some(([key,value])=>key==='intent'&&value==='cancel')&&window.cancelPayload.some(([key,value])=>key==='expectedVersion'&&value==='2');
- return{width:innerWidth,firstLoad,initialEvent,boundaryEvent,filterWorks,navigationWorks,returnWorks,cancelVisible,reasonRequired,errorRetained,cancelSuccess,pageFits:document.documentElement.scrollWidth<=innerWidth};
+ return{width:innerWidth,firstLoad,initialEvent,boundaryEvent,filterWorks,navigationWorks,returnWorks,cancelVisible,reasonRequired,errorRetained,cancelSuccess,cancelFits,preservesDispatchMessage,pageFits:document.documentElement.scrollWidth<=innerWidth};
 })()`);
 const server=createServer(async(request,response)=>{try{
  const url=new URL(request.url,'http://localhost');
@@ -74,7 +74,7 @@ await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 await mkdir("tmp", { recursive: true });
 const directory = await mkdtemp(path.join(root, "tmp/programming-load-ui-"));
 try {
-  for (const [width, height, theme, horizontal] of [[320, 700, "light", "left"], [390, 844, "light", "left"], [820, 1100, "light", "left"], [1440, 1000, "light", "left"], [390, 844, "dark", "left"]]) {
+  for (const [width, height, theme, horizontal] of [[320, 700, "light", "left"], [390, 844, "light", "left"], [820, 1100, "light", "left"], [1440, 1000, "light", "left"], [390, 844, "dark", "left"], [390, 844, "light", "started"], [1440, 1000, "light", "started"]]) {
     const screenshot = path.join(directory, `${width}-${theme}-${horizontal}.png`);
     const profile = await mkdtemp(path.join(directory, "chrome-profile-"));
     const child = spawn("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", ["--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--disable-extensions", "--disable-sync", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"]);
@@ -114,7 +114,7 @@ try {
       await send("Page.enable", {}, sessionId);
       await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false }, sessionId);
       await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }, sessionId);
-      await send("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/?theme=${theme}${horizontal==='edit'?'&edit=1':''}` }, sessionId);
+      await send("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/?theme=${theme}${horizontal==='started'?'&started=1':''}` }, sessionId);
       const result = await send("Runtime.evaluate", { expression: await readFile(path.join(harness,"browser-check.js"),"utf8"), awaitPromise: true, returnByValue: true }, sessionId);
       assert.ok(!result.exceptionDetails, JSON.stringify(result.exceptionDetails));
       data = result.result.value;
@@ -125,7 +125,7 @@ try {
       socket?.close();
       child.kill();
     }
-    for (const key of ["firstLoad", "initialEvent", "boundaryEvent", "filterWorks", "navigationWorks", "returnWorks", "cancelVisible", "reasonRequired", "errorRetained", "cancelSuccess", "pageFits"]) assert.equal(data[key], true, `${width}/${theme}: ${key} ${JSON.stringify(data.headerHits)}`);
+    for (const key of ["firstLoad", "initialEvent", "boundaryEvent", "filterWorks", "navigationWorks", "returnWorks", "cancelVisible", "reasonRequired", "errorRetained", "cancelSuccess", "cancelFits", "preservesDispatchMessage", "pageFits"]) assert.equal(data[key], true, `${width}/${theme}: ${key} ${JSON.stringify(data.headerHits)}`);
     delete data.headerHits;
     console.log(JSON.stringify({ status: "PASS", ...data, theme, horizontal, screenshot }));
   }

@@ -22,3 +22,13 @@ test('la consulta inicial de noviembre incluye la semana visible de octubre en G
  assert.equal(range.start,'2026-10-26T06:00:00.000Z');assert.equal(range.end,'2026-12-08T06:00:00.000Z');
  assert.ok('2026-10-30T13:00:00Z'>range.start&&'2026-10-30T13:00:00Z'<range.end);
 });
+
+
+test('permite cancelar el inicio sin guías y exige comprobar que no existan guías',()=>{
+ for(const status of ['CONFIRMED','IN_EXECUTION']){
+  assert.equal(availability.canCancelProgramming({...confirmed,status,operationStarted:true,hasGuides:false}),true);
+  assert.equal(availability.canCancelProgramming({...confirmed,status,operationStarted:true,hasGuides:true}),false);
+  assert.equal(availability.canCancelProgramming({...confirmed,status,operationStarted:true}),false);
+  assert.equal(availability.canCancelProgramming({...confirmed,status,hasGuides:false,hasPermission:false}),false);
+ }
+});

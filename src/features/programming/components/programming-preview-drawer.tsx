@@ -63,7 +63,7 @@ export function ProgrammingPreviewDrawer({
   const [availabilityNow] = useState(() => Date.now());
   const [editOpen, setEditOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const cancellable = Boolean(item && canCancelProgramming({ ...item, operationStarted: item.dispatches.length > 0, timezone, hasPermission: canCancel }, availabilityNow));
+  const cancellable = Boolean(item && canCancelProgramming({ ...item, operationStarted: item.dispatches.length > 0, hasGuides: item.dispatches.some((dispatch) => Boolean(dispatch.guideNumber)), timezone, hasPermission: canCancel }, availabilityNow));
   const canDirectConfirm = Boolean(
     item && canConfirmProgramming({ ...item, operationStarted: item.dispatches.length > 0, hasPermission: canConfirm }, availabilityNow),
   );

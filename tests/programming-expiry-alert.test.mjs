@@ -29,7 +29,7 @@ function fixture(patch={},permissionsPatch={}){
   '@/lib/notification-messages':{notifications:{}},'@/lib/status-labels':{formatStatusLabel:value=>value},
   '../actions':{},'../invoice-policy':{deliveryModeLabel:()=> 'Bomba',requiresServiceInvoice:()=>true},'../availability':availability,
   '../formatters':{formatProgrammingStatus:value=>value==='EXPIRED'?'Vencido':value,formatProgrammingDateTime:String,formatProgrammingQuantity:String,programmingStatusTone:()=>''},
-  '../types':{},'./programming-edit-dialog':{ProgrammingEditDialog:'EditDialog'},'@/features/dispatches/components/register-dispatch-dialog':{StartDispatchDialog:'StartDispatchDialog'},
+  '../types':{},'./programming-edit-dialog':{ProgrammingEditDialog:'EditDialog'},'./programming-cancel-dialog':{ProgrammingCancelDialog:'CancelDialog'},'@/features/dispatches/components/register-dispatch-dialog':{StartDispatchDialog:'StartDispatchDialog'},
  };
  const exports={};runInNewContext(compiled,{exports,require(name){assert.ok(Object.hasOwn(imports,name),name);return imports[name];},Date,Intl});
  const render=()=>{index=0;tree=exports.ProgrammingDetailView({data:{detail,suppliers:[],units:[]},project:{id:'project',name:'QA',timezone:'America/Guatemala'},receiverName:'Residente',permissions});};
@@ -51,4 +51,14 @@ test('la alerta no habilita operaciones sin permiso ni para programaciones pendi
   assert.equal(f.button('Registrar despacho'),undefined);
   assert.equal(f.all().find(n=>n.type==='StartDispatchDialog'),undefined);
  }
+});
+
+
+test('una programación en ejecución sin guías ofrece Cancelar con motivo; con guías no',()=>{
+ const f=fixture({status:'IN_EXECUTION',dispatches:[{id:'dispatch',status:'IN_EXECUTION',result:null,guideNumber:null,quantity:0}]});
+ assert.ok(f.button('Cancelar programación'));f.button('Cancelar programación').props.onClick();f.render();
+ assert.ok(f.all().some(n=>n.type==='CancelDialog'));
+ const delivered=fixture({status:'IN_EXECUTION',dispatches:[{id:'dispatch',status:'IN_EXECUTION',result:null,guideNumber:'1234',quantity:0}]});
+ assert.equal(delivered.button('Cancelar programación'),undefined);
+ const denied=fixture({status:'IN_EXECUTION',dispatches:[]},{canCancel:false});assert.equal(denied.button('Cancelar programación'),undefined);
 });

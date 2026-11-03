@@ -163,7 +163,7 @@ export async function getBatchDetail(
   const supplierIds = [...new Set(dispatches.map((row) => row.supplier_id))];
 
   const [programmingResult, suppliersResult, guidesResult, reconciliationsResult, invoicesResult, attemptsResult, exceptionsResult, profilesResult] = await Promise.all([
-    programmingIds.length ? supabase.from("programming").select("id, scheduled_at, delivery_modes").eq("project_id", projectId).in("id", programmingIds) : Promise.resolve({ data: [], error: null }),
+    programmingIds.length ? supabase.from("programming").select("id, scheduled_at, delivery_modes, status").eq("project_id", projectId).in("id", programmingIds) : Promise.resolve({ data: [], error: null }),
     supplierIds.length ? supabase.from("suppliers").select("id, name").in("id", supplierIds) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("dispatch_guides").select("id, dispatch_id").eq("project_id", projectId).in("dispatch_id", dispatchIds) : Promise.resolve({ data: [], error: null }),
     dispatchIds.length ? supabase.from("dispatch_reconciliations").select("id, dispatch_id, status, current_product_invoice_id, current_service_invoice_id, service_status, service_comparison").eq("project_id", projectId).in("dispatch_id", dispatchIds) : Promise.resolve({ data: [], error: null }),
@@ -252,7 +252,7 @@ export async function getBatchDetail(
     }];
   });
   const activeDispatchIds = new Set((activeProjectRelationsResult.data ?? []).map((row) => row.dispatch_id));
-  const eligibleDispatches: EligibleBatchDispatch[] = dispatches.filter((dispatch) => dispatch.status === "COMPLETED" && !activeDispatchIds.has(dispatch.id)).map((dispatch) => ({
+  const eligibleDispatches: EligibleBatchDispatch[] = dispatches.filter((dispatch) => dispatch.status === "COMPLETED" && programmingById.get(dispatch.programming_id)?.status !== "CANCELLED" && !activeDispatchIds.has(dispatch.id)).map((dispatch) => ({
     dispatchId: dispatch.id, programmingCode: formatProgrammingCode(dispatch.programming_id),
     orderNumber: dispatch.order_number,
     supplierName: supplierNames.get(dispatch.supplier_id) ?? "Proveedor no disponible",

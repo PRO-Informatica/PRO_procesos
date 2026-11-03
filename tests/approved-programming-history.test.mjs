@@ -117,3 +117,21 @@ test('la edición conserva validación de fecha real, motivo, permiso, cantidad 
     if(message==='PROGRAMMING_VERSION_CONFLICT')assert.equal(result.conflict,true);
   }
 });
+
+
+test('cancelar requiere comentario válido y transmite motivo, versión y permiso de cancelación',async()=>{
+ for(const reason of ['', '   ', 'x'.repeat(1001)]){
+  const f=fixture({permissions:['programming.cancel']});
+  const result=await f.actions.mutateProgrammingAction({},editForm({intent:'cancel',reason}));
+  assert.equal(result.status,'error');assert.equal(f.calls.length,0);
+ }
+ const f=fixture({permissions:['programming.cancel']});
+ const result=await f.actions.mutateProgrammingAction({},editForm({intent:'cancel',reason:'Entrega cancelada por proveedor'}));
+ assert.equal(result.status,'success');assert.equal(f.calls[0].name,'cancel_programming');
+ assert.equal(f.calls[0].args.p_reason,'Entrega cancelada por proveedor');assert.equal(f.calls[0].args.p_expected_version,3);
+ assert.ok(f.paths.includes('/dispatches'));assert.ok(f.paths.includes('/programming/'+projectId));
+ const denied=fixture({permissions:['programming.modify']});
+ assert.equal((await denied.actions.mutateProgrammingAction({},editForm({intent:'cancel'}))).status,'error');assert.equal(denied.calls.length,0);
+ const blocked=fixture({permissions:['programming.cancel'],rpcError:{message:'PROGRAMMING_HAS_RECORDED_ACTIVITY'}});
+ const blockedResult=await blocked.actions.mutateProgrammingAction({},editForm({intent:'cancel'}));assert.equal(blockedResult.status,'error');assert.match(blockedResult.message,/guías/u);
+});

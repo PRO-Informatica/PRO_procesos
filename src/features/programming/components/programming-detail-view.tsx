@@ -47,21 +47,16 @@ import {
   type ProgrammingMutationIntent,
 } from "../types";
 import { ProgrammingEditDialog } from "./programming-edit-dialog";
+import { ProgrammingCancelDialog } from "./programming-cancel-dialog";
 import { StartDispatchDialog } from "@/features/dispatches/components/register-dispatch-dialog";
 
 type ActionIntent = Exclude<ProgrammingMutationIntent, "confirm">;
-type MutationDialogIntent = Exclude<ActionIntent, "edit">;
+type MutationDialogIntent = Exclude<ActionIntent, "edit" | "cancel">;
 
 const actionCopy: Record<
   MutationDialogIntent,
   { title: string; label: string; loading: string; description: string }
 > = {
-  cancel: {
-    title: "Cancelar programación",
-    label: "Cancelar programación",
-    loading: "Cancelando programación…",
-    description: "Cancelando la programación con motivo obligatorio.",
-  },
   close: {
     title: "Cerrar programación",
     label: "Cerrar programación",
@@ -83,7 +78,6 @@ const revisionLabels: Record<string, string> = {
 };
 
 const actionNotification = {
-  cancel: notifications.programmingCancelled,
   close: notifications.statusUpdated,
 } as const;
 
@@ -128,7 +122,7 @@ function MutationDialog({
   }, [onClose, router, state.conflict, state.status]);
 
   return (
-    <Dialog title={copy.title} description={`PRG-${detail.id.slice(0, 8).toUpperCase()} · versión ${detail.version}`} onClose={onClose} pending={pending} size="lg" tone={intent === "cancel" ? "destructive" : "default"}>
+    <Dialog title={copy.title} description={`PRG-${detail.id.slice(0, 8).toUpperCase()} · versión ${detail.version}`} onClose={onClose} pending={pending} size="lg">
         <form action={formAction} aria-busy={pending}>
           <input type="hidden" name="intent" value={intent} />
           <input type="hidden" name="projectId" value={detail.projectId} />
@@ -136,13 +130,6 @@ function MutationDialog({
           <input type="hidden" name="expectedVersion" value={detail.version} />
 
           <div className="grid gap-5 p-5 sm:p-6">
-            {intent === "cancel" && (
-              <div>
-                <label htmlFor="cancel-reason" className="form-label">Motivo de cancelación *</label>
-                <textarea id="cancel-reason" name="reason" required rows={4} maxLength={1000} className="form-input resize-y" disabled={pending} />
-              </div>
-            )}
-
             {intent === "close" && (
               <>
                 <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
@@ -172,7 +159,6 @@ function MutationDialog({
             <Button variant="secondary" onClick={onClose} disabled={pending}>Volver</Button>
             <LoadingButton
               loadingLabel={copy.loading}
-              variant={intent === "cancel" ? "destructive" : "primary"}
             >
               {copy.label}
             </LoadingButton>
@@ -218,6 +204,7 @@ export function ProgrammingDetailView({
   permissions: ProgrammingDetailPermissions;
   receiverName: string;
 }) {
+  const router = useRouter();
   const [intent, setIntent] = useState<ActionIntent | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [availabilityNow] = useState(() => Date.now());
@@ -245,7 +232,7 @@ export function ProgrammingDetailView({
     timezone: project.timezone,
     hasPermission: permissions.canCreateDispatch,
   }, availabilityNow);
-  const canCancel = canCancelProgramming({ ...detail, operationStarted, hasPermission: permissions.canCancel }, availabilityNow);
+  const canCancel = canCancelProgramming({ ...detail, operationStarted, hasGuides: detail.dispatches.some((dispatch) => Boolean(dispatch.guideNumber)), hasPermission: permissions.canCancel }, availabilityNow);
   const relevantRevisions = detail.revisions.filter(
     (revision) => revision.action !== "PROGRAMMING_BASELINE",
   );
@@ -430,7 +417,8 @@ export function ProgrammingDetailView({
             onUpdated={() => setIntent(null)}
           />
         )}
-        {intent && intent !== "edit" && (
+        {intent === "cancel" && <ProgrammingCancelDialog key={`cancel-${detail.version}`} item={detail} onClose={() => setIntent(null)} onCancelled={() => { setIntent(null); router.refresh(); }} />}
+        {intent === "close" && (
           <MutationDialog
             key={`${intent}-${detail.version}`}
             intent={intent}

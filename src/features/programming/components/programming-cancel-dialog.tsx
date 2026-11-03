@@ -12,7 +12,7 @@ import { mutateProgrammingAction } from "../actions";
 import { initialProgrammingMutationState, type ProgrammingItem } from "../types";
 
 export function ProgrammingCancelDialog({ item, onClose, onCancelled }: {
-  item: Pick<ProgrammingItem, "id" | "projectId" | "version">;
+  item: Pick<ProgrammingItem, "id" | "projectId" | "version" | "dispatches">;
   onClose: () => void;
   onCancelled: () => void;
 }) {
@@ -35,6 +35,7 @@ export function ProgrammingCancelDialog({ item, onClose, onCancelled }: {
         <input type="hidden" name="programmingId" value={item.id} />
         <input type="hidden" name="expectedVersion" value={item.version} />
         <div className="space-y-4 p-4 sm:p-6">
+          {item.dispatches.length > 0 && <p className="rounded-lg bg-muted p-3 text-sm text-foreground-muted">El despacho sin guías quedará como No despachado. Se conservarán sus datos y el motivo de cancelación en el historial.</p>}
           <div>
             <label htmlFor="programming-cancel-reason" className="form-label">Motivo de cancelación *</label>
             <textarea id="programming-cancel-reason" name="reason" required maxLength={1000} rows={4} value={reason} onChange={(event) => setReason(event.target.value)} disabled={pending} className="form-input resize-y" />
