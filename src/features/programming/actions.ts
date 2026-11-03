@@ -157,6 +157,12 @@ function databaseErrorMessage(error: { code?: string; message: string }) {
   if (message.includes("PROGRAMMING_HAS_DISPATCHES")) {
     return "No se puede cancelar porque ya existen despachos relacionados.";
   }
+  if (message.includes("PROGRAMMING_HAS_RECORDED_ACTIVITY")) {
+    return "No se puede cancelar porque el despacho ya tiene guías, cantidades registradas o información de facturación.";
+  }
+  if (message.includes("PROGRAMMING_CANCELLATION_REASON_TOO_LONG")) {
+    return "El motivo de cancelación no puede superar 1000 caracteres.";
+  }
   if (message.includes("PROGRAMMING_NOT_IN_EXECUTION")) {
     return "Solo una programación en ejecución puede cerrarse.";
   }
@@ -355,10 +361,14 @@ export async function mutateProgrammingAction(
       p_notes: null,
     }));
   } else if (intent === "cancel") {
+    const reason = readText(formData, "reason");
+    if (!reason || reason.length > 1000) {
+      return { status: "error", intent, message: !reason ? "Ingresa el motivo de la cancelación." : "El motivo de cancelación no puede superar 1000 caracteres." };
+    }
     ({ error } = await supabase.rpc("cancel_programming", {
       p_programming_id: programmingId,
       p_expected_version: expectedVersion,
-      p_reason: readText(formData, "reason"),
+      p_reason: reason,
     }));
   } else {
     ({ error } = await supabase.rpc("close_programming", {
@@ -382,6 +392,13 @@ export async function mutateProgrammingAction(
 
   revalidatePath("/programming");
   revalidatePath(`/programming/${programmingId}`);
+  if (intent === "cancel") {
+    revalidatePath("/dispatches");
+    revalidatePath("/dispatches/[id]", "page");
+    revalidatePath("/batches");
+    revalidatePath("/batches/universal");
+    revalidatePath("/reports");
+  }
   return {
     status: "success",
     intent,

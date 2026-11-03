@@ -44,6 +44,7 @@ function refresh(batchId?: string, dispatchId?: string) {
 }
 
 function batchError(message: string) {
+  if (message.includes("DISPATCH_PROGRAMMING_CANCELLED")) return "No puedes agregar al lote un despacho de una programación cancelada.";
   const error = message.toUpperCase();
   if (error.includes("DISPATCH_ALREADY_IN_ACTIVE_BATCH")) return "El despacho ya pertenece a un lote activo.";
   if (error.includes("DISPATCH_SELECTION_INVALID") || error.includes("DISPATCH_SELECTION_DUPLICATED")) return "Selecciona uno o más despachos válidos sin repetirlos.";

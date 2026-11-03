@@ -82,13 +82,16 @@ export function canEditProgramming(
 }
 
 export function canCancelProgramming(
-  programming: ProgrammingAvailabilityInput & { hasPermission: boolean },
+  programming: ProgrammingAvailabilityInput & { hasPermission: boolean; hasGuides?: boolean },
   now = Date.now(),
 ) {
+  if (programming.status === "IN_EXECUTION") {
+    return programming.hasPermission && programming.hasGuides === false;
+  }
   return programming.hasPermission &&
     getEffectiveProgrammingStatus(programming, now) !== "CANCELLED" &&
     ["PENDING_CONFIRMATION", "CONFIRMED"].includes(programming.status) &&
-    !(programming.status === "CONFIRMED" && programming.operationStarted);
+    (!programming.operationStarted || programming.hasGuides === false);
 }
 
 export function canConfirmProgramming(
