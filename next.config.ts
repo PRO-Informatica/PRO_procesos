@@ -10,7 +10,8 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: {
-      bodySizeLimit: "11mb",
+      // Service preview may include its companion Product (10 MiB per PDF).
+      bodySizeLimit: "21mb",
     },
   },
 };

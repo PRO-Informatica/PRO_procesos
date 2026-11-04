@@ -117,8 +117,9 @@ export const initialBatchMutationState: BatchMutationState = { status: "idle" };
 
 export type InvoiceInspection = {
   fileName: string; dispatchId: string | null; requestedType: InvoiceType | null;
-  status: "READY" | "WITH_DIFFERENCES" | "REQUIRES_RECIPIENT_EXCEPTION" | "REQUIRES_REINVOICING" | "IN_EXECUTION" | "DISPATCH_NOT_FOUND" | "ERROR" | "REQUIRES_REVIEW";
+  status: "IDENTIFIED" | "READY" | "WITH_DIFFERENCES" | "REQUIRES_RECIPIENT_EXCEPTION" | "REQUIRES_REINVOICING" | "IN_EXECUTION" | "DISPATCH_NOT_FOUND" | "ERROR" | "REQUIRES_REVIEW";
   message: string; payload: InvoiceProcessingPayload | null; duplicate: boolean;
+  pcaOriginal?: string | null;
   operation?: "NEW" | "REINVOICE";
   replacesInvoiceId?: string | null;
   replacesInvoiceNumber?: string | null;
