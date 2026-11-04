@@ -18,6 +18,7 @@ export type GoogleVisionResponse = {
         blocks?: Array<{
           paragraphs?: Array<{
             words?: Array<{
+              confidence?: number;
               symbols?: Array<{ text?: string }>;
               boundingBox?: {
                 vertices?: Array<{ x?: number; y?: number }>;

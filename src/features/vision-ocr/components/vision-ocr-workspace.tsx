@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { AlertTriangle, Check, Clipboard, FileImage, RotateCcw, ScanText, TableProperties, Upload, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useId, useRef, useState } from "react";
@@ -256,6 +258,8 @@ export function VisionOcrWorkspace() {
         <p className="mt-2 max-w-2xl text-sm leading-6 text-foreground-muted">
           Selecciona una guía o control de operación. La plantilla se identifica localmente antes de ejecutar DOCUMENT_TEXT_DETECTION; el resultado es una ayuda de revisión y no se guarda.
         </p>
+        <Link href="/dispatches" className="secondary-button mt-4 inline-flex">Registrar una guía desde fotografía</Link>
+        <p className="mt-2 text-xs text-foreground-muted">Para guardar una captura, abre un despacho en ejecución y selecciona Agregar guía → Tomar foto.</p>
       </header>
 
       <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]">

@@ -11,6 +11,7 @@ import {
 } from "./vision-ocr";
 import { detectVisionTemplate, parseVisionDocument } from "./document-parser";
 import type { VisionTemplateType } from "./template-classifier";
+import { parseCompleteGuide } from "./complete-guide-parser";
 
 export class VisionOcrError extends Error {
   constructor(
@@ -96,8 +97,10 @@ export async function extractDocumentText(
   }
 
   if (!response.ok) {
+    const billingDisabled = JSON.stringify(payload).includes("BILLING_DISABLED");
     throw new VisionOcrError(
-      response.status === 429
+      billingDisabled ? "Google Vision requiere habilitar la facturación del proyecto de Google Cloud de DEV. Puedes completar la guía manualmente desde la foto mientras se configura."
+        : response.status === 429
         ? "Se alcanzó temporalmente el límite de Google Vision. Intenta más tarde."
         : "Google Vision no pudo procesar la imagen.",
       googleFailureStatus(response.status),
@@ -125,5 +128,6 @@ export async function extractDocumentText(
     text: result.text,
     templateType,
     document,
+    guideDraft: templateType === "DISPATCH_GUIDE" ? parseCompleteGuide(payload) : null,
   };
 }
