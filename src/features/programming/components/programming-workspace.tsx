@@ -26,6 +26,7 @@ import { BulkProgrammingDialog } from "./bulk-programming-dialog";
 import { ProgrammingCalendar } from "./programming-calendar";
 import { ProgrammingKanban } from "./programming-kanban";
 import { ProgrammingPreviewDrawer } from "./programming-preview-drawer";
+import { ProgrammingStatusLegend } from "./programming-status-legend";
 
 type ViewMode = "calendar" | "kanban";
 type ProgrammingScope = "active" | "history";
@@ -352,6 +353,7 @@ export function ProgrammingWorkspace({
                 </div>
               )}
             </div>
+            <ProgrammingStatusLegend />
             <ProgrammingCalendar
               items={scopedItems}
               timezone={project.timezone}

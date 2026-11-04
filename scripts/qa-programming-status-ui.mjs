@@ -40,6 +40,9 @@ await writeFile(path.join(harness,'browser-check.js'),String.raw`(async()=>{
  const choose=async(el,value)=>{Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('change',{bubbles:true}));await pause(80);};
  const button=text=>[...document.querySelectorAll('button')].find(b=>visible(b)&&b.textContent.trim()===text);
  await wait(()=>document.querySelector('.sx__calendar'));await document.fonts.ready;await wait(()=>window.rangeCalls?.length>0);
+ const legend=document.querySelector('[aria-label="Guía de colores del calendario"]');
+ const legendColors=!!legend&&['Confirmado','En ejecución','Despacho completo','Completado','Cancelado','Vencido'].every(label=>[...legend.querySelectorAll('li')].some(e=>e.textContent===label));
+ const legendFits=!!legend&&[legend,...legend.querySelectorAll('li')].every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&e.scrollWidth<=e.clientWidth;});
  const status=document.getElementById('programming-filter-status');const opts=[...status.options].map(o=>o.value);
  const noPending=!opts.includes('PENDING_CONFIRMATION')&&!opts.includes('DRAFT');const hasGreen=opts.includes('DISPATCH_COMPLETED');
  const dark=new URLSearchParams(location.search).get('theme')==='dark';
@@ -57,11 +60,12 @@ await writeFile(path.join(harness,'browser-check.js'),String.raw`(async()=>{
  // Drawer close is icon-only, with its accessible label.
  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(()=>!document.querySelector('[role="dialog"]'));
  await choose(status,'');button('Kanban').click();await wait(()=>document.getElementById('kanban-mobile-status'));
+ const legendOnlyCalendar=!document.querySelector('[aria-label="Guía de colores del calendario"]');
  const mobile=document.getElementById('kanban-mobile-status');const kanbanOptions=[...mobile.options].map(o=>o.value);
  const kanbanStates=kanbanOptions.length===6&&!kanbanOptions.includes('PENDING_CONFIRMATION')&&kanbanOptions.includes('DISPATCH_COMPLETED');
  if(innerWidth<1024)await choose(mobile,'DISPATCH_COMPLETED');
  await pause(100);const pageFits=document.documentElement.scrollWidth<=innerWidth;
- return{width:innerWidth,noPending,hasGreen,colors,drawerGreen,noManualConfirm,kanbanStates,pageFits};
+ return{width:innerWidth,noPending,hasGreen,colors,drawerGreen,noManualConfirm,kanbanStates,pageFits,legendColors,legendFits,legendOnlyCalendar};
 })()`);
 const server=createServer(async(request,response)=>{try{
  const url=new URL(request.url,'http://localhost');
@@ -128,7 +132,7 @@ try {
       socket?.close();
       child.kill();
     }
-    for (const key of ["noPending", "hasGreen", "drawerGreen", "noManualConfirm", "kanbanStates", "pageFits"]) assert.equal(data[key], true, `${width}/${theme}: ${key} ${JSON.stringify(data.headerHits)}`);
+    for (const key of ["noPending", "hasGreen", "drawerGreen", "noManualConfirm", "kanbanStates", "pageFits", "legendColors", "legendFits", "legendOnlyCalendar"]) assert.equal(data[key], true, `${width}/${theme}: ${key} ${JSON.stringify(data.headerHits)}`);
     delete data.headerHits;
     console.log(JSON.stringify({ status: "PASS", ...data, theme, horizontal, screenshot }));
   }
