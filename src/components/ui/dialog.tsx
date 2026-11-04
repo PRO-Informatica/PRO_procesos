@@ -19,6 +19,29 @@ const FOCUSABLE = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
+// A drawer and its dialog can unmount together (for example on navigation).
+// Each lock must share the original style, regardless of cleanup order.
+const pageScrollLocks = new WeakMap<HTMLElement, { count: number; overflow: string }>();
+
+function lockPageScroll() {
+  const body = document.body;
+  const lock = pageScrollLocks.get(body) ?? { count: 0, overflow: body.style.overflow };
+  lock.count += 1;
+  pageScrollLocks.set(body, lock);
+  body.style.overflow = "hidden";
+  let released = false;
+
+  return () => {
+    if (released) return;
+    released = true;
+    lock.count -= 1;
+    if (lock.count === 0) {
+      body.style.overflow = lock.overflow;
+      pageScrollLocks.delete(body);
+    }
+  };
+}
+
 export function useDialogAccessibility<T extends HTMLElement = HTMLDivElement>({ open, onClose, pending = false }: {
   open: boolean;
   onClose: () => void;
@@ -37,8 +60,7 @@ export function useDialogAccessibility<T extends HTMLElement = HTMLDivElement>({
   useEffect(() => {
     if (!open) return;
     restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const unlockPageScroll = lockPageScroll();
     const panel = panelRef.current;
     panel?.querySelector<HTMLElement>("[data-dialog-initial-focus], " + FOCUSABLE)?.focus();
 
@@ -68,7 +90,7 @@ export function useDialogAccessibility<T extends HTMLElement = HTMLDivElement>({
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
+      unlockPageScroll();
       restoreFocusRef.current?.focus();
     };
   }, [open]);
