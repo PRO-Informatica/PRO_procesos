@@ -1,5 +1,7 @@
 "use client";
 
+import { programmingStatusTone } from "@/features/programming/formatters";
+
 import { CalendarDays, ChevronRight, Plus, Search, Truck, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -145,7 +147,7 @@ export function DispatchesWorkspace({
       <MotionSection className="rounded-xl border border-border bg-surface p-4 shadow-[0_1px_2px_rgba(16,24,40,0.02)]">
         <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">Filtros</p>{hasFilters && <button type="button" onClick={clearFilters} className="secondary-button min-h-9 gap-1.5 px-3 text-xs"><X className="size-3.5" /> Limpiar</button>}</div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_0.8fr_1fr_1.2fr]">
-          <select aria-label="Estado programación" value={programmingStatus} onChange={(event) => setProgrammingStatus(event.target.value as ProgrammingDispatchStatus | "")} className="form-input"><option value="">Estado programación</option><option value="CONFIRMED">Confirmada</option><option value="IN_EXECUTION">En ejecución</option></select>
+          <select aria-label="Estado programación" value={programmingStatus} onChange={(event) => setProgrammingStatus(event.target.value as ProgrammingDispatchStatus | "")} className="form-input"><option value="">Estado programación</option><option value="CONFIRMED">Confirmada</option><option value="IN_EXECUTION">En ejecución</option><option value="DISPATCH_COMPLETED">Despacho completo</option></select>
           <select aria-label="Estado despacho" value={dispatchStatus} onChange={(event) => setDispatchStatus(event.target.value as DispatchFilter)} className="form-input"><option value="">Estado despacho</option><option value="NOT_STARTED">Sin iniciar</option><option value="IN_EXECUTION">En ejecución</option><option value="COMPLETED">Completado</option></select>
           <select aria-label="Periodo de fecha" value={dateMode} onChange={(event) => setDateMode(event.target.value as DateMode)} className="form-input"><option value="day">Día</option><option value="week">Semana</option><option value="month">Mes</option></select>
           <div className="relative"><CalendarDays className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" /><input aria-label="Fecha" type="date" value={date} onChange={(event) => setDate(event.target.value)} className="form-input pl-10" /></div>
@@ -154,7 +156,7 @@ export function DispatchesWorkspace({
       </MotionSection>
 
       <MotionSection className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6"><div><h2 className="font-semibold">Programaciones listas para despachar</h2><p className="mt-1 text-xs text-foreground-muted">Programaciones confirmadas o actualmente en ejecución</p></div><span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted" aria-live="polite">{filtered.length} resultado(s)</span></div>
+        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6"><div><h2 className="font-semibold">Programaciones listas para despachar</h2><p className="mt-1 text-xs text-foreground-muted">Programaciones confirmadas, en ejecución o con despacho completo</p></div><span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted" aria-live="polite">{filtered.length} resultado(s)</span></div>
         {!filtered.length ? <div className="p-6"><EmptyState icon={Truck} title="No hay programaciones disponibles" description={hasFilters ? "Ajusta los filtros para ver otros resultados." : "Las programaciones confirmadas aparecerán aquí."} /></div> : (
           <>
             <div className="hidden overflow-x-auto lg:block">
@@ -181,7 +183,7 @@ export function DispatchesWorkspace({
                       className={`cursor-pointer hover:bg-muted/35 ${selectedId === item.programmingId ? "bg-brand-soft/35" : ""}`}
                     >
                       <td className="px-5 py-4 font-mono text-xs font-semibold text-brand-strong">{item.programmingCode}</td>
-                      <td className="px-5 py-4">{formatStatusLabel(item.programmingStatus)}</td>
+                      <td className="px-5 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.programmingStatus)}`}>{formatStatusLabel(item.programmingStatus)}</span></td>
                       <td className="px-5 py-4 font-medium">{item.supplierName}</td>
                       <td className="px-5 py-4 font-medium">{item.orderNumber ?? "—"}</td>
                       <td className="max-w-64 px-5 py-4 text-foreground-muted">
@@ -217,7 +219,7 @@ export function DispatchesWorkspace({
                     <div className="col-span-2 min-[420px]:col-span-1"><dt className="font-medium text-foreground-muted">Fecha programada</dt><dd className="mt-1 font-semibold text-foreground">{formatDispatchDateTime(item.scheduledAt, project.timezone)}</dd></div>
                     <div><dt className="font-medium text-foreground-muted">No. de pedido</dt><dd className="mt-1 break-words font-semibold text-foreground">{item.orderNumber ?? "—"}</dd></div>
                     <div><dt className="font-medium text-foreground-muted">Tipo de concreto</dt><dd className="mt-1 break-words font-semibold text-foreground">{concreteTypeLabel(item.concreteTypes)}</dd></div>
-                    <div><dt className="font-medium text-foreground-muted">Programación</dt><dd className="mt-1 font-semibold text-foreground">{formatStatusLabel(item.programmingStatus)}</dd></div>
+                    <div><dt className="font-medium text-foreground-muted">Programación</dt><dd className="mt-1 font-semibold text-foreground"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.programmingStatus)}`}>{formatStatusLabel(item.programmingStatus)}</span></dd></div>
                     <div><dt className="font-medium text-foreground-muted">Despacho</dt><dd className="mt-1 font-semibold text-foreground">{item.dispatchStatus ? formatStatusLabel(item.dispatchStatus) : "Sin iniciar"}</dd></div>
                     <div><dt className="font-medium text-foreground-muted">Estimado productos</dt><dd className="mt-1 text-foreground"><EstimateValue estimate={item.productEstimate} /></dd></div>
                     <div><dt className="font-medium text-foreground-muted">Estimado servicios</dt><dd className="mt-1 text-foreground"><EstimateValue estimate={item.serviceEstimate} /></dd></div>

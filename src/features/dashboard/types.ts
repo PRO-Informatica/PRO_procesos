@@ -1,4 +1,4 @@
-export type ProgrammingStatus = "DRAFT" | "PENDING_CONFIRMATION" | "CONFIRMED" | "IN_EXECUTION" | "COMPLETED" | "CANCELLED";
+export type ProgrammingStatus = "DRAFT" | "PENDING_CONFIRMATION" | "CONFIRMED" | "IN_EXECUTION" | "DISPATCH_COMPLETED" | "COMPLETED" | "CANCELLED";
 export type BatchStatus = "OPEN" | "CLOSED";
 export type DashboardWeekDay = { date: string; shortLabel: string; programmingCount: number; programmedM3: number; receivedM3: number; isToday: boolean };
 export type DashboardActivity = { id: string; action: string; entityType: string; entityId: string; createdAt: string; actorName: string };

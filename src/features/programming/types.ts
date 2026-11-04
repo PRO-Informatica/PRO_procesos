@@ -5,6 +5,7 @@ export const PROGRAMMING_STATUSES = [
   "PENDING_CONFIRMATION",
   "CONFIRMED",
   "IN_EXECUTION",
+  "DISPATCH_COMPLETED",
   "COMPLETED",
   "CANCELLED",
 ] as const;
@@ -15,6 +16,11 @@ export const PROGRAMMING_EFFECTIVE_STATUSES = [
   ...PROGRAMMING_STATUSES,
   "EXPIRED",
 ] as const;
+
+// Legacy states remain readable in history, but are no longer workflow options.
+export const PROGRAMMING_VISIBLE_STATUSES = PROGRAMMING_EFFECTIVE_STATUSES.filter(
+  (status) => status !== "DRAFT" && status !== "PENDING_CONFIRMATION",
+);
 
 export type ProgrammingEffectiveStatus =
   (typeof PROGRAMMING_EFFECTIVE_STATUSES)[number];

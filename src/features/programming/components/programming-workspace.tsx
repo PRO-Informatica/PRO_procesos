@@ -14,7 +14,7 @@ import { loadProgrammingRange } from "../actions";
 import { isActiveProgramming, isHistoricalProgramming } from "../availability";
 import { formatProgrammingStatus } from "../formatters";
 import {
-  PROGRAMMING_EFFECTIVE_STATUSES,
+  PROGRAMMING_VISIBLE_STATUSES,
   type ProgrammingEffectiveStatus,
   type ProgrammingFilters,
   type ProgrammingItem,
@@ -295,7 +295,7 @@ export function ProgrammingWorkspace({
               className="form-input"
             >
               <option value="">Todos los estados</option>
-              {PROGRAMMING_EFFECTIVE_STATUSES.map((value) => (
+              {PROGRAMMING_VISIBLE_STATUSES.map((value) => (
                 <option key={value} value={value}>
                   {formatProgrammingStatus(value)}
                 </option>
@@ -370,7 +370,7 @@ export function ProgrammingWorkspace({
               <div>
                 <h2 className="text-sm font-semibold text-foreground">Kanban de programación</h2>
                 <p className="mt-1 text-xs text-foreground-muted">
-                  Toda programación nueva inicia pendiente de confirmación.
+                  Toda programación nueva queda confirmada al guardarla.
                 </p>
               </div>
               {canCreate && scope === "active" && (

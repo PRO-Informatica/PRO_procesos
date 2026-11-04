@@ -248,10 +248,10 @@ test("despacho y guía consumen los campos estructurados", async () => {
   assert.match(guide, /emptyLine\(crypto\.randomUUID\(\)\)/u);
 });
 
-test("editar una programación no iniciada exige motivo y vuelve a confirmación", async () => {
+test("editar una programación no iniciada exige motivo y conserva confirmación automática", async () => {
   const [sql, actions, drawer, editDialog] = await Promise.all([
     readFile(new URL(
-      "../supabase/migrations/102_edit_unstarted_programming_with_reason.sql",
+      "../supabase/migrations/134_programming_automatic_confirmation.sql",
       import.meta.url,
     ), "utf8"),
     readFile(new URL("../src/features/programming/actions.ts", import.meta.url), "utf8"),
@@ -276,5 +276,6 @@ test("editar una programación no iniciada exige motivo y vuelve a confirmación
   assert.match(actions, /p_reason: reason/u);
   assert.match(drawer, /Editar programación/u);
   assert.match(editDialog, /Motivo de edición \*/u);
-  assert.match(editDialog, /Guardar y enviar a confirmación/u);
+  assert.match(sql, /status = 'CONFIRMED',[\s\S]*confirmed_quantity = v_total_quantity/u);
+  assert.match(editDialog, /Guardar cambios/u);
 });

@@ -79,7 +79,7 @@ export function ProgrammingEditDialog({
   return (
     <Dialog
       title="Editar programación"
-      description={`PRG-${item.id.slice(0, 8).toUpperCase()} · al guardar volverá a Pendiente de confirmación`}
+      description={`PRG-${item.id.slice(0, 8).toUpperCase()} · al guardar quedará Confirmado`}
       onClose={onClose}
       pending={pending}
       size="lg"
@@ -184,7 +184,7 @@ export function ProgrammingEditDialog({
               placeholder="Explica por qué se modifica la programación"
             />
             <p className="mt-1 text-xs text-foreground-muted">
-              El motivo quedará registrado en el historial y la programación deberá confirmarse nuevamente.
+              El motivo quedará registrado en el historial y los cambios se confirmarán automáticamente.
             </p>
           </div>
 
@@ -208,7 +208,7 @@ export function ProgrammingEditDialog({
             Volver
           </Button>
           <LoadingButton loadingLabel="Guardando cambios…">
-            Guardar y enviar a confirmación
+            Guardar cambios
           </LoadingButton>
         </DialogFooter>
       </form>

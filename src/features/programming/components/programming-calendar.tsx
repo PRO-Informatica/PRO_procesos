@@ -25,6 +25,7 @@ const calendarByStatus = {
   PENDING_CONFIRMATION: "pending",
   CONFIRMED: "confirmed",
   IN_EXECUTION: "execution",
+  DISPATCH_COMPLETED: "dispatchCompleted",
   COMPLETED: "completed",
   CANCELLED: "cancelled",
   EXPIRED: "expired",
@@ -117,8 +118,13 @@ export function ProgrammingCalendar({
         },
         execution: {
           colorName: "execution",
-          lightColors: { main: "#ed1c2e", container: "#fff0f1", onContainer: "#b42318" },
-          darkColors: { main: "#ff6673", container: "#35171c", onContainer: "#fecdd3" },
+          lightColors: { main: "#ca8a04", container: "#fef9c3", onContainer: "#854d0e" },
+          darkColors: { main: "#facc15", container: "#422006", onContainer: "#fef08a" },
+        },
+        dispatchCompleted: {
+          colorName: "dispatchCompleted",
+          lightColors: { main: "#16a34a", container: "#dcfce7", onContainer: "#166534" },
+          darkColors: { main: "#4ade80", container: "#052e16", onContainer: "#bbf7d0" },
         },
         completed: {
           colorName: "completed",

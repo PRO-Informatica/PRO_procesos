@@ -223,7 +223,7 @@ export async function getDispatchPageData(
         "id, supplier_id, order_number, status, scheduled_at, requested_quantity, confirmed_quantity, unit_code",
       )
       .eq("project_id", projectId)
-      .in("status", ["CONFIRMED", "IN_EXECUTION"])
+      .in("status", ["CONFIRMED", "IN_EXECUTION", "DISPATCH_COMPLETED"])
       .order("scheduled_at"),
     supabase
       .from("dispatches")

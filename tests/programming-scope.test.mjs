@@ -173,10 +173,10 @@ test("editar fechas pasadas conserva los bloqueos por despacho, estado y permiso
   }
 });
 
-test("una edición histórica queda pendiente de reconfirmación para su nueva versión", () => {
+test("los estados históricos siguen legibles pero ya no requieren confirmación manual", () => {
   const programming = { status: "PENDING_CONFIRMATION", version: 3, scheduledAt: "2020-01-01T08:00:00-06:00", operationStarted: false, hasPermission: true };
   assert.equal(getEffectiveProgrammingStatus(programming), "PENDING_CONFIRMATION");
-  assert.equal(canConfirmProgramming(programming), true);
+  assert.equal(canConfirmProgramming(programming), false);
   for (const patch of [{ version: 1 }, { operationStarted: true }, { hasPermission: false }, { status: "CONFIRMED" }, { scheduledAt: "invalid" }]) {
     assert.equal(canConfirmProgramming({ ...programming, ...patch }), false);
   }

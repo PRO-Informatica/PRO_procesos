@@ -74,6 +74,8 @@ const revisionLabels: Record<string, string> = {
   PROGRAMMING_CONFIRMED: "Programación confirmada",
   PROGRAMMING_CANCELLED: "Programación cancelada",
   PROGRAMMING_IN_EXECUTION: "Ejecución iniciada",
+  PROGRAMMING_AUTO_CONFIRMED: "Confirmación automática",
+  PROGRAMMING_DISPATCH_COMPLETED: "Despacho completo",
   PROGRAMMING_COMPLETED: "Programación completada",
 };
 
@@ -242,7 +244,7 @@ export function ProgrammingDetailView({
     if (canEdit) {
       result.push({ intent: "edit", label: "Editar", icon: Pencil });
     }
-    if (detail.status === "IN_EXECUTION" && permissions.canClose) {
+    if (["IN_EXECUTION", "DISPATCH_COMPLETED"].includes(detail.status) && permissions.canClose) {
       result.push({ intent: "close", label: "Cerrar programación", icon: ClipboardCheck });
     }
     if (canCancel) result.push({ intent: "cancel", label: "Cancelar programación", icon: XCircle });
