@@ -16,6 +16,25 @@
   --destructive: #b42318;
   --destructive-soft: #fef3f2;
   --sidebar: #111216;
+  --programming-confirmed-main: #457b9d;
+  --programming-confirmed-bg: #eaf2f6;
+  --programming-confirmed-fg: #1d3557;
+  --programming-in-execution-main: #a8dadc;
+  --programming-in-execution-bg: #a8dadc;
+  --programming-in-execution-fg: #1d3557;
+  --programming-dispatch-completed-main: #000000;
+  --programming-dispatch-completed-bg: #000000;
+  --programming-dispatch-completed-fg: #ffffff;
+  --programming-completed-main: #1d3557;
+  --programming-completed-bg: #1d3557;
+  --programming-completed-fg: #f1faee;
+  --programming-cancelled-main: #e63946;
+  --programming-cancelled-bg: #fdecef;
+  --programming-cancelled-fg: #9f1d28;
+  --programming-expired-main: #f1faee;
+  --programming-expired-bg: #f1faee;
+  --programming-expired-fg: #1d3557;
+
   --motion-instant: 120ms;
   --motion-hover: 180ms;
   --motion-route: 250ms;
@@ -39,6 +58,25 @@
   --destructive: #fda29b;
   --destructive-soft: #3b1717;
   --sidebar: #0b0c0f;
+  --programming-confirmed-main: #457b9d;
+  --programming-confirmed-bg: #203b4b;
+  --programming-confirmed-fg: #cee6f1;
+  --programming-in-execution-main: #a8dadc;
+  --programming-in-execution-bg: #193a40;
+  --programming-in-execution-fg: #a8dadc;
+  --programming-dispatch-completed-main: #000000;
+  --programming-dispatch-completed-bg: #000000;
+  --programming-dispatch-completed-fg: #ffffff;
+  --programming-completed-main: #1d3557;
+  --programming-completed-bg: #1d3557;
+  --programming-completed-fg: #f1faee;
+  --programming-cancelled-main: #e63946;
+  --programming-cancelled-bg: #451d23;
+  --programming-cancelled-fg: #ffb3ba;
+  --programming-expired-main: #f1faee;
+  --programming-expired-bg: #29362c;
+  --programming-expired-fg: #f1faee;
+
 }
 
 @theme inline {
@@ -694,21 +732,41 @@ details[open] > .menu-popover {
   }
 }
 
-/* Programming-only operational states follow the selected app theme, even
-   when the device color preference differs. Dispatch badges are unchanged. */
-.programming-tone-in_execution {
-  background-color: #fef9c3;
-  color: #854d0e;
+/* Scoped to programming; the dispatch status palette remains unchanged. */
+.programming-status-tone {
+  background-color: var(--programming-status-bg);
+  color: var(--programming-status-fg);
+  box-shadow: inset 0 0 0 1px var(--programming-status-border, transparent);
 }
-.programming-tone-dispatch_completed {
-  background-color: #dcfce7;
-  color: #166534;
+
+.programming-tone-confirmed {
+  --programming-status-bg: var(--programming-confirmed-bg);
+  --programming-status-fg: var(--programming-confirmed-fg);
 }
-.dark .programming-tone-in_execution {
-  background-color: #422006;
-  color: #fef08a;
+
+.programming-tone-in-execution {
+  --programming-status-bg: var(--programming-in-execution-bg);
+  --programming-status-fg: var(--programming-in-execution-fg);
 }
-.dark .programming-tone-dispatch_completed {
-  background-color: #052e16;
-  color: #bbf7d0;
+
+.programming-tone-dispatch-completed {
+  --programming-status-bg: var(--programming-dispatch-completed-bg);
+  --programming-status-fg: var(--programming-dispatch-completed-fg);
+  --programming-status-border: var(--foreground-muted);
+}
+
+.programming-tone-completed {
+  --programming-status-bg: var(--programming-completed-bg);
+  --programming-status-fg: var(--programming-completed-fg);
+}
+
+.programming-tone-cancelled {
+  --programming-status-bg: var(--programming-cancelled-bg);
+  --programming-status-fg: var(--programming-cancelled-fg);
+}
+
+.programming-tone-expired {
+  --programming-status-bg: var(--programming-expired-bg);
+  --programming-status-fg: var(--programming-expired-fg);
+  --programming-status-border: var(--foreground-muted);
 }

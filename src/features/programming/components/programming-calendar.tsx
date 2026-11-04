@@ -19,6 +19,7 @@ import {
   formatProgrammingTime,
 } from "../formatters";
 import type { ProgrammingItem, ProgrammingRange } from "../types";
+import { programmingColorVariables } from "../status-colors";
 
 const calendarByStatus = {
   DRAFT: "draft",
@@ -113,33 +114,33 @@ export function ProgrammingCalendar({
         },
         confirmed: {
           colorName: "confirmed",
-          lightColors: { main: "#2563eb", container: "#dbeafe", onContainer: "#1e40af" },
-          darkColors: { main: "#60a5fa", container: "#172554", onContainer: "#bfdbfe" },
+          lightColors: programmingColorVariables("CONFIRMED"),
+          darkColors: programmingColorVariables("CONFIRMED"),
         },
         execution: {
           colorName: "execution",
-          lightColors: { main: "#ca8a04", container: "#fef9c3", onContainer: "#854d0e" },
-          darkColors: { main: "#facc15", container: "#422006", onContainer: "#fef08a" },
+          lightColors: programmingColorVariables("IN_EXECUTION"),
+          darkColors: programmingColorVariables("IN_EXECUTION"),
         },
         dispatchCompleted: {
           colorName: "dispatchCompleted",
-          lightColors: { main: "#16a34a", container: "#dcfce7", onContainer: "#166534" },
-          darkColors: { main: "#4ade80", container: "#052e16", onContainer: "#bbf7d0" },
+          lightColors: programmingColorVariables("DISPATCH_COMPLETED"),
+          darkColors: programmingColorVariables("DISPATCH_COMPLETED"),
         },
         completed: {
           colorName: "completed",
-          lightColors: { main: "#7c3aed", container: "#ede9fe", onContainer: "#5b21b6" },
-          darkColors: { main: "#c4b5fd", container: "#2e1065", onContainer: "#ddd6fe" },
+          lightColors: programmingColorVariables("COMPLETED"),
+          darkColors: programmingColorVariables("COMPLETED"),
         },
         cancelled: {
           colorName: "cancelled",
-          lightColors: { main: "#b42318", container: "#fef3f2", onContainer: "#912018" },
-          darkColors: { main: "#fda29b", container: "#3b1717", onContainer: "#fecaca" },
+          lightColors: programmingColorVariables("CANCELLED"),
+          darkColors: programmingColorVariables("CANCELLED"),
         },
         expired: {
           colorName: "expired",
-          lightColors: { main: "#64748b", container: "#e2e8f0", onContainer: "#334155" },
-          darkColors: { main: "#94a3b8", container: "#1e293b", onContainer: "#cbd5e1" },
+          lightColors: programmingColorVariables("EXPIRED"),
+          darkColors: programmingColorVariables("EXPIRED"),
         },
       },
       callbacks: {

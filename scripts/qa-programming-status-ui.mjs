@@ -24,7 +24,7 @@ import 'temporal-polyfill/global';
 const timezone='America/Guatemala';const now=Temporal.Now.zonedDateTimeISO(timezone);const today=now.toPlainDate();const first=today.with({day:1});const boundary=first.subtract({days:(first.dayOfWeek-1)||1});
 const stamp=date=>date.toZonedDateTime({timeZone:timezone,plainTime:Temporal.PlainTime.from('07:00')}).toInstant().toString();
 const item=(id,date,name,status='CONFIRMED')=>({id,version:2,projectId:'project',supplierId:'supplier',supplierName:name,orderNumber:'123',scheduledAt:stamp(date),requestedQuantity:5,confirmedQuantity:5,unitCode:'M3',placementGroup:null,requiresPumping:false,deliveryModes:['DIRECT'],estimatedWorkItemId:null,estimatedWorkItemLabel:null,status,effectiveStatus:status,notes:null,createdByName:'QA',confirmedAt:stamp(date),confirmedByName:'QA',lines:[{id:'line',quantity:5,unitCode:'M3',concreteType:'CONF4001',position:1}],dispatches:[]});
-window.fixtures=['CONFIRMED','IN_EXECUTION','DISPATCH_COMPLETED','COMPLETED','CANCELLED'].map(status=>item(status,today,'QA '+status,status));
+window.fixtures=['CONFIRMED','IN_EXECUTION','DISPATCH_COMPLETED','COMPLETED','CANCELLED'].map(status=>item(status,today,'QA '+status,status));window.fixtures.push({...item('EXPIRED',today,'QA EXPIRED','CONFIRMED'),effectiveStatus:'EXPIRED'});
 const rootNode=createRoot(document.getElementById('app')!);rootNode.render(<ThemeProvider attribute="class" enableSystem={false} storageKey="qa-status-theme" defaultTheme={new URLSearchParams(location.search).get('theme')||'light'}><ProgrammingWorkspace project={{id:'project',name:'QA',companyName:'QA',timezone}} canCreate={false} canConfirm={true} canModify={true} canCancel={true} initialData={{items:window.fixtures,range:{start:stamp(first),end:stamp(first.add({months:1,days:7}))},suppliers:[],units:[]}}/></ThemeProvider>);`);
 await new Promise((resolve,reject)=>webpack({mode:'development',target:'web',devtool:false,
  entry:path.join(harness,'entry.tsx'),output:{path:harness,filename:'bundle.js'},
@@ -44,18 +44,24 @@ await writeFile(path.join(harness,'browser-check.js'),String.raw`(async()=>{
  const legendColors=!!legend&&['Confirmado','En ejecución','Despacho completo','Completado','Cancelado','Vencido'].every(label=>[...legend.querySelectorAll('li')].some(e=>e.textContent===label));
  const legendFits=!!legend&&[legend,...legend.querySelectorAll('li')].every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&e.scrollWidth<=e.clientWidth;});
  const status=document.getElementById('programming-filter-status');const opts=[...status.options].map(o=>o.value);
- const noPending=!opts.includes('PENDING_CONFIRMATION')&&!opts.includes('DRAFT');const hasGreen=opts.includes('DISPATCH_COMPLETED');
+ const noPending=!opts.includes('PENDING_CONFIRMATION')&&!opts.includes('DRAFT');const hasDispatchCompleted=opts.includes('DISPATCH_COMPLETED');
  const dark=new URLSearchParams(location.search).get('theme')==='dark';
- const expected=dark?{CONFIRMED:'rgb(23, 37, 84)',IN_EXECUTION:'rgb(66, 32, 6)',DISPATCH_COMPLETED:'rgb(5, 46, 22)',COMPLETED:'rgb(46, 16, 101)',CANCELLED:'rgb(59, 23, 23)'}:{CONFIRMED:'rgb(219, 234, 254)',IN_EXECUTION:'rgb(254, 249, 195)',DISPATCH_COMPLETED:'rgb(220, 252, 231)',COMPLETED:'rgb(237, 233, 254)',CANCELLED:'rgb(254, 243, 242)'};
+ const expected=dark?{CONFIRMED:'rgb(32, 59, 75)',IN_EXECUTION:'rgb(25, 58, 64)',DISPATCH_COMPLETED:'rgb(0, 0, 0)',COMPLETED:'rgb(29, 53, 87)',CANCELLED:'rgb(69, 29, 35)',EXPIRED:'rgb(41, 54, 44)'}:{CONFIRMED:'rgb(234, 242, 246)',IN_EXECUTION:'rgb(168, 218, 220)',DISPATCH_COMPLETED:'rgb(0, 0, 0)',COMPLETED:'rgb(29, 53, 87)',CANCELLED:'rgb(253, 236, 239)',EXPIRED:'rgb(241, 250, 238)'};
+ const accentColors=['rgb(69, 123, 157)','rgb(168, 218, 220)','rgb(0, 0, 0)','rgb(29, 53, 87)','rgb(230, 57, 70)','rgb(241, 250, 238)'];
+ const paletteMatches=!!legend&&[...legend.querySelectorAll('li span[aria-hidden]')].every((e,i)=>getComputedStyle(e).backgroundColor===accentColors[i]);
+ const luminance=rgb=>(rgb.match(/[\d.]+/g)||[]).slice(0,3).map(v=>Number(v)/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+ const contrast=(fg,bg)=>{const a=luminance(fg),b=luminance(bg);return(Math.max(a,b)+.05)/(Math.min(a,b)+.05);};
+ const contrasts={};
  const colors={};for(const[id,color]of Object.entries(expected)){
    await choose(status,id);await wait(()=>[...document.querySelectorAll('[data-event-id="'+id+'"]')].some(visible));
    const event=[...document.querySelectorAll('[data-event-id="'+id+'"]')].find(visible);await wait(()=>getComputedStyle(event).backgroundColor===color).catch(error=>{throw Error(error.message+JSON.stringify({id,color,actual:getComputedStyle(event).backgroundColor,html:event.outerHTML,children:[...event.children].map(e=>({tag:e.tagName,bg:getComputedStyle(e).backgroundColor}))}));});
    colors[id]=getComputedStyle(event).backgroundColor;
+   const ratio=contrast(getComputedStyle(event).color,colors[id]);if(ratio<4.5)throw Error('Insufficient text contrast: '+id+' '+ratio);contrasts[id]=Number(ratio.toFixed(2));
  }
  await choose(status,'DISPATCH_COMPLETED');await wait(()=>[...document.querySelectorAll('[data-event-id="DISPATCH_COMPLETED"]')].some(visible));
  document.querySelector('[data-event-id="DISPATCH_COMPLETED"]').click();await wait(()=>document.querySelector('[role="dialog"]'));
- const drawer=document.querySelector('[role="dialog"]');const greenBadge=[...drawer.querySelectorAll('span')].find(e=>e.textContent==='Despacho completo');
- const drawerGreen=!!greenBadge&&getComputedStyle(greenBadge).backgroundColor===expected.DISPATCH_COMPLETED;
+ const drawer=document.querySelector('[role="dialog"]');const completedBadge=[...drawer.querySelectorAll('span')].find(e=>e.textContent==='Despacho completo');
+ const drawerBlack=!!completedBadge&&getComputedStyle(completedBadge).backgroundColor===expected.DISPATCH_COMPLETED&&getComputedStyle(completedBadge).color==='rgb(255, 255, 255)';
  const noManualConfirm=!button('Confirmar programación');button('Cerrar')?.click();
  // Drawer close is icon-only, with its accessible label.
  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(()=>!document.querySelector('[role="dialog"]'));
@@ -65,7 +71,7 @@ await writeFile(path.join(harness,'browser-check.js'),String.raw`(async()=>{
  const kanbanStates=kanbanOptions.length===6&&!kanbanOptions.includes('PENDING_CONFIRMATION')&&kanbanOptions.includes('DISPATCH_COMPLETED');
  if(innerWidth<1024)await choose(mobile,'DISPATCH_COMPLETED');
  await pause(100);const pageFits=document.documentElement.scrollWidth<=innerWidth;
- return{width:innerWidth,noPending,hasGreen,colors,drawerGreen,noManualConfirm,kanbanStates,pageFits,legendColors,legendFits,legendOnlyCalendar};
+ return{width:innerWidth,noPending,hasDispatchCompleted,colors,drawerBlack,noManualConfirm,kanbanStates,pageFits,legendColors,legendFits,legendOnlyCalendar,paletteMatches,contrasts};
 })()`);
 const server=createServer(async(request,response)=>{try{
  const url=new URL(request.url,'http://localhost');
@@ -132,7 +138,7 @@ try {
       socket?.close();
       child.kill();
     }
-    for (const key of ["noPending", "hasGreen", "drawerGreen", "noManualConfirm", "kanbanStates", "pageFits", "legendColors", "legendFits", "legendOnlyCalendar"]) assert.equal(data[key], true, `${width}/${theme}: ${key} ${JSON.stringify(data.headerHits)}`);
+    for (const key of ["noPending", "hasDispatchCompleted", "drawerBlack", "noManualConfirm", "kanbanStates", "pageFits", "legendColors", "legendFits", "legendOnlyCalendar", "paletteMatches"]) assert.equal(data[key], true, `${width}/${theme}: ${key} ${JSON.stringify(data.headerHits)}`);
     delete data.headerHits;
     console.log(JSON.stringify({ status: "PASS", ...data, theme, horizontal, screenshot }));
   }

@@ -17,11 +17,6 @@ const programmingCalendar = await readFile(
   ),
   "utf8",
 );
-const programmingFormatters = await readFile(
-  new URL("../src/features/programming/formatters.ts", import.meta.url),
-  "utf8",
-);
-
 test("el calendario móvil conserva Mes como primera vista compatible", () => {
   const viewsSection = programmingCalendar.slice(
     programmingCalendar.indexOf("views: ["),
@@ -60,14 +55,6 @@ test("una programación completada aparece en Activas y también en Historial", 
 
   assert.equal(isActiveProgramming(programming), true);
   assert.equal(isHistoricalProgramming(programming), true);
-});
-
-test("Completado utiliza el tono morado del sistema en Programación y calendario", () => {
-  assert.match(programmingFormatters, /COMPLETED: "bg-violet-100 text-violet-800/u);
-  assert.match(
-    programmingCalendar,
-    /completed:[\s\S]*main: "#7c3aed"[\s\S]*container: "#ede9fe"/u,
-  );
 });
 
 test("una pendiente de un día anterior se cancela pero permanece solo en la vista general", () => {
