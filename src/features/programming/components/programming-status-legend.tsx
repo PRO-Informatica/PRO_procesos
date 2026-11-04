@@ -13,8 +13,8 @@ const entries: Array<{ status: ProgrammingEffectiveStatus; color: string }> = [
 
 export function ProgrammingStatusLegend() {
   return (
-    <section aria-label="Guía de colores del calendario" className="mb-3 rounded-xl border border-border bg-surface p-3.5 sm:p-4">
-      <h2 className="text-sm font-semibold text-foreground">Guía de colores</h2>
+    <section aria-label="Guía Estados" className="mb-3 rounded-xl border border-border bg-surface p-3.5 sm:p-4">
+      <h2 className="text-sm font-semibold text-foreground">Guía Estados</h2>
       <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
         {entries.map(({ status, color }) => (
           <li key={status} className="flex min-w-0 items-center gap-2 font-medium text-foreground">
