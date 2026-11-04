@@ -116,7 +116,7 @@ function databaseErrorMessage(error: { code?: string; message: string }) {
     return "No se puede cerrar: todos los despachos deben estar finalizados, con producto conciliado, facturas requeridas y sin decisiones fiscales pendientes.";
   }
   if (message.includes("PROGRAMMING_DELIVERY_MODES")) {
-    return "Revisa la modalidad de entrega. Solo puede cambiarse antes de iniciar el despacho y debe confirmarse nuevamente.";
+    return "Revisa la modalidad de entrega. Solo puede cambiarse antes de iniciar el despacho.";
   }
   if (message.includes("PERMISSION_DENIED")) {
     return "No tienes permiso para realizar esta acción en el proyecto.";
@@ -137,7 +137,7 @@ function databaseErrorMessage(error: { code?: string; message: string }) {
     return "Esta programación solo podía editarse hasta un día antes de la fecha programada.";
   }
   if (message.includes("PROGRAMMING_NOT_EDITABLE")) {
-    return "Solo pueden editarse programaciones pendientes o confirmadas que aún no tengan despacho.";
+    return "Solo pueden editarse programaciones confirmadas que aún no tengan despacho.";
   }
   if (message.includes("PROGRAMMING_EDIT_HAS_DISPATCHES")) {
     return "No se puede editar porque el despacho ya fue iniciado.";
@@ -164,7 +164,7 @@ function databaseErrorMessage(error: { code?: string; message: string }) {
     return "El motivo de cancelación no puede superar 1000 caracteres.";
   }
   if (message.includes("PROGRAMMING_NOT_IN_EXECUTION")) {
-    return "Solo una programación en ejecución puede cerrarse.";
+    return "Solo una programación en ejecución o con despacho completo puede cerrarse.";
   }
   if (message.includes("PROGRAMMING_REQUIRES_DISPATCH")) {
     return "La programación necesita al menos un despacho antes de cerrarse.";
@@ -567,7 +567,7 @@ export async function createProgrammingAction(
 
   return {
     status: "success",
-    message: "Programación creada pendiente de confirmación.",
+    message: "Programación creada y confirmada.",
     programmingId: data,
   };
 }

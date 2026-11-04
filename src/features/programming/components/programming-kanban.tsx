@@ -15,7 +15,7 @@ import {
   programmingStatusTone,
 } from "../formatters";
 import {
-  PROGRAMMING_EFFECTIVE_STATUSES,
+  PROGRAMMING_VISIBLE_STATUSES,
   type ProgrammingEffectiveStatus,
   type ProgrammingItem,
 } from "../types";
@@ -89,9 +89,9 @@ export function ProgrammingKanban({
   timezone: string;
   onSelect: (item: ProgrammingItem) => void;
 }) {
-  const [mobileStatus, setMobileStatus] = useState<ProgrammingEffectiveStatus>("PENDING_CONFIRMATION");
+  const [mobileStatus, setMobileStatus] = useState<ProgrammingEffectiveStatus>("CONFIRMED");
   const grouped = Object.fromEntries(
-    PROGRAMMING_EFFECTIVE_STATUSES.map((status) => [
+    PROGRAMMING_VISIBLE_STATUSES.map((status) => [
       status,
       items.filter((item) => item.effectiveStatus === status),
     ]),
@@ -109,7 +109,7 @@ export function ProgrammingKanban({
           onChange={(event) => setMobileStatus(event.target.value as ProgrammingEffectiveStatus)}
           className="form-input"
         >
-          {PROGRAMMING_EFFECTIVE_STATUSES.map((status) => (
+          {PROGRAMMING_VISIBLE_STATUSES.map((status) => (
             <option key={status} value={status}>
               {formatProgrammingStatus(status)} ({grouped[status].length})
             </option>
@@ -136,8 +136,8 @@ export function ProgrammingKanban({
       </div>
 
       <div className="subtle-scrollbar hidden overflow-x-auto pb-3 lg:block">
-        <div className="grid min-w-[1540px] grid-cols-7 gap-3">
-          {PROGRAMMING_EFFECTIVE_STATUSES.map((status) => (
+        <div className="grid min-w-[1320px] grid-cols-6 gap-3">
+          {PROGRAMMING_VISIBLE_STATUSES.map((status) => (
             <section key={status} className="min-w-0 rounded-xl border border-border bg-muted/30 p-3">
               <div className="flex items-center justify-between gap-2 px-1 pb-3">
                 <h2 className="text-xs font-semibold text-foreground">

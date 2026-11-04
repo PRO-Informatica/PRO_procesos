@@ -16,6 +16,25 @@
   --destructive: #b42318;
   --destructive-soft: #fef3f2;
   --sidebar: #111216;
+  --programming-confirmed-main: #457b9d;
+  --programming-confirmed-bg: #eaf2f6;
+  --programming-confirmed-fg: #1d3557;
+  --programming-in-execution-main: #ffc107;
+  --programming-in-execution-bg: #ffc107;
+  --programming-in-execution-fg: #1a1a1a;
+  --programming-dispatch-completed-main: #1d3557;
+  --programming-dispatch-completed-bg: #1d3557;
+  --programming-dispatch-completed-fg: #f1faee;
+  --programming-completed-main: #1a1a1a;
+  --programming-completed-bg: #1a1a1a;
+  --programming-completed-fg: #f7f7f7;
+  --programming-cancelled-main: #e63946;
+  --programming-cancelled-bg: #fdecef;
+  --programming-cancelled-fg: #9f1d28;
+  --programming-expired-main: #6b7280;
+  --programming-expired-bg: #bfc4cc;
+  --programming-expired-fg: #30343b;
+
   --motion-instant: 120ms;
   --motion-hover: 180ms;
   --motion-route: 250ms;
@@ -39,6 +58,25 @@
   --destructive: #fda29b;
   --destructive-soft: #3b1717;
   --sidebar: #0b0c0f;
+  --programming-confirmed-main: #457b9d;
+  --programming-confirmed-bg: #203b4b;
+  --programming-confirmed-fg: #cee6f1;
+  --programming-in-execution-main: #ffc107;
+  --programming-in-execution-bg: #ffc107;
+  --programming-in-execution-fg: #1a1a1a;
+  --programming-dispatch-completed-main: #1d3557;
+  --programming-dispatch-completed-bg: #1d3557;
+  --programming-dispatch-completed-fg: #f1faee;
+  --programming-completed-main: #1a1a1a;
+  --programming-completed-bg: #1a1a1a;
+  --programming-completed-fg: #f7f7f7;
+  --programming-cancelled-main: #e63946;
+  --programming-cancelled-bg: #451d23;
+  --programming-cancelled-fg: #ffb3ba;
+  --programming-expired-main: #6b7280;
+  --programming-expired-bg: #34383f;
+  --programming-expired-fg: #e5e7eb;
+
 }
 
 @theme inline {
@@ -692,4 +730,43 @@ details[open] > .menu-popover {
     min-width: 0;
     max-width: 100%;
   }
+}
+
+/* Scoped to programming; the dispatch status palette remains unchanged. */
+.programming-status-tone {
+  background-color: var(--programming-status-bg);
+  color: var(--programming-status-fg);
+  box-shadow: inset 0 0 0 1px var(--programming-status-border, transparent);
+}
+
+.programming-tone-confirmed {
+  --programming-status-bg: var(--programming-confirmed-bg);
+  --programming-status-fg: var(--programming-confirmed-fg);
+}
+
+.programming-tone-in-execution {
+  --programming-status-bg: var(--programming-in-execution-bg);
+  --programming-status-fg: var(--programming-in-execution-fg);
+}
+
+.programming-tone-dispatch-completed {
+  --programming-status-bg: var(--programming-dispatch-completed-bg);
+  --programming-status-fg: var(--programming-dispatch-completed-fg);
+}
+
+.programming-tone-completed {
+  --programming-status-bg: var(--programming-completed-bg);
+  --programming-status-fg: var(--programming-completed-fg);
+  --programming-status-border: var(--foreground-muted);
+}
+
+.programming-tone-cancelled {
+  --programming-status-bg: var(--programming-cancelled-bg);
+  --programming-status-fg: var(--programming-cancelled-fg);
+}
+
+.programming-tone-expired {
+  --programming-status-bg: var(--programming-expired-bg);
+  --programming-status-fg: var(--programming-expired-fg);
+  --programming-status-border: var(--foreground-muted);
 }

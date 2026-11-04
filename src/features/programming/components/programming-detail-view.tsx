@@ -74,6 +74,8 @@ const revisionLabels: Record<string, string> = {
   PROGRAMMING_CONFIRMED: "Programación confirmada",
   PROGRAMMING_CANCELLED: "Programación cancelada",
   PROGRAMMING_IN_EXECUTION: "Ejecución iniciada",
+  PROGRAMMING_AUTO_CONFIRMED: "Confirmación automática",
+  PROGRAMMING_DISPATCH_COMPLETED: "Despacho completo",
   PROGRAMMING_COMPLETED: "Programación completada",
 };
 
@@ -242,7 +244,7 @@ export function ProgrammingDetailView({
     if (canEdit) {
       result.push({ intent: "edit", label: "Editar", icon: Pencil });
     }
-    if (detail.status === "IN_EXECUTION" && permissions.canClose) {
+    if (["IN_EXECUTION", "DISPATCH_COMPLETED"].includes(detail.status) && permissions.canClose) {
       result.push({ intent: "close", label: "Cerrar programación", icon: ClipboardCheck });
     }
     if (canCancel) result.push({ intent: "cancel", label: "Cancelar programación", icon: XCircle });
@@ -296,7 +298,7 @@ export function ProgrammingDetailView({
         </div>
 
         {effectiveStatus === "EXPIRED" && (
-          <div role="status" className="flex gap-3 rounded-xl border border-slate-300 bg-slate-100 p-4 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+          <div role="status" className={`flex gap-3 rounded-xl border border-border p-4 text-sm ${programmingStatusTone(effectiveStatus)}`}>
             <AlertTriangle aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
             <p>
               La fecha programada ({formatProgrammingDateTime(detail.scheduledAt, project.timezone)}) ya pasó. Puedes iniciar el despacho y registrar sus guías.
