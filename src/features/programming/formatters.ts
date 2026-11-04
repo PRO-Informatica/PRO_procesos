@@ -9,11 +9,12 @@ export function programmingStatusTone(status: ProgrammingEffectiveStatus) {
   const tones: Record<ProgrammingEffectiveStatus, string> = {
     DRAFT: "bg-muted text-foreground-muted",
     PENDING_CONFIRMATION: "bg-amber-100 text-amber-800 dark:bg-amber-950/55 dark:text-amber-300",
-    CONFIRMED: "bg-blue-100 text-blue-800 dark:bg-blue-950/55 dark:text-blue-300",
-    IN_EXECUTION: "bg-brand-soft text-brand-strong",
-    COMPLETED: "bg-violet-100 text-violet-800 dark:bg-violet-950/55 dark:text-violet-300",
-    CANCELLED: "bg-destructive-soft text-destructive",
-    EXPIRED: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+    CONFIRMED: "programming-status-tone programming-tone-confirmed",
+    IN_EXECUTION: "programming-status-tone programming-tone-in-execution",
+    DISPATCH_COMPLETED: "programming-status-tone programming-tone-dispatch-completed",
+    COMPLETED: "programming-status-tone programming-tone-completed",
+    CANCELLED: "programming-status-tone programming-tone-cancelled",
+    EXPIRED: "programming-status-tone programming-tone-expired",
   };
   return tones[status];
 }

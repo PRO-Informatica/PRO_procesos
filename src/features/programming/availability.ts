@@ -98,16 +98,9 @@ export function canConfirmProgramming(
   programming: ProgrammingAvailabilityInput & { hasPermission: boolean },
   now = Date.now(),
 ) {
-  if (
-    !programming.hasPermission ||
-    programming.operationStarted ||
-    programming.status !== "PENDING_CONFIRMATION"
-  ) return false;
-  const timestamp = new Date(programming.scheduledAt).valueOf();
-  // Versioned edits must be confirmed again, including historical schedules.
-  // The database independently checks the edit revision for the exact version.
-  return Number.isFinite(timestamp) &&
-    (timestamp >= now || (programming.version ?? 1) > 1);
+  void programming;
+  void now;
+  return false; // Creation and authorized edits confirm atomically in the database.
 }
 
 export function isActiveProgramming(

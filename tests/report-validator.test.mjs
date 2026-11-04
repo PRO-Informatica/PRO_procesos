@@ -54,7 +54,7 @@ function nodes(node){if(!node||typeof node!=='object')return[];if(Array.isArray(
 function text(node){if(node==null||typeof node==='boolean')return'';if(typeof node!=='object')return String(node);return Array.isArray(node)?node.map(text).join(''):text(node.props?.children);}
 const jsx=(type,props)=>({type,props});
 const {testDispatchBlock}=load(viewSource+'\nexport {DispatchBlock as testDispatchBlock};',{
- 'react/jsx-runtime':{jsx,jsxs:jsx},'lucide-react':{},'next/link':{},'@/components/feedback/empty-state':{},'@/components/motion/motion-page':{},'@/components/motion/motion-section':{},'@/components/ui/badge':{},'@/lib/status-labels':{formatStatusLabel:value=>value??''},'../filters':{},'../presentation':{reportDispatchProcessStatus},'./report-export-actions':{},'./report-results-pagination':{},'./project-scoped-report-link':{},
+ 'react/jsx-runtime':{jsx,jsxs:jsx},'lucide-react':{},'next/link':{},'@/components/feedback/empty-state':{},'@/components/motion/motion-page':{},'@/components/motion/motion-section':{},'@/components/ui/badge':{},'@/lib/status-labels':{formatStatusLabel:value=>value??''},'@/features/programming/formatters':{programmingStatusTone:()=>''},'../filters':{},'../presentation':{reportDispatchProcessStatus},'./report-export-actions':{},'./report-results-pagination':{},'./project-scoped-report-link':{},
 });
 test('la casilla de Reportería muestra el validador con fondo verde y conserva Pendiente/No registrado',async()=>{
  const report=await fixture().report();

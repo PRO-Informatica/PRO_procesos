@@ -68,7 +68,7 @@ export function CreateProgrammingDialog({
 
   if (!open) return null;
   return (
-    <Dialog title="Nueva programación" description={`Fecha y hora en ${timezone}. Estado inicial: Pendiente de confirmación.`} icon={CalendarPlus} onClose={onClose} pending={pending} size="lg">
+    <Dialog title="Nueva programación" description={`Fecha y hora en ${timezone}. Estado inicial: Confirmado.`} icon={CalendarPlus} onClose={onClose} pending={pending} size="lg">
             <form action={formAction} aria-busy={pending}>
               <input type="hidden" name="projectId" value={projectId} />
               <input

@@ -17,6 +17,7 @@ const STATUS_LABELS: Readonly<Record<string, string>> = {
   PENDING_CONFIRMATION: "Pendiente de confirmación",
   CONFIRMED: "Confirmado",
   IN_EXECUTION: "En ejecución",
+  DISPATCH_COMPLETED: "Despacho completo",
   COMPLETED: "Completado",
   EXPIRED: "Vencido",
   EXPECTED: "Esperado",
