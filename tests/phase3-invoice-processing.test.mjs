@@ -167,7 +167,8 @@ test("carga masiva acumula, permite quitar y valida proyecto antes del pedido", 
   assert.match(invoiceDialogs, /Archivo PDF/u);
   assert.match(invoiceDialogs, /formatInvoiceTotal\(payload\.total, payload\.currency\)/u);
   const previewSection = actions.slice(actions.indexOf("export async function inspectBatchInvoicePdf"), actions.indexOf("export async function saveDispatchInvoice"));
-  assert.ok(previewSection.indexOf("addressesMatch") < previewSection.indexOf("orderNumberFromMixtoListoPca"));
+  assert.ok(previewSection.indexOf("projectAddressMatches") >= 0);
+  assert.ok(previewSection.indexOf("projectAddressMatches") < previewSection.indexOf("orderNumberFromMixtoListoPca"));
   assert.match(previewSection, /Dirección de Envío/u);
 });
 

@@ -46,15 +46,6 @@ function defaultScheduledAt(timezone: string) {
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:00`;
 }
 
-function todayInTimezone(timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric", month: "2-digit", day: "2-digit", timeZone: timezone,
-  }).formatToParts(new Date());
-  const get = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? "";
-  return `${get("year")}-${get("month")}-${get("day")}`;
-}
-
 function ContextCreateButton({
   label,
   disabled,
@@ -83,12 +74,14 @@ export function ProgrammingWorkspace({
   canCreate,
   canConfirm,
   canModify,
+  canCancel,
   initialData,
 }: {
   project: ProjectSummary;
   canCreate: boolean;
   canConfirm: boolean;
   canModify: boolean;
+  canCancel: boolean;
   initialData: ProgrammingPageData;
 }) {
   const [view, setView] = useState<ViewMode>("calendar");
@@ -186,7 +179,6 @@ export function ProgrammingWorkspace({
         : isHistoricalProgramming(programming);
     });
   }, [items, scope]);
-  const today = useMemo(() => todayInTimezone(project.timezone), [project.timezone]);
   const creationActions = canCreate && scope === "active" && (
     <div className="grid w-full gap-2 sm:flex sm:w-auto sm:items-center">
       <button
@@ -404,10 +396,12 @@ export function ProgrammingWorkspace({
       </MotionSection>
 
       <ProgrammingPreviewDrawer
+        key={selected?.id ?? "none"}
         item={selected}
         timezone={project.timezone}
         canConfirm={canConfirm}
         canModify={canModify}
+        canCancel={canCancel}
         suppliers={initialData.suppliers}
         units={initialData.units}
         onUpdated={() => {
@@ -437,7 +431,6 @@ export function ProgrammingWorkspace({
           billingLegalName={project.billingLegalName}
           timezone={project.timezone}
           suppliers={initialData.suppliers}
-          today={today}
           onClose={() => setBulkOpen(false)}
           onCreated={() => {
             setBulkOpen(false);

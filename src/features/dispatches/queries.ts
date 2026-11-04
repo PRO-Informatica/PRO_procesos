@@ -1,4 +1,5 @@
 import "server-only";
+import { serviceReconciliationSummary } from "@/features/invoices/service-reconciliation";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -55,6 +56,8 @@ type GuideRow = {
   dispatch_id: string;
   guide_number: string;
   guide_date: string;
+  truck_arrival_at: string | null;
+  truck_departure_at: string | null;
   quantity: number | string;
   unit_code: string;
 };
@@ -160,6 +163,8 @@ function buildGuides(guides: GuideRow[], lines: LineRow[]) {
       id: guide.id,
       guideNumber: guide.guide_number,
       guideDate: guide.guide_date,
+      truckArrivalAt: guide.truck_arrival_at,
+      truckDepartureAt: guide.truck_departure_at,
       quantity: numberValue(guide.quantity),
       unitCode: guide.unit_code,
       productCount: guideLines.filter((line) => line.catalogType !== "SERVICE").length,
@@ -199,6 +204,9 @@ function uniqueCatalogProduct(
     type: "PRODUCT",
     code: match.code,
     reference: match.reference,
+    description: null,
+    observations: null,
+    unitCode: null,
     price: numberValue(match.price),
     currency: "GTQ",
   };
@@ -243,7 +251,7 @@ export async function getDispatchPageData(
     dispatchIds.length
       ? supabase
           .from("dispatch_guides")
-          .select("id, dispatch_id, guide_number, guide_date, quantity, unit_code")
+          .select("id, dispatch_id, guide_number, guide_date, truck_arrival_at, truck_departure_at, quantity, unit_code")
           .eq("project_id", projectId)
           .in("dispatch_id", dispatchIds)
           .order("guide_date")
@@ -374,17 +382,22 @@ export async function getDispatchDetail(
 ): Promise<DispatchDetail | null> {
   const supabase = await createClient();
   const admin = createAdminClient();
-  const dispatchResult = await supabase
-    .from("dispatches")
-    .select(
-      "id, project_id, supplier_id, programming_id, status, result, version, arrival_at, departure_at, received_by_name, order_number, real_volume, real_unit_code, completed_at, created_by, created_at, updated_at",
-    )
-    .eq("project_id", projectId)
-    .eq("id", dispatchId)
-    .maybeSingle();
+  const [dispatchResult, projectResult] = await Promise.all([
+    supabase
+      .from("dispatches")
+      .select(
+        "id, project_id, supplier_id, programming_id, status, result, version, arrival_at, departure_at, received_by_name, order_number, real_volume, real_unit_code, completed_at, created_by, created_at, updated_at",
+      )
+      .eq("project_id", projectId)
+      .eq("id", dispatchId)
+      .maybeSingle(),
+    supabase.from("projects").select("company_id").eq("id", projectId).maybeSingle(),
+  ]);
   assertNoError(dispatchResult.error, "No fue posible cargar el despacho.");
-  if (!dispatchResult.data) return null;
+  assertNoError(projectResult.error, "No fue posible identificar la empresa del despacho.");
+  if (!dispatchResult.data || !projectResult.data) return null;
   const dispatch = dispatchResult.data as DispatchRow;
+  const companyId = projectResult.data.company_id as string;
 
   const [programmingResult, supplierResult, guidesResult, incidentsResult, unitsResult, typesResult, programmingLinesResult] =
     await Promise.all([
@@ -399,7 +412,7 @@ export async function getDispatchDetail(
       supabase.from("suppliers").select("id, name").eq("id", dispatch.supplier_id).maybeSingle(),
       supabase
         .from("dispatch_guides")
-        .select("id, dispatch_id, guide_number, guide_date, quantity, unit_code")
+        .select("id, dispatch_id, guide_number, guide_date, truck_arrival_at, truck_departure_at, quantity, unit_code")
         .eq("project_id", projectId)
         .eq("dispatch_id", dispatchId)
         .order("guide_date"),
@@ -412,7 +425,7 @@ export async function getDispatchDetail(
         .eq("dispatch_id", dispatchId)
         .order("created_at", { ascending: false }),
       supabase.from("units_of_measure").select("code, name").eq("active", true).in("code", ["KM", "M3", "UN"]).order("code"),
-      supabase.from("incident_types").select("id, name").eq("active", true).order("name"),
+      supabase.from("incident_types").select("id, name").eq("company_id", companyId).eq("active", true).order("name"),
       supabase.from("programming_lines").select("concrete_type, position").eq("programming_id", dispatch.programming_id).order("position"),
     ]);
   const errors = [
@@ -486,7 +499,7 @@ export async function getDispatchDetail(
         .eq("dispatch_id", dispatchId),
       supabase
         .from("dispatch_reconciliations")
-        .select("status, current_product_invoice_id, current_service_invoice_id")
+        .select("status, current_product_invoice_id, current_service_invoice_id, service_status, service_comparison")
         .eq("project_id", projectId)
         .eq("dispatch_id", dispatchId)
         .maybeSingle(),
@@ -540,7 +553,7 @@ export async function getDispatchDetail(
         ? supabase.from("profiles").select("id, full_name").in("id", profileIds)
         : Promise.resolve({ data: [], error: null }),
       typeIds.length
-        ? supabase.from("incident_types").select("id, name").in("id", typeIds)
+        ? supabase.from("incident_types").select("id, name").eq("company_id", companyId).in("id", typeIds)
         : Promise.resolve({ data: [], error: null }),
       documentIds.length
         ? supabase
@@ -741,6 +754,7 @@ export async function getDispatchDetail(
     batches,
     reconciliation: reconciliationResult.data ? {
       status: reconciliationResult.data.status,
+      serviceReconciliation: serviceReconciliationSummary(reconciliationResult.data),
       productInvoice: reconciliationResult.data.current_product_invoice_id
         ? invoiceById.get(reconciliationResult.data.current_product_invoice_id) ?? null
         : null,

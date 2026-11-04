@@ -1,3 +1,4 @@
+import type { ServiceReconciliationSummary } from "@/features/invoices/service-reconciliation";
 import type { InvoiceProcessingPayload } from "@/features/invoices/invoice-processing";
 import type { ProjectSummary } from "@/features/projects/types";
 
@@ -11,10 +12,12 @@ export type BatchSummary = {
   id: string; code: string; periodStart: string; periodEnd: string;
   accountingPeriod: string; status: BatchStatus; source: BatchSource;
   activeDispatchCount: number; reconciledCount: number; pendingCount: number;
-  rolloverCount: number; isCurrent: boolean;
+  rolloverCount: number; isCurrent: boolean; isOverdue: boolean;
 };
 
-export type BatchPageData = { current: BatchSummary | null; history: BatchSummary[] };
+export type OverdueBatch = { id: string; code: string; periodStart: string; periodEnd: string; createdAt?: string };
+export type OverdueBatchAlerts = { batches: OverdueBatch[]; total: number };
+export type BatchPageData = { current: BatchSummary | null; history: BatchSummary[]; overdue: OverdueBatchAlerts };
 
 export type UniversalBatchProject = {
   project: ProjectSummary;
@@ -65,6 +68,8 @@ export type BatchDispatchRelation = {
   realVolume: number | null; realUnitCode: string | null; guideCount: number;
   reconciliationId: string | null; reconciliationStatus: ReconciliationStatus;
   productInvoice: BatchInvoice | null; serviceInvoice: BatchInvoice | null;
+  serviceInvoiceRequired: boolean;
+  serviceReconciliation?: ServiceReconciliationSummary;
   latestAttempt: ReconciliationAttempt | null;
 };
 
@@ -112,8 +117,9 @@ export const initialBatchMutationState: BatchMutationState = { status: "idle" };
 
 export type InvoiceInspection = {
   fileName: string; dispatchId: string | null; requestedType: InvoiceType | null;
-  status: "READY" | "WITH_DIFFERENCES" | "REQUIRES_RECIPIENT_EXCEPTION" | "REQUIRES_REINVOICING" | "IN_EXECUTION" | "DISPATCH_NOT_FOUND" | "ERROR" | "REQUIRES_REVIEW";
+  status: "IDENTIFIED" | "READY" | "WITH_DIFFERENCES" | "REQUIRES_RECIPIENT_EXCEPTION" | "REQUIRES_REINVOICING" | "IN_EXECUTION" | "DISPATCH_NOT_FOUND" | "ERROR" | "REQUIRES_REVIEW";
   message: string; payload: InvoiceProcessingPayload | null; duplicate: boolean;
+  pcaOriginal?: string | null;
   operation?: "NEW" | "REINVOICE";
   replacesInvoiceId?: string | null;
   replacesInvoiceNumber?: string | null;

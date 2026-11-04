@@ -31,6 +31,7 @@ import { getInvoiceDownloadUrl } from "@/features/batches/actions";
 import type { ProjectSummary } from "@/features/projects/types";
 import { notifications } from "@/lib/notification-messages";
 import { notify } from "@/lib/notify";
+import { ServiceReconciliationSummaryCard } from "@/features/reconciliation/components/service-reconciliation-summary";
 import { formatStatusLabel } from "@/lib/status-labels";
 
 import {
@@ -55,8 +56,10 @@ import {
   type DispatchResult,
 } from "../types";
 import { realVolumeWarning } from "../validation";
+import { guideTotalInput, initialRealVolumeOverride } from "../real-volume";
 import { DispatchResultBadge, DispatchStatusBadge } from "./dispatch-badges";
 import { DispatchGuideDialog } from "./dispatch-guide-dialog";
+import { DeleteDispatchGuideDialog } from "./delete-dispatch-guide-dialog";
 import { DocumentUploader } from "./document-uploader";
 import { RegisterIncidentDialog } from "./register-incident-dialog";
 
@@ -79,6 +82,18 @@ function localTime(value: string | null, timezone: string) {
   }).formatToParts(new Date(value));
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "00";
   return `${part("hour")}:${part("minute")}`;
+}
+
+function nextDate(value: string) {
+  const date = new Date(`${value}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function truckTimestamp(value: string | null, guideDate: string, timezone: string) {
+  if (!value) return "No registrada";
+  const day = localDate(value, timezone);
+  return `${localTime(value, timezone)}${day !== guideDate ? ` · ${formatDispatchDate(day)}` : ""}`;
 }
 
 function guideVolume(guides: DispatchGuide[]) {
@@ -178,20 +193,22 @@ function EvidenceRow({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [removalError, setRemovalError] = useState<string | null>(null);
 
   return (
-    <li className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-      <div className="min-w-0">
+    <li className="flex min-w-0 flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <div className="min-w-0 flex-1">
         <p className="break-words text-sm font-semibold [overflow-wrap:anywhere]">
           {document.fileName ?? "Archivo pendiente"}
         </p>
-        <p className="mt-1 text-xs text-foreground-muted">
+        <p className="mt-1 break-words text-xs text-foreground-muted [overflow-wrap:anywhere]">
           {document.mimeType ?? "Tipo no disponible"} ·{" "}
           {formatDispatchDateTime(document.createdAt, project.timezone)}
         </p>
         <div className="mt-2"><StatusBadge label={formatStatusLabel(document.uploadStatus)} tone={document.uploadStatus === "UPLOADED" ? "success" : "neutral"} /></div>
+        {removalError && <p role="alert" className="mt-2 text-sm text-destructive">{removalError}</p>}
       </div>
-      <div className="flex justify-end gap-2">
+      <div className="flex shrink-0 flex-wrap justify-end gap-2 self-end sm:self-center">
         {document.uploadStatus === "UPLOADED" &&
           document.fileName &&
           document.mimeType && (
@@ -210,19 +227,26 @@ function EvidenceRow({
             disabled={pending}
             onClick={() =>
               startTransition(async () => {
+                setRemovalError(null);
                 const result = await removeDispatchEvidenceAction(
                   project.id,
                   document.id,
                 );
                 if (result.status === "success") {
-                  notify.success(notifications.documentRemoved);
+                  if (result.storageCleanupPending) {
+                    notify.warning("Evidencia retirada del despacho", "La limpieza del archivo quedó pendiente. Solicita al administrador revisar el registro de eliminación.");
+                  } else {
+                    notify.success(notifications.documentRemoved);
+                  }
                   router.refresh();
                 } else {
-                  notify.error(notifications.actionFailed);
+                  setRemovalError(result.message);
+                  notify.error({ ...notifications.actionFailed, description: result.message });
                 }
               })
             }
             tone="destructive"
+            tooltipAlign="end"
             label={`Eliminar ${document.fileName ?? "evidencia"}`}
           >
             <Trash2 className="size-4" />
@@ -240,16 +264,36 @@ export function DispatchDetailView({ detail, project, permissions }: { detail: D
   const [saveState, saveAction, saving] = useActionState(saveDispatchAction, initialDispatchMutationState);
   const [completeState, completeAction, completing] = useActionState(finalizeDispatchAction, initialDispatchMutationState);
   const [guide, setGuide] = useState<DispatchGuide | "new" | null>(null);
+  const [guideToDelete, setGuideToDelete] = useState<DispatchGuide | null>(null);
   const [incidentOpen, setIncidentOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [receiverName, setReceiverName] = useState(detail.receivedByName ?? "");
-  const [arrivalTime, setArrivalTime] = useState(localTime(detail.arrivalAt, project.timezone));
-  const [departureTime, setDepartureTime] = useState(localTime(detail.departureAt, project.timezone));
+  const receiverName = detail.receivedByName ?? "";
+  const [manualArrival, setManualArrival] = useState({ saved: detail.arrivalAt, value: localTime(detail.arrivalAt, project.timezone) });
+  const arrivalTime = manualArrival.saved !== detail.arrivalAt
+    ? localTime(detail.arrivalAt, project.timezone)
+    : manualArrival.value;
+  const arrivalChanged = arrivalTime !== localTime(detail.arrivalAt, project.timezone);
+  const automaticDeparture = detail.guides.some((item) => Boolean(item.truckDepartureAt));
+  const [manualDeparture, setManualDeparture] = useState({ saved: detail.departureAt, value: localTime(detail.departureAt, project.timezone) });
+  const departureTime = automaticDeparture || manualDeparture.saved !== detail.departureAt
+    ? localTime(detail.departureAt, project.timezone)
+    : manualDeparture.value;
+  const departureDate = automaticDeparture && detail.departureAt
+    ? localDate(detail.departureAt, project.timezone)
+    : departureTime && arrivalTime && departureTime < arrivalTime ? nextDate(operationDate) : operationDate;
+  const departureValue = departureTime ? `${departureDate}T${departureTime}` : "";
   const [result, setResult] = useState<DispatchResult | "">(detail.result ?? "");
   const [orderNumber, setOrderNumber] = useState(detail.orderNumber ?? detail.programmingOrderNumber ?? "");
-  const [realVolume, setRealVolume] = useState(detail.realVolume === null ? String(detail.guideTotal || "") : String(detail.realVolume));
-  const [realUnitCode, setRealUnitCode] = useState(detail.realUnitCode ?? detail.programmedUnitCode);
   const total = useMemo(() => guideVolume(detail.guides), [detail.guides]);
+  const [realVolumeOverride, setRealVolumeOverride] = useState<string | null>(() => initialRealVolumeOverride({
+    realVolume: detail.realVolume,
+    realUnitCode: detail.realUnitCode,
+    programmedUnitCode: detail.programmedUnitCode,
+    guideTotal: total,
+    editable,
+  }));
+  const realVolume = realVolumeOverride ?? guideTotalInput(total);
+  const [realUnitCode, setRealUnitCode] = useState(detail.realUnitCode ?? detail.programmedUnitCode);
   const uploadedEvidenceCount = detail.documents.filter((document) => document.uploadStatus === "UPLOADED").length;
   const warning = realVolumeWarning(total, realVolume === "" ? null : Number(realVolume));
   useActionNotification({ pending: saving, status: saveState.status, success: notifications.dispatchSaved, error: notifications.saveFailed });
@@ -260,19 +304,41 @@ export function DispatchDetailView({ detail, project, permissions }: { detail: D
     }
   }, [completeState.status, router, saveState.status]);
 
-  return <MotionPage className="mx-auto w-full max-w-[1500px] space-y-4 pb-10 sm:space-y-6">
+  return <MotionPage className="mx-auto min-w-0 w-full max-w-[1500px] space-y-4 pb-10 sm:space-y-6 [&_input]:max-w-full [&_section]:min-w-0">
     <div><Link href="/dispatches" className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-foreground-muted hover:text-foreground"><ArrowLeft className="size-4" /> Volver a despachos</Link><div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4 sm:gap-3"><div className="min-w-0 basis-full sm:basis-auto"><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Detalle de despacho</h1><p className="mt-1 break-words text-sm text-foreground-muted">{detail.programmingCode} · {detail.supplierName}</p></div><DispatchStatusBadge status={detail.status} /><DispatchResultBadge result={detail.result} /></div></div>
 
-    <form action={saveAction} className="space-y-4 sm:space-y-6">
+    <form action={saveAction} className="min-w-0 space-y-4 sm:space-y-6">
       <input type="hidden" name="projectId" value={project.id} /><input type="hidden" name="dispatchId" value={detail.id} /><input type="hidden" name="programmingId" value={detail.programmingId} /><input type="hidden" name="expectedVersion" value={detail.version} />
-      <input type="hidden" name="arrivalAt" value={arrivalTime ? `${operationDate}T${arrivalTime}` : ""} /><input type="hidden" name="departureAt" value={departureTime ? `${operationDate}T${departureTime}` : ""} />
-      <MotionSection className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={Truck} title="Información general" /><div className="grid gap-4 p-4 min-[420px]:grid-cols-2 sm:gap-5 sm:p-6 lg:grid-cols-4"><div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><p className="form-label">Programación</p><Link href={`/programming/${detail.programmingId}`} className="break-all font-mono text-sm font-semibold text-brand-strong hover:underline">{detail.programmingCode}</Link></div><div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><p className="form-label">Proveedor</p><p className="break-words text-sm font-semibold">{detail.supplierName}</p></div><div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><p className="form-label">Fecha</p><p className="text-sm font-semibold">{formatDispatchDateTime(detail.programmingScheduledAt, project.timezone)}</p></div><div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><p className="form-label">Estado</p><DispatchStatusBadge status={detail.status} /></div><div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><p className="form-label">Pedido No.</p><p className="text-sm font-semibold">{detail.programmingOrderNumber ?? "—"}</p></div><div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0 lg:col-span-2"><p className="form-label">Tipo de concreto</p><p className="break-words text-sm font-semibold">{detail.programmingConcreteTypes.length ? detail.programmingConcreteTypes.join(", ") : "—"}</p></div><div className="min-[420px]:col-span-2 sm:col-span-1"><label className="form-label" htmlFor="dispatch-receiver">Receptor</label><input id="dispatch-receiver" name="receivedByName" value={receiverName} onChange={(event) => setReceiverName(event.target.value)} required disabled={!editable} className="form-input disabled:bg-muted" /></div><div><label className="form-label" htmlFor="dispatch-arrival">Hora llegada</label><input id="dispatch-arrival" type="time" value={arrivalTime} onChange={(event) => setArrivalTime(event.target.value)} required disabled={!editable} className="form-input disabled:bg-muted" /><p className="mt-1 text-xs text-foreground-muted">Día de la programación: {formatDispatchDate(operationDate)}</p></div><div><label className="form-label" htmlFor="dispatch-departure">Hora salida</label><input id="dispatch-departure" type="time" value={departureTime} onChange={(event) => setDepartureTime(event.target.value)} disabled={!editable} className="form-input disabled:bg-muted" /><p className="mt-1 text-xs text-foreground-muted">Final de la última entrega, el mismo día.</p></div><div className="min-[420px]:col-span-2 sm:col-span-1"><p className="form-label">Resultado</p><DispatchResultBadge result={detail.result} /></div></div></MotionSection>
+      <input type="hidden" name="arrivalAt" value={arrivalTime ? `${operationDate}T${arrivalTime}` : ""} /><input type="hidden" name="departureAt" value={departureValue} />
+      <MotionSection className="overflow-hidden rounded-2xl border border-border bg-surface">
+        <SectionHeader icon={Truck} title="Información general" />
+        <div className="grid gap-4 p-4 min-[420px]:grid-cols-2 sm:gap-5 sm:p-6 lg:grid-cols-4">
+          <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><p className="form-label">Programación</p><Link href={`/programming/${detail.programmingId}`} className="break-all font-mono text-sm font-semibold text-brand-strong hover:underline">{detail.programmingCode}</Link></div>
+          <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><p className="form-label">Proveedor</p><p className="break-words text-sm font-semibold">{detail.supplierName}</p></div>
+          <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><p className="form-label">Fecha</p><p className="text-sm font-semibold">{formatDispatchDateTime(detail.programmingScheduledAt, project.timezone)}</p></div>
+          <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><p className="form-label">Estado</p><DispatchStatusBadge status={detail.status} /></div>
+          <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><p className="form-label">Pedido No.</p><p className="text-sm font-semibold">{detail.programmingOrderNumber ?? "—"}</p></div>
+          <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0 lg:col-span-2"><p className="form-label">Tipo de concreto</p><p className="break-words text-sm font-semibold">{detail.programmingConcreteTypes.length ? detail.programmingConcreteTypes.join(", ") : "—"}</p></div>
+          <div className="min-[420px]:col-span-2 sm:col-span-1">
+            <label className="form-label" htmlFor="dispatch-receiver">Receptor</label>
+            <input id="dispatch-receiver" value={receiverName} readOnly className="form-input bg-muted" />
+          </div>
+          <div>
+            <label className="form-label" htmlFor="dispatch-arrival">Hora llegada</label>
+            <input id="dispatch-arrival" type="time" required value={arrivalTime} onChange={(event) => setManualArrival({ saved: detail.arrivalAt, value: event.target.value })} disabled={!editable} className="form-input disabled:bg-muted" aria-describedby="dispatch-arrival-help" />
+            <p id="dispatch-arrival-help" className="mt-1 text-xs text-foreground-muted">Día de la programación: {formatDispatchDate(operationDate)}. Se toma la hora de inicio y puedes corregirla.</p>
+            {editable && arrivalChanged && <p className="mt-2 text-xs font-medium text-brand-strong">Hora corregida sin guardar. Los horarios de los camiones se registran por separado.</p>}
+          </div>
+          <div><label className="form-label" htmlFor="dispatch-departure">Hora salida</label><input id="dispatch-departure" type="time" value={departureTime} readOnly={automaticDeparture} onChange={(event) => setManualDeparture({ saved: detail.departureAt, value: event.target.value })} disabled={!editable} className={`form-input disabled:bg-muted ${automaticDeparture ? "bg-muted" : ""}`} /><p className="mt-1 text-xs text-foreground-muted">{automaticDeparture ? "Automática: salida más tardía registrada en las guías." : "Si la salida es menor que la llegada, se registra al día siguiente."}</p>{departureTime && departureDate !== operationDate && <p className="mt-1 text-xs font-medium text-foreground-muted">Salida: {formatDispatchDate(departureDate)}</p>}</div>
+          <div className="min-[420px]:col-span-2 sm:col-span-1"><p className="form-label">Resultado</p><DispatchResultBadge result={detail.result} /></div>
+        </div>
+      </MotionSection>
 
       <MotionSection id="guides" className="overflow-hidden rounded-2xl border border-border bg-surface">
         <SectionHeader icon={PackageOpen} title="Guías de despacho" count={detail.guides.length} />
         {detail.guides.length ? <>
-          <div className="hidden overflow-x-auto sm:block"><table className="w-full min-w-[780px] text-left text-sm"><thead className="bg-muted/50 text-xs text-foreground-muted"><tr><th className="px-5 py-3">Guía</th><th className="px-5 py-3">Fecha</th><th className="px-5 py-3">Productos</th><th className="px-5 py-3">Servicios</th><th className="px-5 py-3">Volumen</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-border">{detail.guides.map((item) => <tr key={item.id}><td className="px-5 py-4 font-semibold">{item.guideNumber}</td><td className="px-5 py-4 text-foreground-muted">{formatDispatchDate(item.guideDate)}</td><td className="px-5 py-4">{item.productCount}</td><td className="px-5 py-4">{item.serviceCount}</td><td className="px-5 py-4 font-semibold">{formatDispatchQuantity(item.quantity)} {item.unitCode}</td><td className="px-5 py-4 text-right"><button type="button" onClick={() => setGuide(item)} className="inline-flex min-h-11 items-center text-xs font-semibold text-brand-strong hover:underline">{editable ? "Ver / Editar" : "Ver"}</button></td></tr>)}</tbody></table></div>
-          <div className="divide-y divide-border sm:hidden">{detail.guides.map((item) => <article key={item.id} className="p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">Guía {item.guideNumber}</p><p className="mt-1 text-xs text-foreground-muted">{formatDispatchDate(item.guideDate)} · {item.productCount} producto(s) · {item.serviceCount} servicio(s)</p></div><p className="shrink-0 font-semibold">{formatDispatchQuantity(item.quantity)} {item.unitCode}</p></div><button type="button" onClick={() => setGuide(item)} className="secondary-button mt-3 w-full text-xs">{editable ? "Ver / Editar" : "Ver"}</button></article>)}</div>
+          <div className="hidden overflow-x-auto sm:block"><table className="w-full min-w-[1060px] text-left text-sm"><thead className="bg-muted/50 text-xs text-foreground-muted"><tr><th className="px-5 py-3">Guía</th><th className="px-5 py-3">Fecha</th><th className="px-5 py-3">Llegada camión</th><th className="px-5 py-3">Salida camión</th><th className="px-5 py-3">Productos</th><th className="px-5 py-3">Servicios</th><th className="px-5 py-3">Volumen</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-border">{detail.guides.map((item) => <tr key={item.id}><td className="px-5 py-4 font-semibold">{item.guideNumber}</td><td className="px-5 py-4 text-foreground-muted">{formatDispatchDate(item.guideDate)}</td><td className="whitespace-nowrap px-5 py-4">{truckTimestamp(item.truckArrivalAt, item.guideDate, project.timezone)}</td><td className="whitespace-nowrap px-5 py-4">{truckTimestamp(item.truckDepartureAt, item.guideDate, project.timezone)}</td><td className="px-5 py-4">{item.productCount}</td><td className="px-5 py-4">{item.serviceCount}</td><td className="px-5 py-4 font-semibold">{formatDispatchQuantity(item.quantity)} {item.unitCode}</td><td className="px-5 py-4 text-right"><div className="flex items-center justify-end gap-3"><button type="button" onClick={() => setGuide(item)} className="inline-flex min-h-11 items-center text-xs font-semibold text-brand-strong hover:underline">{editable ? "Ver / Editar" : "Ver"}</button>{editable && <IconButton label={`Eliminar guía ${item.guideNumber}`} tone="destructive" disabled={saving || completing} onClick={() => setGuideToDelete(item)}><Trash2 className="size-4" /></IconButton>}</div></td></tr>)}</tbody></table></div>
+          <div className="divide-y divide-border sm:hidden">{detail.guides.map((item) => <article key={item.id} className="min-w-0 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="break-words font-semibold [overflow-wrap:anywhere]">Guía {item.guideNumber}</p><p className="mt-1 text-xs text-foreground-muted">{formatDispatchDate(item.guideDate)} · {item.productCount} producto(s) · {item.serviceCount} servicio(s)</p></div><p className="shrink-0 font-semibold">{formatDispatchQuantity(item.quantity)} {item.unitCode}</p></div><p className="mt-2 text-xs text-foreground-muted">Camión: llegada {truckTimestamp(item.truckArrivalAt, item.guideDate, project.timezone)} · salida {truckTimestamp(item.truckDepartureAt, item.guideDate, project.timezone)}</p><div className="mt-3 flex items-center gap-2"><button type="button" onClick={() => setGuide(item)} className="secondary-button flex-1 text-xs">{editable ? "Ver / Editar" : "Ver"}</button>{editable && <IconButton label={`Eliminar guía ${item.guideNumber}`} tone="destructive" disabled={saving || completing} onClick={() => setGuideToDelete(item)}><Trash2 className="size-4" /></IconButton>}</div></article>)}</div>
           <div className="flex flex-col gap-3 border-t border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><p className="font-semibold">Total según guías: {formatDispatchQuantity(total)} {detail.programmedUnitCode}</p>{editable && <button type="button" onClick={() => setGuide("new")} className="primary-button w-full gap-2 sm:w-auto"><Plus className="size-4" /> Agregar guía</button>}</div>
         </> : <div className="p-4 sm:p-6"><EmptyState title="Sin guías registradas" description={editable ? "Agrega la primera guía de esta operación." : "El despacho no tiene guías."} action={editable ? <button type="button" onClick={() => setGuide("new")} className="primary-button"><Plus className="size-4" /> Agregar guía</button> : undefined} /></div>}
       </MotionSection>
@@ -286,11 +352,11 @@ export function DispatchDetailView({ detail, project, permissions }: { detail: D
         <p className="border-t border-border px-5 py-3 text-xs text-foreground-muted sm:px-6">Estos valores son estimaciones en GTQ y no modifican el volumen físico ni representan una factura emitida.</p>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={ClipboardList} title="Pedido / Control Operación" /><div className="grid gap-5 p-5 sm:grid-cols-2 lg:grid-cols-5 sm:p-6"><div><label className="form-label" htmlFor="dispatch-result">Resultado de la operación *</label><select id="dispatch-result" name="result" value={result} onChange={(event) => { const value = event.target.value as DispatchResult | ""; setResult(value); if (value === "NOT_DISPATCHED") setRealVolume("0"); }} disabled={!editable} className="form-input disabled:bg-muted"><option value="">Seleccionar</option><option value="DISPATCHED">Despachado</option><option value="NOT_DISPATCHED">No despachado</option></select></div><div><label className="form-label" htmlFor="dispatch-order">Número pedido</label><input id="dispatch-order" name="orderNumber" value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} disabled={!editable || result === "NOT_DISPATCHED"} className="form-input disabled:bg-muted" /></div><div><p className="form-label">Volumen programado</p><p className="mt-2 text-lg font-semibold">{formatDispatchQuantity(detail.programmedVolume)} {detail.programmedUnitCode}</p></div><div><p className="form-label">Total según guías</p><p className="mt-2 text-lg font-semibold">{formatDispatchQuantity(total)} {detail.programmedUnitCode}</p></div><div className="rounded-xl border border-brand/25 bg-brand-soft/25 p-4"><label className="form-label text-brand-strong" htmlFor="dispatch-real-volume">Volumen Real *</label><div className="mt-1 flex gap-2"><input id="dispatch-real-volume" name="realVolume" type="number" min="0" step="0.001" value={result === "NOT_DISPATCHED" ? "0" : realVolume} onChange={(event) => setRealVolume(event.target.value)} disabled={!editable || result === "NOT_DISPATCHED"} className="form-input min-w-0 disabled:bg-muted" /><select aria-label="UM real" name="realUnitCode" value={realUnitCode} onChange={(event) => setRealUnitCode(event.target.value)} disabled={!editable} className="form-input w-24 disabled:bg-muted">{detail.units.map((unit) => <option key={unit.code} value={unit.code}>{unit.code}</option>)}</select></div><p className="mt-2 text-xs text-brand-strong">Valor oficial preparado para conciliación.</p></div>{warning && result === "DISPATCHED" && <p className="rounded-lg bg-amber-100 px-4 py-3 text-sm text-amber-900 sm:col-span-2 lg:col-span-5">{warning}</p>}</div></section>
+      <section className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={ClipboardList} title="Pedido / Control Operación" /><div className="grid gap-5 p-5 sm:grid-cols-2 lg:grid-cols-5 sm:p-6"><div><label className="form-label" htmlFor="dispatch-result">Resultado de la operación *</label><select id="dispatch-result" name="result" value={result} onChange={(event) => setResult(event.target.value as DispatchResult | "")} disabled={!editable} className="form-input disabled:bg-muted"><option value="">Seleccionar</option><option value="DISPATCHED">Despachado</option><option value="NOT_DISPATCHED">No despachado</option></select></div><div><label className="form-label" htmlFor="dispatch-order">Número pedido</label><input id="dispatch-order" name="orderNumber" value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} disabled={!editable || result === "NOT_DISPATCHED"} className="form-input disabled:bg-muted" /></div><div><p className="form-label">Volumen programado</p><p className="mt-2 text-lg font-semibold">{formatDispatchQuantity(detail.programmedVolume)} {detail.programmedUnitCode}</p></div><div><p className="form-label">Total según guías</p><p className="mt-2 text-lg font-semibold">{formatDispatchQuantity(total)} {detail.programmedUnitCode}</p></div><div className="rounded-xl border border-brand/25 bg-brand-soft/25 p-4"><label className="form-label text-brand-strong" htmlFor="dispatch-real-volume">Volumen Real *</label><div className="mt-1 flex gap-2"><input id="dispatch-real-volume" name="realVolume" type="number" min="0" step="0.001" value={result === "NOT_DISPATCHED" ? "0" : realVolume} onChange={(event) => setRealVolumeOverride(event.target.value)} disabled={!editable || result === "NOT_DISPATCHED"} className="form-input min-w-0 disabled:bg-muted" /><select aria-label="UM real" name="realUnitCode" value={realUnitCode} onChange={(event) => { setRealVolumeOverride(realVolume); setRealUnitCode(event.target.value); }} disabled={!editable} style={{ width: "6rem" }} className="form-input shrink-0 disabled:bg-muted">{detail.units.map((unit) => <option key={unit.code} value={unit.code}>{unit.code}</option>)}</select></div><p className="mt-2 text-xs text-brand-strong">Valor oficial preparado para conciliación.{editable && result !== "NOT_DISPATCHED" && (realVolumeOverride === null ? " Se actualiza con el total de las guías." : " Valor ajustado manualmente.")}</p>{editable && result !== "NOT_DISPATCHED" && realVolumeOverride !== null && <button type="button" onClick={() => { setRealVolumeOverride(null); setRealUnitCode(detail.programmedUnitCode); }} className="mt-2 min-h-8 text-xs font-semibold text-brand-strong underline underline-offset-2">Usar total de guías</button>}</div>{warning && result === "DISPATCHED" && <p className="rounded-lg bg-amber-100 px-4 py-3 text-sm text-amber-900 sm:col-span-2 lg:col-span-5">{warning}</p>}</div></section>
 
-      {detail.reconciliation && <section className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={ClipboardList} title="Facturas y conciliación" /><div className="grid gap-4 p-5 lg:grid-cols-2 sm:p-6"><InvoiceCard title="Factura de producto" invoice={detail.reconciliation.productInvoice} projectId={project.id} /><InvoiceCard title="Factura de servicio" invoice={detail.reconciliation.serviceInvoice} projectId={project.id} /></div><div className="grid gap-4 border-t border-border px-5 py-4 text-sm sm:grid-cols-2 sm:px-6"><div><p className="form-label">Estado de conciliación</p><p className="font-semibold">{formatStatusLabel(detail.reconciliation.status)}</p></div><div><p className="form-label">Última diferencia</p><p className="font-semibold">{detail.reconciliation.latestDifference === null ? "—" : formatDispatchQuantity(detail.reconciliation.latestDifference)}</p></div></div>{detail.batches.find((batch) => !batch.removedAt) && <div className="border-t border-border px-5 py-4 sm:px-6"><Link href={`/batches/${detail.batches.find((batch) => !batch.removedAt)!.batchId}`} className="font-semibold text-brand-strong hover:underline">Gestionar facturas en el lote</Link></div>}</section>}
+      {detail.reconciliation && <section className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={ClipboardList} title="Facturas y conciliación" /><div className="grid gap-4 p-5 lg:grid-cols-2 sm:p-6"><InvoiceCard title="Factura de producto" invoice={detail.reconciliation.productInvoice} projectId={project.id} /><InvoiceCard title="Factura de servicio" invoice={detail.reconciliation.serviceInvoice} projectId={project.id} /></div><div className="grid gap-4 border-t border-border px-5 py-4 text-sm sm:grid-cols-2 sm:px-6"><div><p className="form-label">Estado de conciliación</p><p className="font-semibold">{formatStatusLabel(detail.reconciliation.status)}</p></div><div><p className="form-label">Última diferencia de Producto</p><p className="font-semibold">{detail.reconciliation.latestDifference === null ? "—" : formatDispatchQuantity(detail.reconciliation.latestDifference)}</p></div></div>{detail.reconciliation.serviceReconciliation && <div className="border-t border-border px-5 py-4 sm:px-6"><p className="form-label">Conciliación de Servicio</p><ServiceReconciliationSummaryCard summary={detail.reconciliation.serviceReconciliation} /></div>}{detail.batches.find((batch) => !batch.removedAt) && <div className="border-t border-border px-5 py-4 sm:px-6"><Link href={`/batches/${detail.batches.find((batch) => !batch.removedAt)!.batchId}`} className="font-semibold text-brand-strong hover:underline">Gestionar facturas en el lote</Link></div>}</section>}
 
-      <div className="grid gap-6 xl:grid-cols-2"><section className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={AlertTriangle} title="Incidencias" count={detail.incidents.length} />{detail.incidents.length ? <ul className="divide-y divide-border">{detail.incidents.map((incident) => <li key={incident.id} className="px-5 py-4 sm:px-6"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">{incident.typeName}</p><span className="text-xs text-foreground-muted">{formatDispatchDateTime(incident.createdAt, project.timezone)}</span></div><p className="mt-2 text-xs text-foreground-muted">Responsabilidad: {formatStatusLabel(incident.responsibility)} · Aplica cobro: {formatStatusLabel(incident.chargeApplicability)}</p>{incident.notes && <p className="mt-2 text-sm">{incident.notes}</p>}</li>)}</ul> : <div className="p-5"><EmptyState title="Sin incidencias registradas" description="El resultado Despachado puede finalizar sin incidencias; No despachado requiere al menos una." /></div>}{detail.status === "IN_EXECUTION" && permissions.canRegisterIncident && <div className="border-t border-border px-5 py-4 sm:px-6"><button type="button" onClick={() => setIncidentOpen(true)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted"><Plus className="size-4" /> Registrar incidencia</button></div>}</section>
+      <div className="grid gap-6 xl:grid-cols-2"><section className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={AlertTriangle} title="Incidencias" count={detail.incidents.length} />{detail.incidents.length ? <ul className="divide-y divide-border">{detail.incidents.map((incident) => <li key={incident.id} className="px-5 py-4 sm:px-6"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">{incident.typeName}</p><span className="text-xs text-foreground-muted">{formatDispatchDateTime(incident.createdAt, project.timezone)}</span></div><p className="mt-2 text-xs text-foreground-muted">Responsabilidad: {formatStatusLabel(incident.responsibility)} · Aplica cobro: {formatStatusLabel(incident.chargeApplicability)}</p>{incident.notes && <p className="mt-2 whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{incident.notes}</p>}</li>)}</ul> : <div className="p-5"><EmptyState title="Sin incidencias registradas" description="El resultado Despachado puede finalizar sin incidencias; No despachado requiere al menos una." /></div>}{detail.status === "IN_EXECUTION" && permissions.canRegisterIncident && <div className="border-t border-border px-5 py-4 sm:px-6"><button type="button" onClick={() => setIncidentOpen(true)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted"><Plus className="size-4" /> Registrar incidencia</button></div>}</section>
       <section className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={FileText} title="Evidencias" count={detail.documents.length} />{detail.documents.length ? <ul className="divide-y divide-border">{detail.documents.map((document) => <EvidenceRow key={document.id} document={document} project={project} editable={editable} />)}</ul> : <div className="p-5"><EmptyState title="Sin evidencias" description="Debes adjuntar al menos una imagen o archivo PDF antes de finalizar." /></div>}{editable && <div className="border-t border-border px-5 py-4 sm:px-6"><DocumentUploader projectId={project.id} contextId={detail.id} context="dispatch" label="Agregar evidencias" /></div>}</section></div>
 
       <section className="overflow-hidden rounded-2xl border border-border bg-surface"><SectionHeader icon={CalendarClock} title="Lotes" count={detail.batches.length} />{detail.batches.length ? <ul className="divide-y divide-border">{detail.batches.map((relation) => <li key={relation.relationId} className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><div><Link href={`/batches/${relation.batchId}`} className="font-semibold text-brand-strong hover:underline">{relation.code}</Link><p className="mt-1 text-xs text-foreground-muted">Despacho completo · {formatDispatchDate(relation.periodStart)} — {formatDispatchDate(relation.periodEnd)}</p></div><StatusBadge label={relation.removedAt ? "Histórico" : formatStatusLabel(relation.status)} tone={relation.removedAt ? "neutral" : relation.status === "OPEN" ? "info" : "success"} /></li>)}</ul> : <div className="p-5"><EmptyState title="Sin lote" description="Este despacho todavía no ha sido asignado a un lote." /></div>}</section>
@@ -299,8 +365,9 @@ export function DispatchDetailView({ detail, project, permissions }: { detail: D
       {editable && <div className="sticky bottom-2 z-20 flex flex-col gap-2 rounded-xl border border-border bg-surface/95 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))] shadow-xl backdrop-blur sm:bottom-3 sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:rounded-2xl sm:p-4">{uploadedEvidenceCount === 0 && <p className="text-xs font-medium text-destructive sm:mr-auto">Carga al menos una evidencia antes de finalizar.</p>}<LoadingButton loadingLabel="Guardando…" className="w-full sm:w-auto">Guardar cambios</LoadingButton><Button type="button" variant="success" className="w-full sm:w-auto" disabled={uploadedEvidenceCount === 0 || saving} title={uploadedEvidenceCount === 0 ? "Carga al menos una evidencia antes de finalizar." : undefined} onClick={() => setConfirmOpen(true)}><CheckCircle2 className="size-4" /> Finalizar despacho</Button></div>}
     </form>
 
-    {guide && <DispatchGuideDialog projectId={project.id} programmingId={detail.programmingId} dispatchId={detail.id} expectedVersion={detail.version} programmedUnitCode={detail.programmedUnitCode} defaultProductDescription={detail.programmingConcreteTypes[0] ?? null} defaultCatalogProduct={detail.defaultCatalogProduct} units={detail.units} guide={guide === "new" ? undefined : guide} readOnly={!editable} onClose={() => setGuide(null)} />}
+    {guide && <DispatchGuideDialog timezone={project.timezone} projectId={project.id} programmingId={detail.programmingId} dispatchId={detail.id} expectedVersion={detail.version} programmedUnitCode={detail.programmedUnitCode} operationDate={operationDate} defaultProductDescription={detail.programmingConcreteTypes[0] ?? null} defaultCatalogProduct={detail.defaultCatalogProduct} units={detail.units} guide={guide === "new" ? undefined : guide} readOnly={!editable} onClose={() => setGuide(null)} />}
+    {guideToDelete && editable && <DeleteDispatchGuideDialog projectId={project.id} programmingId={detail.programmingId} dispatchId={detail.id} expectedVersion={detail.version} guide={guideToDelete} onClose={() => setGuideToDelete(null)} />}
     {incidentOpen && <RegisterIncidentDialog projectId={project.id} dispatchId={detail.id} types={detail.incidentTypes} onClose={() => setIncidentOpen(false)} />}
-    {confirmOpen && completeState.status !== "success" && <Dialog title="¿Finalizar despacho?" description="Se guardarán los datos actuales y se cerrará la operación." icon={CheckCircle2} onClose={() => setConfirmOpen(false)} pending={completing} size="sm"><form action={completeAction}><div className="space-y-4 p-5"><input type="hidden" name="projectId" value={project.id} /><input type="hidden" name="dispatchId" value={detail.id} /><input type="hidden" name="programmingId" value={detail.programmingId} /><input type="hidden" name="expectedVersion" value={detail.version} /><input type="hidden" name="arrivalAt" value={arrivalTime ? `${operationDate}T${arrivalTime}` : ""} /><input type="hidden" name="departureAt" value={departureTime ? `${operationDate}T${departureTime}` : ""} /><input type="hidden" name="receivedByName" value={receiverName} /><input type="hidden" name="result" value={result} /><input type="hidden" name="orderNumber" value={orderNumber} /><input type="hidden" name="realVolume" value={result === "NOT_DISPATCHED" ? "0" : realVolume} /><input type="hidden" name="realUnitCode" value={realUnitCode} />{completeState.status === "error" && <p role="alert" className="rounded-lg bg-destructive-soft px-4 py-3 text-sm text-destructive">{completeState.message}</p>}</div><DialogFooter><Button variant="secondary" onClick={() => setConfirmOpen(false)} disabled={completing}>Cancelar</Button><LoadingButton variant="success" loadingLabel="Finalizando…">Finalizar despacho</LoadingButton></DialogFooter></form></Dialog>}
+    {confirmOpen && completeState.status !== "success" && <Dialog title="¿Finalizar despacho?" description="Se guardarán los datos actuales y se cerrará la operación." icon={CheckCircle2} onClose={() => setConfirmOpen(false)} pending={completing} size="sm"><form action={completeAction}><div className="space-y-4 p-5"><input type="hidden" name="projectId" value={project.id} /><input type="hidden" name="dispatchId" value={detail.id} /><input type="hidden" name="programmingId" value={detail.programmingId} /><input type="hidden" name="expectedVersion" value={detail.version} /><input type="hidden" name="arrivalAt" value={arrivalTime ? `${operationDate}T${arrivalTime}` : ""} /><input type="hidden" name="departureAt" value={departureValue} /><input type="hidden" name="result" value={result} /><input type="hidden" name="orderNumber" value={orderNumber} /><input type="hidden" name="realVolume" value={result === "NOT_DISPATCHED" ? "0" : realVolume} /><input type="hidden" name="realUnitCode" value={realUnitCode} />{completeState.status === "error" && <p role="alert" className="rounded-lg bg-destructive-soft px-4 py-3 text-sm text-destructive">{completeState.message}</p>}</div><DialogFooter><Button variant="secondary" onClick={() => setConfirmOpen(false)} disabled={completing}>Cancelar</Button><LoadingButton variant="success" loadingLabel="Finalizando…">Finalizar despacho</LoadingButton></DialogFooter></form></Dialog>}
   </MotionPage>;
 }

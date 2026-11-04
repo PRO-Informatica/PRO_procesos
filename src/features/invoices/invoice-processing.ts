@@ -6,19 +6,21 @@ import {
   normalizeBusinessIdentity,
   normalizeTaxIdentity,
 } from "@/lib/business-identity";
-import { compareAddresses, normalizeAddressIdentity } from "@/lib/address-identity";
+import { compareProjectAddresses, normalizeAddressIdentity } from "@/lib/address-identity";
 
 import { classifyInvoiceLine, classifyInvoiceLines } from "./invoice-classification";
+import { matchInvoiceProducts, sameFullPca, type DispatchInvoiceIdentity } from "./dispatch-invoice-identity";
 import { buildFiscalDocumentKey } from "./invoice-identity";
 import {
   C14_EXCEPTION_MESSAGE,
   evaluateInvoiceRecipientPolicy,
 } from "./invoice-recipient-policy";
 import type { ReconciliationQuantitySource } from "./reconciliation-quantity";
+import { evaluateInvoicePeriod, projectCalendarDate } from "@/features/batches/period-policy";
 
 export type ProcessedInvoiceType = "PRODUCT" | "SERVICE" | "UNKNOWN";
 
-export type InvoiceProcessingContext = {
+export type InvoiceProcessingContext = DispatchInvoiceIdentity & {
   expectedType?: "PRODUCT" | "SERVICE";
   companyCode: string;
   orderNumber: string;
@@ -27,7 +29,9 @@ export type InvoiceProcessingContext = {
   billingLegalName: string | null;
   billingTaxId: string | null;
   projectAddress: string | null;
+  projectAdditionalAddresses?: readonly string[];
   accountingPeriod: string;
+  projectTimezone: string;
   expectedQuantity: number | null;
   expectedUnitCode: string | null;
   expectedQuantitySource: ReconciliationQuantitySource;
@@ -49,6 +53,7 @@ export type InvoiceProcessingPayload = {
   supplier_tax_id: string | null;
   shipping_address: string | null;
   shipping_address_normalized: string | null;
+  matched_project_address: string | null;
   project_match_method: "EXACT_ADDRESS" | "CANONICAL_ADDRESS" | "TOLERANT_ADDRESS";
   authorization_number: string | null;
   series: string | null;
@@ -107,10 +112,6 @@ export function normalizeOperationalOrder(value: string | null | undefined) {
   return /^\d+$/.test(compact)
     ? compact.replace(/^0+(?=\d)/, "")
     : compact.toUpperCase().replace(/\s+/g, "");
-}
-
-function sameMonth(date: string, accountingPeriod: string) {
-  return date.slice(0, 7) === accountingPeriod.slice(0, 7);
 }
 
 export async function processInvoicePdf(
@@ -172,10 +173,11 @@ export function processExtractedInvoice(
   const expectedSupplierName = normalizeBusinessIdentity(context.supplierName);
   const supplierTax = normalizeTaxId(extracted.supplier_tax_id);
   const expectedSupplierTax = normalizeTaxId(context.supplierTaxId);
-  const addressComparison = compareAddresses(
-    context.projectAddress,
+  const matchedAddress = compareProjectAddresses(
+    { address: context.projectAddress, additionalAddresses: context.projectAdditionalAddresses },
     extracted.shipping_address,
   );
+  const addressComparison = matchedAddress.comparison;
   const projectValid = addressComparison.result === "MATCH";
   const configuredBillingNameMatches = Boolean(
     normalizeBusinessIdentity(context.billingLegalName) &&
@@ -203,11 +205,15 @@ export function processExtractedInvoice(
   const warnings: string[] = [];
   if (projectValid && addressComparison.matchMethod !== "EXACT") {
     warnings.push(
-      `${addressComparison.warnings[0]} Dirección configurada: "${context.projectAddress?.trim() ?? ""}". Dirección detectada: "${extracted.shipping_address?.trim() ?? ""}".${addressComparison.differences.length ? ` ${addressComparison.differences.join(" ")}` : ""}`,
+      `${addressComparison.warnings[0]} Dirección configurada: "${matchedAddress.address ?? ""}". Dirección detectada: "${extracted.shipping_address?.trim() ?? ""}".${addressComparison.differences.length ? ` ${addressComparison.differences.join(" ")}` : ""}`,
     );
   }
-  const periodValid = sameMonth(extracted.invoice_date!, context.accountingPeriod);
-  if (!periodValid) warnings.push("La fecha de la factura está fuera del período contable del lote.");
+  const period = evaluateInvoicePeriod({
+    invoiceDate: extracted.invoice_date!, accountingPeriod: context.accountingPeriod,
+    receivedDate: projectCalendarDate(context.projectTimezone),
+  });
+  const periodValid = period.valid;
+  if (period.graceUsed) warnings.push(`Factura del mes anterior admitida por gracia de cinco días hábiles, hasta ${period.graceDeadline} inclusive.`);
   if (recipientPolicy.requiresSocietyException) {
     warnings.push(C14_EXCEPTION_MESSAGE);
   } else if (!billingNameValid) {
@@ -232,8 +238,13 @@ export function processExtractedInvoice(
     unit_valid: detectedType === "SERVICE" || invoiceUnit === expectedUnit,
     quantity_valid: detectedType === "SERVICE" || difference === 0,
     fiscal_identity_valid: Boolean(fiscalDocumentKey),
+    product_identity_valid: detectedType !== "PRODUCT" || matchInvoiceProducts(extracted.lines, context.expectedProducts) === "MATCH",
+    service_pca_valid: detectedType !== "SERVICE" || (context.productInvoiceIdentityValid && sameFullPca(extracted.pca_original, context.productInvoicePca)),
   };
   const criticalErrors = [
+    !validations.product_identity_valid && "El código y la referencia de concreto de la factura no coinciden con los productos verificables de las guías o programación del despacho.",
+    !validations.service_pca_valid && "La factura de Servicio requiere un Producto validado del mismo despacho, guardado o incluido en esta carga, y el mismo PCA completo.",
+    !periodValid && "La factura está fuera del mes del lote y del plazo de cinco días hábiles de gracia para el mes anterior.",
     !validations.type_valid && "El tipo detectado no coincide con el espacio seleccionado.",
     !validations.project_valid && "La Dirección de Envío no corresponde a la Dirección exacta de Obra del proyecto.",
     !validations.supplier_valid && "El emisor no corresponde al proveedor del despacho.",
@@ -265,6 +276,7 @@ export function processExtractedInvoice(
       supplier_tax_id: extracted.supplier_tax_id,
       shipping_address: extracted.shipping_address,
       shipping_address_normalized: normalizeAddressIdentity(extracted.shipping_address) || null,
+      matched_project_address: matchedAddress.address,
       project_match_method: addressComparison.matchMethod === "EXACT"
         ? "EXACT_ADDRESS"
         : addressComparison.matchMethod === "CANONICAL"

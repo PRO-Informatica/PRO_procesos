@@ -61,6 +61,8 @@ export type GuideReportRow = {
   dispatchStatus: string;
   registeredById: string;
   registeredByName: string;
+  completedById: string | null;
+  completedByName: string | null;
   createdAt: string;
   incidentCount: number;
   documentCount: number;

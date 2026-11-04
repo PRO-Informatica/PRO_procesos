@@ -1,6 +1,15 @@
 import type { DispatchCatalogType, DispatchResult } from "./types";
+import { SERVICE_UNIT_CODES } from "../platform/project-price-catalogs/service-units.ts";
 
 export const DISPATCH_GUIDE_UNIT_CODES = ["KM", "M3", "UN"] as const;
+
+export function validateGuideTruckTimes(arrival: string, departure: string) {
+  const time = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+  if (!time.test(arrival) || !time.test(departure)) {
+    return "Registra una hora de llegada y una hora de salida válidas para el camión.";
+  }
+  return null;
+}
 
 export type DispatchGuideLineInput = {
   line_id: string | null;
@@ -53,8 +62,8 @@ export function validateDispatchGuideLines(lines: DispatchGuideLineInput[]) {
       (line) =>
         !Number.isFinite(line.quantity) ||
         line.quantity <= 0 ||
-        !DISPATCH_GUIDE_UNIT_CODES.includes(
-          line.unit_code as (typeof DISPATCH_GUIDE_UNIT_CODES)[number],
+        !(line.catalog_type === "SERVICE" ? SERVICE_UNIT_CODES as readonly string[] : DISPATCH_GUIDE_UNIT_CODES as readonly string[]).includes(
+          line.unit_code,
         ),
     )
   ) {

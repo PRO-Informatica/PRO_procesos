@@ -1,3 +1,4 @@
+import type { ServiceReconciliationSummary } from "@/features/invoices/service-reconciliation";
 export const DISPATCH_STATUSES = ["IN_EXECUTION", "COMPLETED"] as const;
 export const DISPATCH_RESULTS = ["DISPATCHED", "NOT_DISPATCHED"] as const;
 
@@ -13,6 +14,9 @@ export type DispatchCatalogOption = {
   type: DispatchCatalogType;
   code: string;
   reference: string | null;
+  description: string | null;
+  observations: string | null;
+  unitCode: string | null;
   price: number;
   currency: "GTQ";
 };
@@ -43,6 +47,8 @@ export type DispatchGuide = {
   id: string;
   guideNumber: string;
   guideDate: string;
+  truckArrivalAt: string | null;
+  truckDepartureAt: string | null;
   quantity: number;
   unitCode: string;
   productCount: number;
@@ -172,6 +178,7 @@ export type DispatchDetail = {
   batches: DispatchBatchRelation[];
   reconciliation: {
     status: string;
+    serviceReconciliation?: ServiceReconciliationSummary;
     productInvoice: DispatchInvoiceSummary | null;
     serviceInvoice: DispatchInvoiceSummary | null;
     latestDifference: number | null;

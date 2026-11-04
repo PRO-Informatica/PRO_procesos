@@ -36,7 +36,7 @@ export function CompanyStatusDialog({ companyId, companyName, status, returnTo, 
         <input type="hidden" name="active" value={String(activating)} />
         <input type="hidden" name="returnTo" value={returnTo} />
         <div className="p-5 sm:p-6">
-          <p className="text-sm leading-6 text-foreground-muted">{activating ? "La empresa recuperará su acceso global." : "Sus proyectos, usuarios e historial se conservarán."}</p>
+          <p className="text-sm leading-6 text-foreground-muted">{activating ? "La empresa recuperará su acceso global. Sus proyectos seguirán inactivos hasta que los reactives individualmente; los cerrados conservarán su estado." : "También se desactivarán todos sus proyectos activos. Los proyectos cerrados conservarán su estado. Sus usuarios e historial se conservarán."}</p>
           {state.status === "error" && <p className="mt-4 rounded-lg bg-destructive-soft px-3 py-2 text-sm text-destructive" role="alert">{state.message}</p>}
         </div>
         <DialogFooter>

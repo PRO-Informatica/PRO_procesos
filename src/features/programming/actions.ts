@@ -7,9 +7,10 @@ import { getProjectContext } from "@/features/projects/queries";
 import { createClient } from "@/lib/supabase/server";
 
 import { getProgrammingCatalogs, getProgrammingItems } from "./queries";
+import { isDeliveryMode } from "./invoice-policy";
 import {
   extractMixtoProgrammingWorkbook,
-  isApprovedProgrammingDayAllowed,
+  isValidApprovedProgrammingDateTime,
   MIXTO_WORKBOOK_ERROR,
 } from "./mixto-listo-workbook";
 import {
@@ -111,6 +112,12 @@ function localDateKey(value: Date, timezone: string) {
 
 function databaseErrorMessage(error: { code?: string; message: string }) {
   const message = error.message.toUpperCase();
+  if (message.includes("PROGRAMMING_BILLING_INCOMPLETE")) {
+    return "No se puede cerrar: todos los despachos deben estar finalizados, con producto conciliado, facturas requeridas y sin decisiones fiscales pendientes.";
+  }
+  if (message.includes("PROGRAMMING_DELIVERY_MODES")) {
+    return "Revisa la modalidad de entrega. Solo puede cambiarse antes de iniciar el despacho y debe confirmarse nuevamente.";
+  }
   if (message.includes("PERMISSION_DENIED")) {
     return "No tienes permiso para realizar esta acción en el proyecto.";
   }
@@ -149,6 +156,12 @@ function databaseErrorMessage(error: { code?: string; message: string }) {
   }
   if (message.includes("PROGRAMMING_HAS_DISPATCHES")) {
     return "No se puede cancelar porque ya existen despachos relacionados.";
+  }
+  if (message.includes("PROGRAMMING_HAS_RECORDED_ACTIVITY")) {
+    return "No se puede cancelar porque el despacho ya tiene guías, cantidades registradas o información de facturación.";
+  }
+  if (message.includes("PROGRAMMING_CANCELLATION_REASON_TOO_LONG")) {
+    return "El motivo de cancelación no puede superar 1000 caracteres.";
   }
   if (message.includes("PROGRAMMING_NOT_IN_EXECUTION")) {
     return "Solo una programación en ejecución puede cerrarse.";
@@ -262,6 +275,7 @@ export async function mutateProgrammingAction(
     const orderNumber = readText(formData, "orderNumber");
     const reason = readText(formData, "reason");
     const notes = readText(formData, "notes");
+    const deliveryModes = readTexts(formData, "deliveryModes");
     const lines = quantities.map((quantity, index) => ({
       quantity: Number(quantity),
       unit_code: unitCodes[index] ?? "",
@@ -270,6 +284,7 @@ export async function mutateProgrammingAction(
 
     if (
       !UUID_PATTERN.test(supplierId) ||
+      deliveryModes.some((mode) => !isDeliveryMode(mode)) ||
       !lines.length ||
       quantities.length !== unitCodes.length ||
       quantities.length !== concreteTypes.length ||
@@ -308,18 +323,14 @@ export async function mutateProgrammingAction(
           project.timezone || "America/Guatemala",
         )
       : null;
-    if (projectError || !project || !scheduledAtIso) {
+    if (
+      projectError || !project || !scheduledAtIso ||
+      !isValidApprovedProgrammingDateTime(scheduledAt)
+    ) {
       return {
         status: "error",
         intent,
         message: "La fecha y hora programadas no son válidas.",
-      };
-    }
-    if (scheduledAt.slice(0, 10) <= localDateKey(new Date(), project.timezone || "America/Guatemala")) {
-      return {
-        status: "error",
-        intent,
-        message: "La edición solo está disponible hasta un día antes de la fecha programada.",
       };
     }
 
@@ -332,6 +343,7 @@ export async function mutateProgrammingAction(
       p_notes: notes || null,
       p_order_number: orderNumber,
       p_reason: reason,
+      p_delivery_modes: deliveryModes,
     }));
   } else if (intent === "confirm") {
     const confirmedQuantity = Number(readText(formData, "confirmedQuantity"));
@@ -349,10 +361,14 @@ export async function mutateProgrammingAction(
       p_notes: null,
     }));
   } else if (intent === "cancel") {
+    const reason = readText(formData, "reason");
+    if (!reason || reason.length > 1000) {
+      return { status: "error", intent, message: !reason ? "Ingresa el motivo de la cancelación." : "El motivo de cancelación no puede superar 1000 caracteres." };
+    }
     ({ error } = await supabase.rpc("cancel_programming", {
       p_programming_id: programmingId,
       p_expected_version: expectedVersion,
-      p_reason: readText(formData, "reason"),
+      p_reason: reason,
     }));
   } else {
     ({ error } = await supabase.rpc("close_programming", {
@@ -376,6 +392,13 @@ export async function mutateProgrammingAction(
 
   revalidatePath("/programming");
   revalidatePath(`/programming/${programmingId}`);
+  if (intent === "cancel") {
+    revalidatePath("/dispatches");
+    revalidatePath("/dispatches/[id]", "page");
+    revalidatePath("/batches");
+    revalidatePath("/batches/universal");
+    revalidatePath("/reports");
+  }
   return {
     status: "success",
     intent,
@@ -442,6 +465,7 @@ export async function createProgrammingAction(
   const concreteTypes = readTexts(formData, "lineConcreteType");
   const orderNumber = readText(formData, "orderNumber");
   const notes = readText(formData, "notes");
+  const deliveryModes = readTexts(formData, "deliveryModes");
   const lines = quantities.map((quantity, index) => ({
     quantity,
     unitCode: unitCodes[index] ?? "",
@@ -453,7 +477,12 @@ export async function createProgrammingAction(
     orderNumber,
     lines,
     notes,
+    deliveryModes: deliveryModes.filter(isDeliveryMode),
   };
+
+  if (deliveryModes.some((mode) => !isDeliveryMode(mode))) {
+    return { status: "error", message: "La modalidad de entrega no es válida.", fields };
+  }
 
   if (!UUID_PATTERN.test(projectId) || !UUID_PATTERN.test(supplierId)) {
     return { status: "error", message: "Selecciona un proyecto y proveedor válidos.", fields };
@@ -522,6 +551,7 @@ export async function createProgrammingAction(
     })),
     p_notes: notes || null,
     p_order_number: orderNumber,
+    p_delivery_modes: deliveryModes,
   });
 
   if (error) {
@@ -570,12 +600,14 @@ export async function extractProgrammingWorkbookAction(
           : undefined,
         billingLegalName: context.activeProject?.billingLegalName?.trim() ?? "",
         address: context.activeProject?.address?.trim() ?? "",
+        additionalAddresses: context.activeProject?.additionalAddresses,
         candidateProjects: context.projects
           .filter((project) => project.status === "ACTIVE")
           .map((project) => ({
             id: project.id,
             label: `${project.code} · ${project.name}`,
             address: project.address,
+            additionalAddresses: project.additionalAddresses,
             billingLegalName: project.billingLegalName,
           })),
       }),
@@ -588,7 +620,6 @@ export async function extractProgrammingWorkbookAction(
     const m3Unit = catalogs.units.find(
       (unit) => unit.code.trim().toUpperCase() === "M3",
     );
-    const today = localDateKey(new Date(), context.activeProject?.timezone || "America/Guatemala");
     return {
       status: "success",
       fileName: file.name,
@@ -599,8 +630,8 @@ export async function extractProgrammingWorkbookAction(
         unitCode: m3Unit?.code ?? "",
         errors: [
           ...row.errors,
-          ...(row.scheduledAt && row.scheduledAt.slice(0, 10) < today
-            ? ["La fecha es anterior a hoy"]
+          ...(!isValidApprovedProgrammingDateTime(row.scheduledAt)
+            ? ["Fecha u hora inválida"]
             : []),
           ...(!defaultSupplier ? ["Selecciona un proveedor"] : []),
           ...(!m3Unit ? ["La unidad M3 no está activa"] : []),
@@ -643,7 +674,6 @@ export async function createProgrammingBatchAction(
     return { status: "error", message: "La carga debe contener entre 1 y 250 filas." };
   }
   const timezone = context.activeProject?.timezone || "America/Guatemala";
-  const today = localDateKey(new Date(), timezone);
   let workbook;
   try {
     workbook = await extractMixtoProgrammingWorkbook(file, {
@@ -651,10 +681,12 @@ export async function createProgrammingBatchAction(
       label: context.activeProject ? `${context.activeProject.code} · ${context.activeProject.name}` : undefined,
       billingLegalName: context.activeProject?.billingLegalName?.trim() ?? "",
       address: context.activeProject?.address?.trim() ?? "",
+      additionalAddresses: context.activeProject?.additionalAddresses,
       candidateProjects: context.projects.filter((project) => project.status === "ACTIVE").map((project) => ({
         id: project.id,
         label: `${project.code} · ${project.name}`,
         address: project.address,
+        additionalAddresses: project.additionalAddresses,
         billingLegalName: project.billingLegalName,
       })),
     });
@@ -675,16 +707,17 @@ export async function createProgrammingBatchAction(
     const quantity = Number(row.quantity);
     const scheduledAt = localDateTimeToIso(row.scheduledAt, timezone);
     if (
-      !scheduledAt || !isApprovedProgrammingDayAllowed(row.scheduledAt, today) ||
+      !scheduledAt || !isValidApprovedProgrammingDateTime(row.scheduledAt) ||
       !Number.isFinite(quantity) || quantity <= 0 ||
       !UUID_PATTERN.test(submitted.supplierId) || !row.orderNumber || !row.concreteType
     ) {
-      return { status: "error", message: `Revisa la fila Excel ${row.sourceRow}; la fecha aprobada debe ser de hoy o posterior y los campos obligatorios deben estar completos.` };
+      return { status: "error", message: `Revisa la fila Excel ${row.sourceRow}; la fecha y hora aprobadas deben ser válidas y los campos obligatorios deben estar completos.` };
     }
     items.push({
       supplier_id: submitted.supplierId,
       scheduled_at: scheduledAt,
       order_number: row.orderNumber,
+      delivery_modes: row.deliveryModes,
       lines: [{ quantity, unit_code: m3Unit.code, concrete_type: row.concreteType }],
       notes: submitted.notes?.trim() || row.notes || null,
     });

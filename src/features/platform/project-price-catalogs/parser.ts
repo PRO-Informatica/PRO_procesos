@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import type { Cell, CellValue, Worksheet } from "exceljs";
 import JSZip from "jszip";
+import { isEmptyServiceUnit, normalizeServiceUnit, SERVICE_UNIT_ERROR } from "./service-units.ts";
 
 import type {
   PriceCatalogKind,
@@ -32,7 +33,7 @@ function isFormula(value: CellValue) {
   return Boolean(
     value &&
       typeof value === "object" &&
-      "formula" in value,
+      ("formula" in value || "sharedFormula" in value),
   );
 }
 
@@ -62,9 +63,14 @@ function identifierText(cell: Cell) {
 }
 
 function parsePrice(cell: Cell) {
-  const rawValue = isFormula(cell.value)
-    ? (cell.value as { result?: CellValue }).result
+  const formula = isFormula(cell.value);
+  // ExcelJS's cell.value omits falsy formula results; its result getter keeps 0.
+  const rawValue = formula
+    ? cell.result
     : cell.value;
+  // An unevaluated/broken formula is not an intentionally empty price.
+  if (formula && (rawValue === null || rawValue === undefined)) return null;
+  if (rawValue === null || rawValue === undefined) return "0";
   if (typeof rawValue === "number") {
     if (!Number.isFinite(rawValue) || rawValue < 0) return null;
     const rounded = Number(rawValue.toFixed(4));
@@ -74,12 +80,20 @@ function parsePrice(cell: Cell) {
       ? decimal
       : null;
   }
+  if (
+    typeof rawValue === "boolean" ||
+    rawValue instanceof Date ||
+    (typeof rawValue === "object" && "error" in rawValue)
+  ) return null;
 
   let text = valueText(rawValue)
     .replace(/[Q$\s]/gu, "")
     .trim();
   if (text.includes(",") && text.includes(".")) text = text.replace(/,/gu, "");
   else if (text.includes(",")) text = text.replace(",", ".");
+  // Supplier catalogs may leave prices blank or use labels such as "N/A".
+  // Normalize only those values to zero; numeric validation still applies.
+  if (!text || Number.isNaN(Number(text))) return "0";
   if (!/^(?:0|[1-9]\d{0,13})(?:\.\d{1,4})?$/u.test(text)) return null;
   const numeric = Number(text);
   return Number.isFinite(numeric) && numeric >= 0 ? text : null;
@@ -133,13 +147,16 @@ async function normalizeWorkbookXml(bytes: Buffer) {
 function findHeaderColumns(sheet: Worksheet, kind: PriceCatalogKind) {
   const required = kind === "PRODUCT"
     ? ["codigo", "referencia", "precio"]
-    : ["codigo", "precio"];
+    : ["codigo", "descripcion", "precio"];
 
   for (let rowNumber = 1; rowNumber <= Math.min(sheet.rowCount, 10); rowNumber += 1) {
     const columns = new Map<string, number>();
     sheet.getRow(rowNumber).eachCell({ includeEmpty: false }, (cell, columnNumber) => {
-      const header = normalizeHeader(valueText(cell.value));
-      if (required.includes(header) && !columns.has(header)) columns.set(header, columnNumber);
+      const rawHeader = normalizeHeader(valueText(cell.value));
+      const header = rawHeader === "um" || rawHeader === "unidad" ? "unidad de medida"
+        : rawHeader === "precio incluye iva" ? "precio"
+        : rawHeader === "observacion" ? "observaciones" : rawHeader;
+      if ((required.includes(header) || (kind === "SERVICE" && ["observaciones", "unidad de medida"].includes(header))) && !columns.has(header)) columns.set(header, columnNumber);
     });
     if (required.every((header) => columns.has(header))) {
       return { rowNumber, columns };
@@ -152,7 +169,9 @@ function addDuplicateErrors(rows: PriceCatalogPreviewRow[], kind: PriceCatalogKi
   const grouped = new Map<string, PriceCatalogPreviewRow[]>();
   for (const row of rows) {
     if (!row.code || (kind === "PRODUCT" && !row.reference)) continue;
-    const key = kind === "PRODUCT" ? `${row.code}\u0000${row.reference}` : row.code;
+    const key = kind === "PRODUCT"
+      ? `${row.code}\u0000${row.reference}`
+      : JSON.stringify([row.code, row.observations]);
     const matches = grouped.get(key) ?? [];
     matches.push(row);
     grouped.set(key, matches);
@@ -163,7 +182,7 @@ function addDuplicateErrors(rows: PriceCatalogPreviewRow[], kind: PriceCatalogKi
       row.errors.push(
         kind === "PRODUCT"
           ? "La combinación de código y referencia está duplicada."
-          : "El código está duplicado.",
+          : "La combinación de código y observaciones está duplicada. Usa observaciones distintas para diferenciar los servicios.",
       );
     }
   }
@@ -187,11 +206,20 @@ function parseRows(
       ? row.getCell(header.columns.get("referencia")!)
       : null;
     const priceCell = row.getCell(header.columns.get("precio")!);
+    const descriptionCell = kind === "SERVICE" ? row.getCell(header.columns.get("descripcion")!) : null;
+    const observationsColumn = kind === "SERVICE" ? header.columns.get("observaciones") : undefined;
+    const observationsCell = observationsColumn ? row.getCell(observationsColumn) : null;
+    const observations = observationsCell ? valueText(observationsCell.value) || null : null;
+    const unitColumn = kind === "SERVICE" ? header.columns.get("unidad de medida") : undefined;
+    const unitCell = unitColumn ? row.getCell(unitColumn) : null;
+    const description = descriptionCell ? valueText(descriptionCell.value) : null;
+    const rawUnit = unitCell ? valueText(unitCell.value) : "";
+    const unitCode = kind === "SERVICE" ? normalizeServiceUnit(rawUnit) : null;
     const code = identifierText(codeCell).trim();
     const reference = referenceCell ? identifierText(referenceCell).trim() : null;
     const rawPrice = valueText(priceCell.value);
 
-    if (!code && !reference && !rawPrice) {
+    if (!code && !reference && !rawPrice && !description && !rawUnit && !observations) {
       consecutiveEmptyRows += 1;
       if (consecutiveEmptyRows >= 20 && rows.length > 0) break;
       continue;
@@ -219,6 +247,18 @@ function parseRows(
       if (referenceCell && isFormula(referenceCell.value)) {
         errors.push("La referencia no puede ser una fórmula.");
       }
+    } else {
+      if (!description) errors.push("La descripción es obligatoria.");
+      else if (description.length > 500 || /[\u0000-\u001f\u007f]/u.test(description)) {
+        errors.push("La descripción no es válida (máximo 500 caracteres).");
+      }
+      if (descriptionCell && isFormula(descriptionCell.value)) errors.push("La descripción no puede ser una fórmula.");
+      if (observations && (observations.length > 500 || /[\u0000-\u001f\u007f]/u.test(observations))) {
+        errors.push("Las observaciones no son válidas (máximo 500 caracteres).");
+      }
+      if (observationsCell && isFormula(observationsCell.value)) errors.push("Las observaciones no pueden ser una fórmula.");
+      if (!isEmptyServiceUnit(rawUnit) && !unitCode) errors.push(SERVICE_UNIT_ERROR);
+      if (unitCell && isFormula(unitCell.value)) errors.push("La UM no puede ser una fórmula.");
     }
 
     const price = parsePrice(priceCell);
@@ -234,6 +274,10 @@ function parseRows(
       rowNumber,
       code,
       reference,
+      description,
+      observations,
+      unitCode,
+      rawUnitCode: kind === "SERVICE" && !isEmptyServiceUnit(rawUnit) ? rawUnit : null,
       price: price ?? rawPrice,
       errors,
     });
@@ -283,7 +327,7 @@ export async function parseProjectPriceCatalog(
     throw new Error(
       catalogKind === "PRODUCT"
         ? "El Excel debe incluir las columnas codigo, referencia y precio."
-        : "El Excel debe incluir las columnas codigo y precio.",
+        : "El Excel debe incluir las columnas codigo, descripcion y precio. Unidad de medida y observaciones son opcionales.",
     );
   }
 

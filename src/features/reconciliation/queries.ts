@@ -1,4 +1,5 @@
 import "server-only";
+import { serviceReconciliationSummary } from "@/features/invoices/service-reconciliation";
 
 import { formatProgrammingCode } from "@/features/batches/formatters";
 import { resolveReconciliationQuantityBasis, selectValidProgrammedQuantity } from "@/features/invoices/reconciliation-quantity";
@@ -11,7 +12,7 @@ function numeric(value: unknown) { const parsed = Number(value ?? 0); return Num
 export async function getGlobalReconciliation(projectId: string): Promise<GlobalReconciliationData> {
   const supabase = await createClient();
   const [reconciliationsResult, batchesResult, relationsResult, dispatchesResult, suppliersResult, programmingResult, incidentsResult] = await Promise.all([
-    supabase.from("dispatch_reconciliations").select("id, dispatch_id, status, current_product_invoice_id, current_service_invoice_id").eq("project_id", projectId).order("updated_at", { ascending: false }),
+    supabase.from("dispatch_reconciliations").select("id, dispatch_id, status, current_product_invoice_id, current_service_invoice_id, service_status, service_comparison").eq("project_id", projectId).order("updated_at", { ascending: false }),
     supabase.from("batches").select("id, code").eq("project_id", projectId).order("period_start", { ascending: false }),
     supabase.from("batch_dispatches").select("batch_id, dispatch_id").eq("project_id", projectId).is("removed_at", null),
     supabase.from("dispatches").select("id, programming_id, supplier_id, order_number, real_volume, real_unit_code, result").eq("project_id", projectId),
@@ -82,6 +83,7 @@ export async function getGlobalReconciliation(projectId: string): Promise<Global
         hasProductInvoice: Boolean(row.current_product_invoice_id),
         hasServiceInvoice: Boolean(row.current_service_invoice_id),
         reconciliationStatus: row.status,
+        serviceReconciliation: serviceReconciliationSummary(row),
         difference: latestDifference.get(dispatch.id) ?? null,
       }];
     }),

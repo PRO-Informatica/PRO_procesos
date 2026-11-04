@@ -11,6 +11,7 @@ import type {
   ProjectActionState,
   ProjectSuppliersActionState,
 } from "./types";
+import { validateProjectAddressInput } from "./project-address-input";
 
 function readText(formData: FormData, name: string) {
   const value = formData.get(name);
@@ -86,12 +87,13 @@ export async function createCompanyProject(
   const name = readText(formData, "name");
   const code = readText(formData, "code").toUpperCase();
   const address = readText(formData, "address");
+  const additionalAddresses = formData.getAll("additionalAddress").map((value) => typeof value === "string" ? value.trim() : "");
   const timezone = readText(formData, "timezone") || "America/Guatemala";
   const startDate = readText(formData, "startDate");
   const estimatedEndDate = readText(formData, "estimatedEndDate");
   const billingLegalName = readText(formData, "billingLegalName");
   const billingTaxId = readText(formData, "billingTaxId");
-  const fields = { name, code, address, timezone, startDate, estimatedEndDate, billingLegalName, billingTaxId };
+  const fields = { name, code, address, additionalAddresses, timezone, startDate, estimatedEndDate, billingLegalName, billingTaxId };
 
   if (!isUuid(companyId)) {
     return {
@@ -114,10 +116,11 @@ export async function createCompanyProject(
       fields,
     };
   }
-  if (address.length < 5 || address.length > 300) {
+  const addressError = validateProjectAddressInput(address, additionalAddresses);
+  if (addressError) {
     return {
       status: "error",
-      message: "La Dirección exacta de Obra es obligatoria y debe tener entre 5 y 300 caracteres.",
+      message: addressError,
       fields,
     };
   }
@@ -153,12 +156,17 @@ export async function createCompanyProject(
   }
 
   const { data, error } = await supabase.rpc(
-    "platform_create_company_project",
+    "platform_save_company_project",
     {
       p_company_id: companyId,
+      p_project_id: null,
       p_name: name,
       p_code: code,
       p_address: address,
+      p_additional_addresses: additionalAddresses,
+      p_billing_legal_name: billingLegalName,
+      p_billing_tax_id: billingTaxId,
+      p_status: "ACTIVE",
       p_timezone: timezone,
       p_start_date: startDate || null,
       p_estimated_end_date: estimatedEndDate || null,
@@ -167,6 +175,9 @@ export async function createCompanyProject(
 
   if (error) {
     const value = error.message.toUpperCase();
+    if (value.includes("PROJECT_ADDRESS")) {
+      return { status: "error", message: "Revisa las direcciones: cada una debe ser válida y no repetirse.", fields };
+    }
     if (value.includes("PROJECT_CODE_ALREADY_EXISTS")) {
       return {
         status: "error",
@@ -226,15 +237,6 @@ export async function createCompanyProject(
         "El proyecto fue creado, pero no recibimos un identificador válido.",
     };
   }
-  const billingResult = await supabase.rpc("platform_update_project_billing_identity", {
-    p_company_id: companyId,
-    p_project_id: data,
-    p_billing_legal_name: billingLegalName,
-    p_billing_tax_id: billingTaxId,
-  });
-  if (billingResult.error) {
-    return { status: "error", message: "El proyecto se creó, pero no fue posible guardar su identidad fiscal.", fields };
-  }
   redirect(`/platform/companies/${companyId}`);
 }
 
@@ -247,6 +249,7 @@ export async function updateCompanyProject(
   const name = readText(formData, "name");
   const code = readText(formData, "code").toUpperCase();
   const address = readText(formData, "address");
+  const additionalAddresses = formData.getAll("additionalAddress").map((value) => typeof value === "string" ? value.trim() : "");
   const timezone = readText(formData, "timezone") || "America/Guatemala";
   const status = readText(formData, "status").toUpperCase();
   const startDate = readText(formData, "startDate");
@@ -257,6 +260,7 @@ export async function updateCompanyProject(
     name,
     code,
     address,
+    additionalAddresses,
     timezone,
     status,
     startDate,
@@ -282,10 +286,11 @@ export async function updateCompanyProject(
       fields,
     };
   }
-  if (address.length < 5 || address.length > 300) {
+  const addressError = validateProjectAddressInput(address, additionalAddresses);
+  if (addressError) {
     return {
       status: "error",
-      message: "La Dirección exacta de Obra es obligatoria y debe tener entre 5 y 300 caracteres.",
+      message: addressError,
       fields,
     };
   }
@@ -318,12 +323,15 @@ export async function updateCompanyProject(
     };
   }
 
-  const { data, error } = await supabase.rpc("platform_update_company_project", {
+  const { data, error } = await supabase.rpc("platform_save_company_project", {
     p_company_id: companyId,
     p_project_id: projectId,
     p_name: name,
     p_code: code,
     p_address: address,
+    p_additional_addresses: additionalAddresses,
+    p_billing_legal_name: billingLegalName,
+    p_billing_tax_id: billingTaxId,
     p_timezone: timezone,
     p_status: status,
     p_start_date: startDate || null,
@@ -332,6 +340,9 @@ export async function updateCompanyProject(
 
   if (error) {
     const value = error.message.toUpperCase();
+    if (value.includes("PROJECT_ADDRESS")) {
+      return { status: "error", message: "Revisa las direcciones: cada una debe ser válida y no repetirse.", fields };
+    }
     if (value.includes("PROJECT_CODE_ALREADY_EXISTS")) {
       return { status: "error", message: "Ya existe un proyecto con ese código.", fields };
     }
@@ -346,6 +357,13 @@ export async function updateCompanyProject(
       return {
         status: "error",
         message: "El proyecto ya no existe o no pertenece a esta empresa.",
+        fields,
+      };
+    }
+    if (value.includes("PROJECT_COMPANY_INACTIVE")) {
+      return {
+        status: "error",
+        message: "Primero reactiva la empresa para poder activar este proyecto.",
         fields,
       };
     }
@@ -376,20 +394,13 @@ export async function updateCompanyProject(
     };
   }
 
-  const billingResult = await supabase.rpc("platform_update_project_billing_identity", {
-    p_company_id: companyId,
-    p_project_id: projectId,
-    p_billing_legal_name: billingLegalName,
-    p_billing_tax_id: billingTaxId,
-  });
-  if (billingResult.error) {
-    return { status: "error", message: "El proyecto se actualizó, pero no fue posible guardar su identidad fiscal.", fields };
-  }
-
   revalidatePath("/platform/companies");
   revalidatePath(`/platform/companies/${companyId}`);
   revalidatePath("/");
   revalidatePath("/programming");
+  revalidatePath("/invoices");
+  revalidatePath("/invoices/universal");
+  revalidatePath("/batches");
   return {
     status: "success",
     message: "Proyecto actualizado correctamente.",
@@ -482,6 +493,7 @@ export async function setCompanyStatus(
     return actionError(databaseErrorMessage(error));
   }
 
+  revalidatePath("/", "layout");
   revalidatePath("/platform/companies");
   revalidatePath(`/platform/companies/${companyId}`);
 

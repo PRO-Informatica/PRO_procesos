@@ -13,6 +13,8 @@ import {
   createProgrammingBatchAction,
   extractProgrammingWorkbookAction,
 } from "../actions";
+import { deliveryModeLabel, requiresServiceInvoice } from "../invoice-policy";
+import { isValidApprovedProgrammingDateTime } from "../approved-import-validation";
 import {
   initialCreateProgrammingBatchState,
   initialExtractProgrammingWorkbookState,
@@ -20,10 +22,9 @@ import {
   type ProgrammingSupplier,
 } from "../types";
 
-function rowErrors(row: BulkProgrammingPreviewRow, today: string) {
+function rowErrors(row: BulkProgrammingPreviewRow) {
   const errors: string[] = [];
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(row.scheduledAt)) errors.push("Fecha u hora inválida");
-  else if (row.scheduledAt.slice(0, 10) < today) errors.push("La fecha es anterior a hoy");
+  if (!isValidApprovedProgrammingDateTime(row.scheduledAt)) errors.push("Fecha u hora inválida");
   if (!Number.isFinite(Number(row.quantity)) || Number(row.quantity) <= 0) errors.push("Volumen inválido");
   if (!row.unitCode) errors.push("Falta unidad");
   if (!row.supplierId) errors.push("Selecciona un proveedor");
@@ -47,7 +48,6 @@ export function BulkProgrammingDialog({
   billingLegalName,
   timezone,
   suppliers,
-  today,
   onClose,
   onCreated,
 }: {
@@ -56,7 +56,6 @@ export function BulkProgrammingDialog({
   billingLegalName: string | null;
   timezone: string;
   suppliers: ProgrammingSupplier[];
-  today: string;
   onClose: () => void;
   onCreated: (count: number) => void;
 }) {
@@ -89,8 +88,8 @@ export function BulkProgrammingDialog({
   }, [batchState.programmingIds, batchState.status, onCreated, rows.length]);
 
   const validatedRows = useMemo(
-    () => rows.map((row) => ({ ...row, errors: rowErrors(row, today) })),
-    [rows, today],
+    () => rows.map((row) => ({ ...row, errors: rowErrors(row) })),
+    [rows],
   );
   const valid = validatedRows.length > 0 && validatedRows.every((row) => row.errors.length === 0);
   const update = (index: number, patch: Partial<BulkProgrammingPreviewRow>, rebuildNotes = false) => {
@@ -151,6 +150,11 @@ export function BulkProgrammingDialog({
                           <label className="text-xs font-semibold text-foreground-muted">Proveedor<select className="form-input mt-1" value={row.supplierId} onChange={(event) => update(index, { supplierId: event.target.value })}><option value="">Selecciona</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.code} · {supplier.name}</option>)}</select></label>
                           <label className="text-xs font-semibold text-foreground-muted">Pedido No.<input className="form-input mt-1 disabled:bg-muted" value={row.orderNumber} disabled /></label>
                           <label className="text-xs font-semibold text-foreground-muted">Tipo de concreto<input className="form-input mt-1 disabled:bg-muted" value={row.concreteType} disabled /></label>
+                          <div className="text-xs font-semibold text-foreground-muted">
+                            Modalidad del Excel
+                            <p className="mt-1 text-sm text-foreground">{deliveryModeLabel(row.deliveryModes)}</p>
+                            <p className="mt-1 font-normal">{requiresServiceInvoice(row.deliveryModes) ? "Producto conciliado + servicio" : "Producto conciliado; servicio opcional"}</p>
+                          </div>
                           <label className="text-xs font-semibold text-foreground-muted">Volumen<div className="mt-1 flex gap-2"><input type="number" className="form-input disabled:bg-muted" value={row.quantity} disabled /><span className="flex min-h-11 items-center rounded-lg border border-border bg-muted/30 px-3 text-sm font-semibold">{row.unitCode}</span></div></label>
                           <label className="text-xs font-semibold text-foreground-muted">Elemento a fundir<input className="form-input mt-1 disabled:bg-muted" value={row.placementElement} disabled /></label>
                           <label className="text-xs font-semibold text-foreground-muted">Adicionales al concreto<input className="form-input mt-1 disabled:bg-muted" value={row.additions} disabled /></label>

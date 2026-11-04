@@ -22,7 +22,14 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "PRO Procesos",
   description: "Control operativo y documental de concreto",
-  icons: { icon: "/pro-logo.png" },
+  icons: {
+    icon: "/pro-logo.png",
+    apple: {
+      url: "/app-icons/pro-app-black-180.png",
+      sizes: "180x180",
+      type: "image/png",
+    },
+  },
 };
 
 export default function RootLayout({

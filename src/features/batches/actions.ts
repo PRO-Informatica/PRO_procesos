@@ -4,17 +4,21 @@ import { revalidatePath } from "next/cache";
 
 import { requireActiveProfile } from "@/features/auth/queries";
 import { classifyInvoiceLines } from "@/features/invoices/invoice-classification";
-import { normalizeOperationalOrder, processInvoicePdf, type InvoiceProcessingContext } from "@/features/invoices/invoice-processing";
+import { getDispatchInvoiceIdentities } from "@/features/invoices/dispatch-invoice-identity-queries";
+import { normalizeOperationalOrder, processExtractedInvoice, processInvoicePdf, type InvoiceProcessingContext } from "@/features/invoices/invoice-processing";
+import { sameFullPca } from "@/features/invoices/dispatch-invoice-identity";
 import { resolveReconciliationQuantityBasis, selectValidProgrammedQuantity } from "@/features/invoices/reconciliation-quantity";
 import { resolveInvoiceUploadSlot } from "@/features/invoices/reinvoicing";
 import { decideInvoiceRecipientException, type RecipientExceptionDecision } from "@/features/invoices/recipient-exception-service";
 import { getOperationalProjectAccessForProject } from "@/features/projects/queries";
-import { addressesMatch } from "@/lib/address-identity";
+import { projectAddressMatches } from "@/lib/address-identity";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 import { extractMixtoListoInvoicePdf } from "./mixto-listo-extractor";
+import { weeklyBatchPeriods } from "./period-policy";
 import { orderNumberFromMixtoListoPca } from "./mixto-listo-parser";
+import { batchInvoiceCanBeSaved } from "./invoice-upload-pairing";
 import type { BatchMutationState, InvoiceInspection, InvoiceType } from "./types";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -36,11 +40,13 @@ function refresh(batchId?: string, dispatchId?: string) {
   revalidatePath("/batches");
   revalidatePath("/invoices");
   revalidatePath("/reconciliation");
+  revalidatePath("/programming", "layout");
   if (batchId) revalidatePath(`/batches/${batchId}`);
   if (dispatchId) revalidatePath(`/dispatches/${dispatchId}`);
 }
 
 function batchError(message: string) {
+  if (message.includes("DISPATCH_PROGRAMMING_CANCELLED")) return "No puedes agregar al lote un despacho de una programación cancelada.";
   const error = message.toUpperCase();
   if (error.includes("DISPATCH_ALREADY_IN_ACTIVE_BATCH")) return "El despacho ya pertenece a un lote activo.";
   if (error.includes("DISPATCH_SELECTION_INVALID") || error.includes("DISPATCH_SELECTION_DUPLICATED")) return "Selecciona uno o más despachos válidos sin repetirlos.";
@@ -48,7 +54,9 @@ function batchError(message: string) {
   if (error.includes("DISPATCH_NOT_ELIGIBLE")) return "El despacho no es elegible para este lote.";
   if (error.includes("BATCH_NOT_EDITABLE")) return "El lote está cerrado y ya no permite cambios.";
   if (error.includes("REMOVAL_REASON")) return "Indica un motivo válido para remover el despacho.";
-  if (error.includes("MONDAY_TO_SUNDAY")) return "La semana debe iniciar lunes y finalizar domingo.";
+  if (error.includes("OVERDUE_OPEN")) return "Hay un lote abierto cuya semana ya terminó. Ciérralo antes de crear otro lote.";
+  if (error.includes("DESTINATION_CLOSED")) return "El lote siguiente ya está cerrado; revisa la secuencia de cierre antes de continuar.";
+  if (error.includes("MONTH_SEGMENT") || error.includes("MONDAY_TO_SUNDAY")) return "El período debe corresponder a la semana seleccionada, sin cruzar de mes.";
   if (error.includes("ALREADY_EXISTS") || error.includes("DUPLICATE")) return "Ya existe un lote para esa semana o código.";
   if (error.includes("PERMISSION_DENIED")) return "No tienes permiso para realizar esta operación.";
   return "No fue posible completar la operación del lote.";
@@ -56,10 +64,13 @@ function batchError(message: string) {
 
 function invoiceError(message: string) {
   const error = message.toUpperCase();
+  if (error.includes("INVOICE_ACCOUNTING_PERIOD")) return "La factura no corresponde al mes del lote o ya vencieron los cinco días hábiles de gracia para el mes anterior.";
   if (error.includes("NOT_COMPLETED")) return "El despacho debe estar completado para recibir facturas.";
   if (error.includes("ACTIVE_DISPATCH_INVOICE")) return "Ya existe una factura activa de ese tipo para el despacho.";
   if (error.includes("TYPE_MISMATCH")) return "El tipo detectado no coincide con el tipo de factura seleccionado.";
   if (error.includes("CRITICAL_VALIDATION")) return "El PDF no corresponde al proyecto, proveedor o pedido del despacho.";
+  if (error.includes("SERVICE_INVOICE_REQUIRED")) return "Carga la factura de servicio antes de conciliar.";
+  if (error.includes("SERVICE_REINVOICING_CONTEXT_INVALID")) return "La Factura de Servicio vigente cambió; vuelve a validar el PDF.";
   if (error.includes("PRODUCT_INVOICE_REQUIRED")) return "Carga la factura de producto antes de conciliar.";
   if (error.includes("FISCAL_DOCUMENT_ALREADY_EXISTS")) return "Esta factura fiscal ya fue procesada anteriormente.";
   if (error.includes("REINVOICING_NOT_AVAILABLE")) return "La conciliación ya no está disponible para solicitar refacturación.";
@@ -73,15 +84,15 @@ function validPdf(file: FormDataEntryValue | null): file is File {
   return file instanceof File && file.size > 0 && file.size <= MAX_PDF_SIZE && file.type.toLowerCase() === "application/pdf" && file.name.toLowerCase().endsWith(".pdf");
 }
 
-type DispatchInvoiceContext = InvoiceProcessingContext & { projectId: string; batchId: string; dispatchId: string; operationalStatus: "IN_EXECUTION" | "COMPLETED"; productInvoiceId: string | null; serviceInvoiceId: string | null; reconciliationStatus: string };
+type DispatchInvoiceContext = InvoiceProcessingContext & { projectId: string; batchId: string; dispatchId: string; operationalStatus: "IN_EXECUTION" | "COMPLETED"; productInvoiceId: string | null; serviceInvoiceId: string | null; reconciliationStatus: string; serviceReconciliationStatus: string };
 
 async function invoiceContext(projectId: string, batchId: string, dispatchId: string): Promise<DispatchInvoiceContext | null> {
   const admin = createAdminClient();
   const [dispatchResult, batchResult, projectResult, reconciliationResult] = await Promise.all([
     admin.from("dispatches").select("id, project_id, programming_id, supplier_id, order_number, real_volume, real_unit_code, status, result").eq("id", dispatchId).eq("project_id", projectId).maybeSingle(),
     admin.from("batches").select("id, project_id, accounting_period").eq("id", batchId).eq("project_id", projectId).maybeSingle(),
-    admin.from("projects").select("id, company_id, address, billing_legal_name, billing_tax_id").eq("id", projectId).maybeSingle(),
-    admin.from("dispatch_reconciliations").select("status, current_product_invoice_id, current_service_invoice_id").eq("dispatch_id", dispatchId).eq("project_id", projectId).maybeSingle(),
+    admin.from("projects").select("id, company_id, address, additional_addresses, billing_legal_name, billing_tax_id, timezone").eq("id", projectId).maybeSingle(),
+    admin.from("dispatch_reconciliations").select("status, current_product_invoice_id, current_service_invoice_id, service_status").eq("dispatch_id", dispatchId).eq("project_id", projectId).maybeSingle(),
   ]);
   if (!dispatchResult.data || !batchResult.data || !projectResult.data) return null;
   const [relationResult, supplierResult, companyResult, programmingResult, incidentsResult] = await Promise.all([
@@ -104,7 +115,11 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
     programmedQuantity: programmedQuantity === null ? null : Number(programmedQuantity),
     programmedUnitCode: programmingResult.data.unit_code,
   });
+  const identities = await getDispatchInvoiceIdentities(admin, projectId, [dispatchResult.data]);
+  const identity = identities.get(dispatchId);
+  if (!identity) return null;
   return {
+    ...identity,
     projectId, batchId, dispatchId,
     operationalStatus: dispatchResult.data.status,
     companyCode: companyResult.data.code,
@@ -114,7 +129,9 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
     billingLegalName: projectResult.data.billing_legal_name,
     billingTaxId: projectResult.data.billing_tax_id,
     projectAddress: projectResult.data.address,
+    projectAdditionalAddresses: projectResult.data.additional_addresses ?? [],
     accountingPeriod: batchResult.data.accounting_period,
+    projectTimezone: projectResult.data.timezone,
     expectedQuantity: quantityBasis.quantity,
     expectedUnitCode: quantityBasis.unitCode,
     expectedQuantitySource: quantityBasis.source,
@@ -122,16 +139,22 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
     productInvoiceId: reconciliationResult.data?.current_product_invoice_id ?? null,
     serviceInvoiceId: reconciliationResult.data?.current_service_invoice_id ?? null,
     reconciliationStatus: reconciliationResult.data?.status ?? "NOT_STARTED",
+    serviceReconciliationStatus: reconciliationResult.data?.service_status ?? "NOT_STARTED",
   };
 }
 
 export async function createBatchAction(_previous: BatchMutationState, formData: FormData): Promise<BatchMutationState> {
   const projectId = value(formData, "projectId");
   if (!UUID.test(projectId) || !(await authorize(projectId, "batch.create"))) return { status: "error", message: "No tienes permiso para crear lotes." };
-  const { data, error } = await (await createClient()).rpc("create_batch", { p_project_id: projectId, p_code: value(formData, "code"), p_period_start: value(formData, "periodStart"), p_period_end: value(formData, "periodEnd") });
+  const referenceDate = value(formData, "referenceDate");
+  let split: boolean;
+  try { split = weeklyBatchPeriods(referenceDate).length === 2; }
+  catch { return { status: "error", message: "Selecciona una fecha válida para la semana." }; }
+  if (split && value(formData, "confirmSplit") !== "yes") return { status: "error", message: "Confirma expresamente la creación de los dos lotes separados por mes." };
+  const { data, error } = await (await createClient()).rpc("create_weekly_batches", { p_project_id: projectId, p_code: value(formData, "code"), p_reference_date: referenceDate });
   if (error || !data) return { status: "error", message: batchError(error?.message ?? "BATCH_CREATE_FAILED") };
-  refresh(String(data));
-  return { status: "success", message: "Lote creado correctamente.", batchId: String(data) };
+  refresh(String(data.batch_id));
+  return { status: "success", message: split ? "Los dos lotes se crearon correctamente." : "Lote creado correctamente.", batchId: String(data.batch_id) };
 }
 
 export async function addDispatchToBatchAction(_previous: BatchMutationState, formData: FormData): Promise<BatchMutationState> {
@@ -142,7 +165,13 @@ export async function addDispatchToBatchAction(_previous: BatchMutationState, fo
   ].filter(Boolean))];
   if (![projectId, batchId].every((id) => UUID.test(id)) || !dispatchIds.length || dispatchIds.length > 200 || !dispatchIds.every((id) => UUID.test(id))) return { status: "error", message: "Selecciona al menos un despacho válido para modificar el lote." };
   if (!(await authorize(projectId, "batch.modify"))) return { status: "error", message: "No tienes permiso para modificar el lote." };
-  const { data, error } = await (await createClient()).rpc("add_dispatches_to_batch", { p_batch_id: batchId, p_dispatch_ids: dispatchIds });
+  const supabase = await createClient();
+  const dispatches = await supabase.from("dispatches").select("id, status").eq("project_id", projectId).in("id", dispatchIds);
+  if (dispatches.error) return { status: "error", message: "No fue posible verificar el estado de los despachos. Intenta nuevamente." };
+  if (dispatches.data?.length !== dispatchIds.length || dispatches.data.some((dispatch) => dispatch.status !== "COMPLETED")) {
+    return { status: "error", message: "Solo puedes agregar despachos completados al lote. Actualiza la lista e intenta nuevamente." };
+  }
+  const { data, error } = await supabase.rpc("add_dispatches_to_batch", { p_batch_id: batchId, p_dispatch_ids: dispatchIds });
   if (error) return { status: "error", message: batchError(error.message) };
   refresh(batchId);
   dispatchIds.forEach((dispatchId) => revalidatePath(`/dispatches/${dispatchId}`));
@@ -165,6 +194,8 @@ export async function rolloverBatchAction(_previous: BatchMutationState, formDat
   const { error } = await (await createClient()).rpc("rollover_weekly_batch", { p_batch_id: batchId });
   if (error) return { status: "error", message: batchError(error.message) };
   refresh(batchId);
+  revalidatePath("/notifications");
+  revalidatePath("/(dashboard)", "layout");
   return { status: "success", message: "Semana cerrada y pendientes trasladados al siguiente lote." };
 }
 
@@ -174,28 +205,52 @@ export async function inspectDispatchInvoicePdf(projectId: string, batchId: stri
   if (!(await authorize(projectId, "invoice.create"))) return { fileName: file.name, dispatchId, requestedType, status: "ERROR", message: "No tienes permiso para registrar facturas.", payload: null, duplicate: false };
   const context = await invoiceContext(projectId, batchId, dispatchId);
   if (!context) return { fileName: file.name, dispatchId, requestedType, status: "DISPATCH_NOT_FOUND", message: "No se encontró el despacho dentro de este lote.", payload: null, duplicate: false };
+  return inspectInvoiceForContext(file, context, requestedType);
+}
+
+async function inspectInvoiceForContext(
+  file: File,
+  context: DispatchInvoiceContext,
+  requestedType: InvoiceType,
+  raw?: Awaited<ReturnType<typeof extractMixtoListoInvoicePdf>>,
+  productFile?: File,
+): Promise<InvoiceInspection> {
+  const { dispatchId } = context;
   if (context.operationalStatus !== "COMPLETED") return { fileName: file.name, dispatchId, requestedType, status: "IN_EXECUTION", message: "El despacho continúa en ejecución y todavía no puede recibir facturas.", payload: null, duplicate: false };
   try {
-    const processed = await processInvoicePdf(await file.arrayBuffer(), { ...context, expectedType: requestedType });
+    const extracted = raw ?? await extractMixtoListoInvoicePdf(await file.arrayBuffer());
+    let processingContext = context;
+    if (requestedType === "SERVICE" && productFile
+      && !(context.productInvoiceIdentityValid && sameFullPca(extracted.pca_original, context.productInvoicePca))) {
+      // Never trust a browser-supplied validation or PCA. Validate the companion
+      // PDF against this same authorized project, batch, dispatch and concrete.
+      const companion = await inspectInvoiceForContext(productFile, context, "PRODUCT");
+      if (batchInvoiceCanBeSaved(companion)
+        && sameFullPca(extracted.pca_original, companion.payload.pca_original)) {
+        processingContext = { ...context, productInvoicePca: companion.payload.pca_original, productInvoiceIdentityValid: true };
+      }
+    }
+    const processed = processExtractedInvoice(extracted, { ...processingContext, expectedType: requestedType });
     if (processed.status === "error") return { fileName: file.name, dispatchId, requestedType, status: "ERROR", message: [processed.message, ...processed.details].join(" "), payload: null, duplicate: false };
     const invoiceSlot = resolveInvoiceUploadSlot({
       invoiceType: requestedType,
       reconciliationStatus: context.reconciliationStatus,
+      serviceReconciliationStatus: context.serviceReconciliationStatus,
       currentProductInvoiceId: context.productInvoiceId,
       currentServiceInvoiceId: context.serviceInvoiceId,
     });
     const reinvoicing = invoiceSlot.operation === "REINVOICE";
     const duplicate = invoiceSlot.occupied;
     let replacesInvoiceNumber: string | null = null;
-    if (reinvoicing && context.productInvoiceId) {
+    if (reinvoicing && invoiceSlot.currentInvoiceId) {
       const previous = await createAdminClient()
         .from("invoices")
         .select("invoice_number")
-        .eq("id", context.productInvoiceId)
+        .eq("id", invoiceSlot.currentInvoiceId)
         .eq("dispatch_id", dispatchId)
-        .eq("invoice_type", "PRODUCT")
+        .eq("invoice_type", requestedType)
         .maybeSingle();
-      if (!previous.data) return { fileName: file.name, dispatchId, requestedType, status: "ERROR", message: "No fue posible recuperar la Factura de Producto vigente.", payload: null, duplicate: false };
+      if (!previous.data) return { fileName: file.name, dispatchId, requestedType, status: "ERROR", message: `No fue posible recuperar la Factura de ${requestedType === "SERVICE" ? "Servicio" : "Producto"} vigente.`, payload: null, duplicate: false };
       replacesInvoiceNumber = previous.data.invoice_number;
     }
     return {
@@ -208,11 +263,12 @@ export async function inspectDispatchInvoicePdf(projectId: string, batchId: stri
       message: processed.payload.recipient_exception_required
         ? "La factura puede guardarse; Compras debe aceptar la excepción C14 o solicitar refacturación."
         : reinvoicing
-        ? "Factura refacturada lista para reemplazar la Factura de Producto anterior."
+        ? `Factura refacturada lista para reemplazar la Factura de ${requestedType === "PRODUCT" ? "Producto" : "Servicio"} anterior.`
         : duplicate
         ? `Ya existe una factura de ${requestedType === "PRODUCT" ? "producto" : "servicio"} cargada para este despacho.`
         : processed.payload.warnings.join(" ") || "Factura lista para guardar.",
       payload: processed.payload,
+      pcaOriginal: processed.payload.pca_original,
       duplicate,
       operation: reinvoicing ? "REINVOICE" : "NEW",
       replacesInvoiceId: invoiceSlot.replacesInvoiceId,
@@ -231,9 +287,9 @@ export async function inspectBatchInvoicePdf(projectId: string, batchId: string,
     const raw = await extractMixtoListoInvoicePdf(await file.arrayBuffer());
     if (raw.detected_invoice_numbers.length > 1) return { fileName: file.name, dispatchId: null, requestedType: null, status: "REQUIRES_REVIEW", message: "El PDF contiene más de una factura y no puede procesarse automáticamente.", payload: null, duplicate: false };
     const admin = createAdminClient();
-    const project = await admin.from("projects").select("address").eq("id", projectId).maybeSingle();
+    const project = await admin.from("projects").select("address, additional_addresses").eq("id", projectId).maybeSingle();
     if (!project.data?.address?.trim()) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "El proyecto actual no tiene configurada su Dirección exacta de Obra.", payload: null, duplicate: false };
-    if (!addressesMatch(project.data.address, raw.shipping_address)) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "La Dirección de Envío de la factura no corresponde a la Dirección exacta de Obra del proyecto.", payload: null, duplicate: false };
+    if (!projectAddressMatches({ address: project.data.address, additionalAddresses: project.data.additional_addresses }, raw.shipping_address)) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "La Dirección de Envío de la factura no corresponde a ninguna de las direcciones de la obra del proyecto.", payload: null, duplicate: false };
     const orderNumber = orderNumberFromMixtoListoPca(raw.pca_original);
     if (!orderNumber) return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "No se detectó un PCA válido.", payload: null, duplicate: false };
     const relations = await admin.from("batch_dispatches").select("dispatch_id").eq("project_id", projectId).eq("batch_id", batchId).is("removed_at", null);
@@ -244,8 +300,17 @@ export async function inspectBatchInvoicePdf(projectId: string, batchId: string,
     const dispatchId = matches[0].id;
     const candidateType = classifyInvoiceLines(raw.lines);
     if (candidateType === "UNKNOWN") return { fileName: file.name, dispatchId, requestedType: null, status: "REQUIRES_REVIEW", message: "No fue posible clasificar la factura como Producto o Servicio.", payload: null, duplicate: false };
-    const next = new FormData(); next.set("file", file);
-    return inspectDispatchInvoicePdf(projectId, batchId, dispatchId, candidateType, next);
+    if (value(formData, "identifyOnly") === "true") {
+      return { fileName: file.name, dispatchId, requestedType: candidateType, status: "IDENTIFIED", message: "Factura identificada; pendiente de validación.", payload: null, pcaOriginal: raw.pca_original, duplicate: false };
+    }
+    const productFile = formData.get("productFile");
+    if (productFile !== null && !validPdf(productFile)) {
+      return { fileName: file.name, dispatchId, requestedType: candidateType, status: "ERROR", message: "El PDF de Producto adjunto no es válido.", payload: null, duplicate: false };
+    }
+    const context = await invoiceContext(projectId, batchId, dispatchId);
+    if (!context) return { fileName: file.name, dispatchId, requestedType: candidateType, status: "DISPATCH_NOT_FOUND", message: "No se encontró el despacho dentro de este lote.", payload: null, duplicate: false };
+    const inspection = await inspectInvoiceForContext(file, context, candidateType, raw, productFile ?? undefined);
+    return { ...inspection, pcaOriginal: raw.pca_original };
   } catch {
     return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "Formato no reconocido o PDF sin texto embebido.", payload: null, duplicate: false };
   }
@@ -260,6 +325,7 @@ export async function saveDispatchInvoice(projectId: string, batchId: string, di
   const expectedReplacementId = resolveInvoiceUploadSlot({
     invoiceType: requestedType,
     reconciliationStatus: context.reconciliationStatus,
+    serviceReconciliationStatus: context.serviceReconciliationStatus,
     currentProductInvoiceId: context.productInvoiceId,
     currentServiceInvoiceId: context.serviceInvoiceId,
   }).replacesInvoiceId;
@@ -295,11 +361,11 @@ export async function saveDispatchInvoice(projectId: string, batchId: string, di
     return { status: "error" as const, message: invoiceError(completed.error.message) };
   }
   let reconciliationStatus: string | undefined;
-  if (effectiveReplacementId) {
-    const reconciled = await supabase.rpc("reconcile_dispatch", { p_dispatch_id: dispatchId });
+  if ((effectiveReplacementId || requestedType === "SERVICE") && !processed.payload.recipient_exception_required) {
+    const reconciled = await supabase.rpc(requestedType === "SERVICE" ? "reconcile_dispatch_service" : "reconcile_dispatch", { p_dispatch_id: dispatchId });
     if (reconciled.error) {
       refresh(batchId, dispatchId);
-      return { status: "error" as const, message: "La factura refacturada se guardó, pero la conciliación debe reintentarse." };
+      return { status: "error" as const, message: "La factura se guardó, pero la conciliación debe reintentarse." };
     }
     reconciliationStatus = String(reconciled.data);
   }
@@ -322,7 +388,9 @@ export async function saveDispatchInvoice(projectId: string, batchId: string, di
 export async function requestDispatchReinvoicingAction(_previous: BatchMutationState, formData: FormData): Promise<BatchMutationState> {
   const projectId = value(formData, "projectId"), batchId = value(formData, "batchId"), dispatchId = value(formData, "dispatchId");
   if (![projectId, batchId, dispatchId].every((id) => UUID.test(id)) || !(await authorize(projectId, "invoice.review"))) return { status: "error", message: "No tienes permiso para solicitar refacturación." };
-  const { error } = await (await createClient()).rpc("request_dispatch_reinvoicing", { p_dispatch_id: dispatchId, p_reason: value(formData, "reason") });
+  const invoiceType = value(formData, "invoiceType") || "PRODUCT";
+  if (!["PRODUCT", "SERVICE"].includes(invoiceType)) return { status: "error", message: "Selecciona un tipo de factura válido." };
+  const { error } = await (await createClient()).rpc(invoiceType === "SERVICE" ? "request_dispatch_service_reinvoicing" : "request_dispatch_reinvoicing", { p_dispatch_id: dispatchId, p_reason: value(formData, "reason") });
   if (error) return { status: "error", message: invoiceError(error.message) };
   refresh(batchId, dispatchId);
   return { status: "success", message: "Refacturación solicitada; la factura anterior se conserva." };
@@ -339,9 +407,10 @@ export async function decideInvoiceRecipientExceptionAction(
   return result;
 }
 
-export async function reconcileDispatchAction(projectId: string, batchId: string, dispatchId: string) {
+export async function reconcileDispatchAction(projectId: string, batchId: string, dispatchId: string, invoiceType: InvoiceType = "PRODUCT") {
   if (![projectId, batchId, dispatchId].every((id) => UUID.test(id)) || !(await authorize(projectId, "invoice.match"))) return { status: "error" as const, message: "No tienes permiso para conciliar." };
-  const { data, error } = await (await createClient()).rpc("reconcile_dispatch", { p_dispatch_id: dispatchId });
+  if (!["PRODUCT", "SERVICE"].includes(invoiceType)) return { status: "error" as const, message: "Selecciona un tipo de factura válido." };
+  const { data, error } = await (await createClient()).rpc(invoiceType === "SERVICE" ? "reconcile_dispatch_service" : "reconcile_dispatch", { p_dispatch_id: dispatchId });
   if (error) return { status: "error" as const, message: invoiceError(error.message) };
   refresh(batchId, dispatchId);
   return { status: "success" as const, reconciliationStatus: String(data) };

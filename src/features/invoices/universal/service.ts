@@ -5,12 +5,14 @@ import { createHash } from "node:crypto";
 import { extractMixtoListoInvoicePdf } from "@/features/batches/mixto-listo-extractor";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { getOperationalProjectAccess } from "@/features/projects/queries";
-import { addressesMatch } from "@/lib/address-identity";
+import { projectAddressMatches } from "@/lib/address-identity";
 import { normalizeBusinessIdentity, normalizeTaxIdentity } from "@/lib/business-identity";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 import { classifyInvoiceLines } from "../invoice-classification";
+import { matchInvoiceProducts, sameFullPca } from "../dispatch-invoice-identity";
+import { getDispatchInvoiceIdentities, readInvoiceIdentityRows } from "../dispatch-invoice-identity-queries";
 import { buildFiscalDocumentKey } from "../invoice-identity";
 import {
   normalizeOperationalOrder,
@@ -20,6 +22,9 @@ import {
 import { resolveReconciliationQuantityBasis, selectValidProgrammedQuantity } from "../reconciliation-quantity";
 import { resolveInvoiceUploadSlot } from "../reinvoicing";
 import type { UniversalCommitResult, UniversalInvoiceResult } from "./types";
+import { COMMITTABLE_INVOICE_STATUSES } from "./upload-pairing";
+import { compareProductInvoice } from "./reconciliation-comparison";
+import { previewServiceInvoiceComparison, storedInvoiceReconciliation } from "./reconciliation-queries";
 
 const MAX_PDF_SIZE = 10 * 1024 * 1024;
 const REQUIRED_PERMISSIONS = [
@@ -48,6 +53,7 @@ function result(
     invoiceNumber: input.invoiceNumber ?? null,
     detectedBillingLegalName: input.detectedBillingLegalName ?? null,
     orderNumber: input.orderNumber ?? null,
+    pcaOriginal: input.pcaOriginal ?? null,
     projectId: input.projectId ?? null,
     projectLabel: input.projectLabel ?? null,
     dispatchId: input.dispatchId ?? null,
@@ -60,6 +66,8 @@ function result(
     operation: input.operation ?? "NEW",
     replacesInvoiceId: input.replacesInvoiceId ?? null,
     replacesInvoiceNumber: input.replacesInvoiceNumber ?? null,
+    comparison: input.comparison ?? null,
+    reconciliationStatus: input.reconciliationStatus,
     payload: input.payload ?? null,
     fileSha256: input.fileSha256 ?? null,
   };
@@ -75,6 +83,7 @@ function publicResult(value: InternalClassification): UniversalInvoiceResult {
     invoiceNumber: value.invoiceNumber,
     detectedBillingLegalName: value.detectedBillingLegalName,
     orderNumber: value.orderNumber,
+    pcaOriginal: value.pcaOriginal,
     projectId: value.projectId,
     projectLabel: value.projectLabel,
     dispatchId: value.dispatchId,
@@ -87,6 +96,8 @@ function publicResult(value: InternalClassification): UniversalInvoiceResult {
     operation: value.operation,
     replacesInvoiceId: value.replacesInvoiceId,
     replacesInvoiceNumber: value.replacesInvoiceNumber,
+    comparison: value.comparison,
+    reconciliationStatus: value.reconciliationStatus,
   };
 }
 
@@ -105,11 +116,17 @@ async function authorizedScopes() {
   );
 }
 
-async function classifyInternal(file: File, selection: Selection = {}): Promise<InternalClassification> {
+async function classifyInternal(
+  file: File,
+  selection: Selection = {},
+  productFile?: File,
+  identifyOnly = false,
+  requestScopes?: Awaited<ReturnType<typeof authorizedScopes>>,
+): Promise<InternalClassification> {
   if (!validPdf(file)) {
     return result(file, { status: "INVALID_FILE", message: "Selecciona un PDF digital individual de hasta 10 MiB." });
   }
-  const scopes = await authorizedScopes();
+  const scopes = requestScopes ?? await authorizedScopes();
   if (!scopes.length) {
     return result(file, { status: "ERROR", message: "No tienes permisos para procesar Facturas Universal." });
   }
@@ -131,6 +148,7 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
     invoiceNumber: raw.invoice_number,
     detectedBillingLegalName: raw.billing_legal_name,
     orderNumber: normalizeOperationalOrder(raw.pca_original),
+    pcaOriginal: raw.pca_original,
     fileSha256,
   };
   if (raw.detected_invoice_numbers.length > 1) {
@@ -141,7 +159,7 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
   }
 
   const addressMatches = scopes.filter(({ project }) =>
-    addressesMatch(project.address, raw.shipping_address),
+    projectAddressMatches(project, raw.shipping_address),
   );
   const namedMatches = addressMatches.filter(({ project }) =>
     normalizeBusinessIdentity(project.billingLegalName) ===
@@ -170,6 +188,12 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
 
   const project = selectedProject.project;
   const projectLabel = `${project.code} · ${project.name}`;
+  if (identifyOnly) {
+    return result(file, {
+      ...base, projectId: project.id, projectLabel, status: "IDENTIFIED",
+      message: "Tipo y pedido identificados; pendiente de validar el despacho.",
+    });
+  }
   const admin = createAdminClient();
   const fiscalDocumentKey = buildFiscalDocumentKey({
     issuerTaxId: raw.supplier_tax_id,
@@ -180,17 +204,26 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
   if (fiscalDocumentKey) {
     const duplicate = await admin
       .from("invoices")
-      .select("id, project_id, dispatch_id")
+      .select("id, project_id, dispatch_id, invoice_type")
       .eq("fiscal_document_key", fiscalDocumentKey)
       .limit(1)
       .maybeSingle();
     if (duplicate.data) {
+      // A duplicate remains blocked for upload. Only reveal its stored result
+      // when it belongs to the exact project already authorized for this PDF.
+      const invoice = duplicate.data;
+      const sameContext = invoice.project_id === project.id && invoice.invoice_type === detectedType && typeof invoice.dispatch_id === "string";
+      const existing = sameContext ? await storedInvoiceReconciliation(admin, project.id, invoice.dispatch_id, invoice.id, detectedType) : null;
       return result(file, {
         ...base,
         projectId: project.id,
         projectLabel,
         status: "DUPLICATE",
         message: "Esta factura fiscal ya fue procesada anteriormente.",
+        dispatchId: sameContext ? invoice.dispatch_id : null,
+        dispatchLabel: sameContext ? `Pedido ${base.orderNumber ?? "sin número"} · DSP-${invoice.dispatch_id.slice(0, 8).toUpperCase()}` : null,
+        comparison: existing?.comparison,
+        reconciliationStatus: existing?.status,
       });
     }
   }
@@ -228,34 +261,78 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
   if (!base.orderNumber) {
     return result(file, { ...base, projectId: project.id, projectLabel, status: "DISPATCH_NOT_FOUND", message: "No se detectó un PCA con pedido válido." });
   }
-  const dispatchResult = await admin
+  const dispatchRows = await readInvoiceIdentityRows((from, to) => admin
     .from("dispatches")
     .select("id, programming_id, supplier_id, order_number, real_volume, real_unit_code, status, result")
     .eq("project_id", project.id)
     .eq("status", "COMPLETED")
-    .limit(2000);
-  if (dispatchResult.error) throw new Error("No fue posible consultar los despachos autorizados.");
-  const dispatchMatches = (dispatchResult.data ?? []).filter((dispatch) =>
+    .order("id").range(from, to));
+  const dispatchMatches = dispatchRows.filter((dispatch) =>
     normalizeOperationalOrder(dispatch.order_number) === base.orderNumber,
   );
+  const identities = await getDispatchInvoiceIdentities(admin, project.id, dispatchMatches);
+  // A bulk upload is not a sequence of manual steps. A Service can use the
+  // Product from the same upload before either invoice has been persisted.
+  // Never trust a dispatch/PCA/validation flag supplied by the browser: read
+  // and fully classify the actual Product PDF again on this server request.
+  const hasStoredPair = dispatchMatches.some((dispatch) => {
+    const identity = identities.get(dispatch.id);
+    return identity?.productInvoiceIdentityValid && sameFullPca(raw.pca_original, identity.productInvoicePca);
+  });
+  if (detectedType === "SERVICE" && productFile && !hasStoredPair) {
+    // Reuse authorization only inside this same server request. The companion
+    // still resolves and validates its own project and dispatch from its PDF.
+    const companion = await classifyInternal(productFile, { projectId: project.id, dispatchId: selection.dispatchId }, undefined, false, scopes);
+    if (companion.detectedType === "PRODUCT" && companion.payload
+      && COMMITTABLE_INVOICE_STATUSES.includes(companion.status)
+      && companion.projectId === project.id && companion.orderNumber === base.orderNumber
+      && companion.dispatchId && sameFullPca(raw.pca_original, companion.pcaOriginal)) {
+      const identity = identities.get(companion.dispatchId);
+      if (identity) identities.set(companion.dispatchId, {
+        ...identity, productInvoicePca: companion.pcaOriginal, productInvoiceIdentityValid: true,
+      });
+    }
+  }
+  const identityMatches = dispatchMatches.filter((dispatch) => {
+    const identity = identities.get(dispatch.id);
+    if (!identity) return false;
+    return detectedType === "PRODUCT"
+      ? matchInvoiceProducts(raw.lines, identity.expectedProducts) === "MATCH"
+      : identity.productInvoiceIdentityValid && sameFullPca(raw.pca_original, identity.productInvoicePca);
+  });
+  const dispatchLabel = (dispatch: (typeof dispatchRows)[number]) => {
+    const products = identities.get(dispatch.id)?.expectedProducts ?? [];
+    const references = [...new Set(products.map((item) => item.reference))].join(", ");
+    return `Pedido ${dispatch.order_number ?? base.orderNumber} · ${references || "Concreto sin verificar"} · DSP-${dispatch.id.slice(0, 8).toUpperCase()}`;
+  };
   const selectedDispatch = selection.dispatchId
-    ? dispatchMatches.find((dispatch) => dispatch.id === selection.dispatchId)
-    : dispatchMatches.length === 1 ? dispatchMatches[0] : null;
-  const dispatchCandidates = dispatchMatches.map((dispatch) => ({
+    ? identityMatches.find((dispatch) => dispatch.id === selection.dispatchId)
+    : identityMatches.length === 1 ? identityMatches[0] : null;
+  const dispatchCandidates = identityMatches.map((dispatch) => ({
     id: dispatch.id,
-    label: `Pedido ${dispatch.order_number ?? base.orderNumber} · ${dispatch.id.slice(0, 8)}`,
+    label: dispatchLabel(dispatch),
   }));
   if (!selectedDispatch) {
+    const hasProductIdentity = [...identities.values()].some((identity) => identity.expectedProducts.length > 0);
+    const hasValidatedProduct = [...identities.values()].some((identity) => identity.productInvoiceIdentityValid);
+    const status = !dispatchMatches.length ? "DISPATCH_NOT_FOUND"
+      : identityMatches.length > 1 ? "DISPATCH_AMBIGUOUS"
+      : detectedType === "PRODUCT" ? hasProductIdentity ? "PRODUCT_MISMATCH" : "DISPATCH_IDENTITY_UNVERIFIED"
+      : hasValidatedProduct ? "SERVICE_PCA_MISMATCH" : "REQUIRES_PRODUCT_VALIDATION";
+    const expected = [...new Set([...identities.values()].flatMap((identity) => identity.expectedProducts.map((item) => `${item.code} / ${item.reference}`)))].slice(0, 8).join(", ");
     return result(file, {
       ...base,
       projectId: project.id,
       projectLabel,
       candidateProjects: projectCandidates,
       candidateDispatches: dispatchCandidates,
-      status: dispatchMatches.length ? "DISPATCH_AMBIGUOUS" : "DISPATCH_NOT_FOUND",
-      message: dispatchMatches.length
-        ? "Más de un despacho coincide con el pedido. Selecciona uno."
-        : "No se encontró un despacho completado para el pedido detectado.",
+      status,
+      message: status === "DISPATCH_NOT_FOUND" ? "No se encontró un despacho completado para el pedido detectado."
+        : status === "DISPATCH_AMBIGUOUS" ? "Más de un despacho coincide con el pedido y su identidad de producto. Selecciona uno."
+        : status === "PRODUCT_MISMATCH" ? `El pedido se repite, pero el código o la referencia del concreto no corresponde al despacho. Productos esperados: ${expected}.`
+        : status === "DISPATCH_IDENTITY_UNVERIFIED" ? "No hay un código y referencia de concreto verificables en las guías o en el catálogo de la programación. Revisa el despacho; no se asignó automáticamente."
+        : status === "REQUIRES_PRODUCT_VALIDATION" ? "No se encontró un Producto válido del mismo pedido y PCA en esta carga ni en el despacho. Revisa que los PDFs correspondan a la misma operación."
+        : "El PCA completo del Servicio no coincide con el de la factura de Producto validada del despacho, o el despacho seleccionado no corresponde. No se asignó la factura.",
     });
   }
 
@@ -292,7 +369,7 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
       projectId: project.id,
       projectLabel,
       dispatchId: selectedDispatch.id,
-      dispatchLabel: `Pedido ${selectedDispatch.order_number}`,
+      dispatchLabel: dispatchLabel(selectedDispatch),
       status: openBatches.length ? "DISPATCH_AMBIGUOUS" : "NO_ACTIVE_BATCH",
       message: openBatches.length
         ? "El despacho tiene más de un lote abierto activo y requiere revisión."
@@ -302,7 +379,7 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
   const batch = openBatches[0];
   const reconciliation = await admin
     .from("dispatch_reconciliations")
-    .select("status, current_product_invoice_id, current_service_invoice_id")
+    .select("status, current_product_invoice_id, current_service_invoice_id, service_status")
     .eq("project_id", project.id)
     .eq("dispatch_id", selectedDispatch.id)
     .maybeSingle();
@@ -311,6 +388,7 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
   const invoiceSlot = resolveInvoiceUploadSlot({
     invoiceType: detectedType,
     reconciliationStatus: reconciliation.data?.status,
+    serviceReconciliationStatus: reconciliation.data?.service_status,
     currentProductInvoiceId: reconciliation.data?.current_product_invoice_id,
     currentServiceInvoiceId: reconciliation.data?.current_service_invoice_id,
   });
@@ -323,9 +401,9 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
       .select("invoice_number")
       .eq("id", currentInvoiceId)
       .eq("dispatch_id", selectedDispatch.id)
-      .eq("invoice_type", "PRODUCT")
+      .eq("invoice_type", detectedType)
       .maybeSingle();
-    if (!previousInvoice.data) throw new Error("No fue posible recuperar la Factura de Producto vigente.");
+    if (!previousInvoice.data) throw new Error(`No fue posible recuperar la Factura de ${detectedType === "SERVICE" ? "Servicio" : "Producto"} vigente.`);
     replacesInvoiceNumber = previousInvoice.data.invoice_number;
   }
 
@@ -335,7 +413,7 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
       projectId: project.id,
       projectLabel,
       dispatchId: selectedDispatch.id,
-      dispatchLabel: `Pedido ${selectedDispatch.order_number}`,
+      dispatchLabel: dispatchLabel(selectedDispatch),
       batchId: batch.id,
       batchLabel: batch.code,
       status: "ERROR",
@@ -357,6 +435,7 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
     programmedUnitCode: programmingResult.data.unit_code,
   });
   const processed = processExtractedInvoice(raw, {
+    ...identities.get(selectedDispatch.id)!,
     expectedType: detectedType,
     companyCode: project.companyCode,
     orderNumber: selectedDispatch.order_number ?? "",
@@ -365,7 +444,9 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
     billingLegalName: project.billingLegalName,
     billingTaxId: project.billingTaxId,
     projectAddress: project.address,
+    projectAdditionalAddresses: project.additionalAddresses,
     accountingPeriod: batch.accounting_period,
+    projectTimezone: project.timezone,
     expectedQuantity: quantityBasis.quantity,
     expectedUnitCode: quantityBasis.unitCode,
     expectedQuantitySource: quantityBasis.source,
@@ -377,29 +458,34 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
       projectId: project.id,
       projectLabel,
       dispatchId: selectedDispatch.id,
-      dispatchLabel: `Pedido ${selectedDispatch.order_number}`,
+      dispatchLabel: dispatchLabel(selectedDispatch),
       batchId: batch.id,
       batchLabel: batch.code,
       status: "ERROR",
       message: [processed.message, ...processed.details].join(" "),
     });
   }
+  const comparison = detectedType === "SERVICE"
+    ? await previewServiceInvoiceComparison(admin, project.id, selectedDispatch.id, processed.payload.total, processed.payload.currency)
+    : compareProductInvoice(processed.payload);
+  const hasDifferences = !comparison.matches || processed.payload.warnings.length > 0;
   return result(file, {
     ...base,
     projectId: project.id,
     projectLabel,
     dispatchId: selectedDispatch.id,
-    dispatchLabel: `Pedido ${selectedDispatch.order_number}`,
+    dispatchLabel: dispatchLabel(selectedDispatch),
     batchId: batch.id,
     batchLabel: batch.code,
     status: processed.payload.recipient_exception_required
       ? "REQUIRES_RECIPIENT_EXCEPTION"
-      : processed.payload.warnings.length ? "READY_WITH_DIFFERENCES" : "READY",
+      : hasDifferences ? "READY_WITH_DIFFERENCES" : "READY",
     message: processed.payload.recipient_exception_required
       ? "La factura puede guardarse, pero Compras debe decidir si acepta C14 o solicita refacturación."
       : isReinvoicing
-      ? "Lista para reemplazar la Factura de Producto anterior."
-      : processed.payload.warnings.length ? "Lista con observaciones." : "Lista para conciliar.",
+      ? `Lista para reemplazar la Factura de ${detectedType === "SERVICE" ? "Servicio" : "Producto"} anterior.`
+      : hasDifferences ? "Lista con observaciones; revisa las diferencias antes de conciliar." : "Lista para conciliar.",
+    comparison,
     warnings: processed.payload.warnings,
     operation: isReinvoicing ? "REINVOICE" : "NEW",
     replacesInvoiceId: invoiceSlot.replacesInvoiceId,
@@ -408,14 +494,18 @@ async function classifyInternal(file: File, selection: Selection = {}): Promise<
   });
 }
 
-export async function classifyUniversalInvoice(file: File, selection?: Selection) {
-  return publicResult(await classifyInternal(file, selection));
+export async function identifyUniversalInvoice(file: File, selection?: Selection) {
+  return publicResult(await classifyInternal(file, selection, undefined, true));
 }
 
-export async function commitUniversalInvoice(file: File, selection?: Selection): Promise<UniversalCommitResult> {
-  const classified = await classifyInternal(file, selection);
-  if (!classified.payload || !classified.projectId || !classified.dispatchId || !classified.batchId ||
-      !["READY", "READY_WITH_DIFFERENCES", "REQUIRES_RECIPIENT_EXCEPTION", "REQUIRES_REINVOICING"].includes(classified.status)) {
+export async function classifyUniversalInvoice(file: File, selection?: Selection, productFile?: File) {
+  return publicResult(await classifyInternal(file, selection, productFile));
+}
+
+export async function commitUniversalInvoice(file: File, selection?: Selection, productFile?: File): Promise<UniversalCommitResult> {
+  const classified = await classifyInternal(file, selection, productFile);
+  if (!classified.payload || !classified.projectId || !classified.dispatchId || !classified.batchId || classified.detectedType === "UNKNOWN" ||
+      !COMMITTABLE_INVOICE_STATUSES.includes(classified.status)) {
     return { ...publicResult(classified), saved: false };
   }
   const supabase = await createClient();
@@ -431,7 +521,8 @@ export async function commitUniversalInvoice(file: File, selection?: Selection):
   const row = prepared.data?.[0];
   if (prepared.error || !row) {
     const duplicate = prepared.error?.message.toUpperCase().includes("FISCAL_DOCUMENT_ALREADY_EXISTS");
-    return { ...publicResult(classified), status: duplicate ? "DUPLICATE" : "ERROR", message: duplicate ? "Esta factura fiscal ya fue procesada anteriormente." : "No fue posible preparar la factura.", saved: false };
+    const periodInvalid = prepared.error?.message.includes("INVOICE_ACCOUNTING_PERIOD");
+    return { ...publicResult(classified), status: duplicate ? "DUPLICATE" : "ERROR", message: duplicate ? "Esta factura fiscal ya fue procesada anteriormente." : periodInvalid ? "La factura está fuera del período permitido; la gracia del mes anterior es de cinco días hábiles." : "No fue posible preparar la factura.", saved: false };
   }
   const admin = createAdminClient();
   const upload = await admin.storage.from(row.storage_bucket).upload(row.storage_path, file, { contentType: "application/pdf", upsert: false });
@@ -456,27 +547,39 @@ export async function commitUniversalInvoice(file: File, selection?: Selection):
     return { ...publicResult(classified), status: "ERROR", message: "El PDF se guardó, pero no pudo procesarse.", saved: false };
   }
   let reconciliationStatus: string | undefined;
+  let comparison = classified.comparison;
   const warnings = [...classified.warnings];
-  if (classified.detectedType === "PRODUCT" && !classified.payload.recipient_exception_required) {
-    const reconciled = await supabase.rpc("reconcile_dispatch", { p_dispatch_id: classified.dispatchId });
+  if (!classified.payload.recipient_exception_required) {
+    const reconciled = await supabase.rpc(classified.detectedType === "SERVICE" ? "reconcile_dispatch_service" : "reconcile_dispatch", { p_dispatch_id: classified.dispatchId });
     if (reconciled.error) warnings.push("La factura se guardó, pero la conciliación debe reintentarse.");
-    else reconciliationStatus = String(reconciled.data);
+    else {
+      reconciliationStatus = String(reconciled.data);
+      try {
+        const stored = await storedInvoiceReconciliation(admin, classified.projectId, classified.dispatchId, String(row.invoice_id), classified.detectedType);
+        if (stored?.comparison) comparison = stored.comparison;
+      } catch {
+        warnings.push("La factura se guardó; actualiza la conciliación para consultar su detalle más reciente.");
+      }
+    }
   }
   return {
     ...publicResult(classified),
     message: classified.payload.recipient_exception_required
       ? "Factura guardada. Compras debe aceptar la excepción C14 o solicitar refacturación."
+      : !reconciliationStatus
+      ? "La factura se guardó, pero la conciliación debe reintentarse."
       : classified.detectedType === "PRODUCT"
       ? reconciliationStatus === "WITH_DIFFERENCES"
         ? "Factura guardada; la conciliación detectó diferencias."
         : classified.operation === "REINVOICE"
           ? "Factura refacturada guardada y conciliación ejecutada."
           : "Factura guardada y conciliación ejecutada."
-      : "Factura de Servicio guardada.",
+      : reconciliationStatus === "WITH_DIFFERENCES" ? "Factura de Servicio guardada; el total no coincide con el estimado de servicios." : "Factura de Servicio guardada y conciliación ejecutada.",
     warnings,
     saved: true,
     invoiceId: String(row.invoice_id),
     reconciliationStatus,
+    comparison,
     recipientExceptionStatus: classified.payload.recipient_exception_required ? "PENDING" : null,
   };
 }

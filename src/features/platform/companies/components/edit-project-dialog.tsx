@@ -9,7 +9,8 @@ import { Dialog, DialogFooter } from "@/components/ui/dialog";
 import { notifications } from "@/lib/notification-messages";
 
 import { updateCompanyProject } from "../actions";
-import type { CompanyProject, ProjectActionState } from "../types";
+import type { CompanyProject, CompanyStatus, ProjectActionState } from "../types";
+import { ProjectAddressFields } from "./project-address-fields";
 
 const INITIAL_STATE: ProjectActionState = { status: "idle" };
 
@@ -28,10 +29,12 @@ const TIMEZONES = [
 
 function EditProjectForm({
   companyId,
+  companyStatus,
   project,
   onClose,
 }: {
   companyId: string;
+  companyStatus: CompanyStatus;
   project: CompanyProject;
   onClose: () => void;
 }) {
@@ -84,21 +87,11 @@ function EditProjectForm({
                 className="form-input font-mono uppercase"
               />
             </div>
-            <div className="sm:col-span-2">
-              <label className="form-label" htmlFor={`edit-project-address-${project.id}`}>
-                Dirección exacta de Obra *
-              </label>
-              <input
-                id={`edit-project-address-${project.id}`}
-                name="address"
-                required
-                minLength={5}
-                maxLength={300}
-                defaultValue={values?.address ?? project.address ?? ""}
-                className="form-input"
-                placeholder="Dirección que aparece como Dirección de Envío"
-              />
-            </div>
+            <ProjectAddressFields
+              address={values?.address ?? project.address}
+              additionalAddresses={values?.additionalAddresses ?? project.additionalAddresses}
+              pending={pending}
+            />
             <div>
               <label className="form-label" htmlFor={`edit-project-billing-name-${project.id}`}>Razón social de facturación *</label>
               <input id={`edit-project-billing-name-${project.id}`} name="billingLegalName" required minLength={2} maxLength={200} defaultValue={values?.billingLegalName ?? project.billingLegalName ?? ""} className="form-input" placeholder="Receptor de la factura" />
@@ -136,10 +129,15 @@ function EditProjectForm({
                 defaultValue={values?.status ?? project.status}
                 className="form-input"
               >
-                <option value="ACTIVE">Activo</option>
+                <option value="ACTIVE" disabled={companyStatus !== "ACTIVE"}>Activo</option>
                 <option value="INACTIVE">Inactivo</option>
                 <option value="CLOSED">Cerrado</option>
               </select>
+              {companyStatus !== "ACTIVE" && (
+                <p className="mt-1 text-xs text-foreground-muted">
+                  Reactiva la empresa antes de activar este proyecto.
+                </p>
+              )}
             </div>
             <div>
               <label className="form-label" htmlFor={`edit-project-start-${project.id}`}>
@@ -199,9 +197,11 @@ function EditProjectForm({
 
 export function EditProjectDialog({
   companyId,
+  companyStatus,
   project,
 }: {
   companyId: string;
+  companyStatus: CompanyStatus;
   project: CompanyProject;
 }) {
   const [open, setOpen] = useState(false);
@@ -218,8 +218,9 @@ export function EditProjectDialog({
       </button>
       {open && (
         <EditProjectForm
-          key={`${project.id}-${project.name}-${project.code}-${project.status}`}
+          key={`${project.id}-${project.name}-${project.code}-${project.status}-${companyStatus}`}
           companyId={companyId}
+          companyStatus={companyStatus}
           project={project}
           onClose={() => setOpen(false)}
         />

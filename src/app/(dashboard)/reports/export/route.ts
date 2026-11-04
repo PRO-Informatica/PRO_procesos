@@ -1,10 +1,12 @@
 import { Workbook, type Worksheet } from "exceljs";
-import JSZip from "jszip";
 import type { NextRequest } from "next/server";
 
 import { requireActiveProfile } from "@/features/auth/queries";
 import { getProjectContext } from "@/features/projects/queries";
-import { reportArchiveItems, reportArchivePath, sanitizeArchiveSegment } from "@/features/reports/export-utils";
+import { reportArchiveItems, sanitizeArchiveSegment } from "@/features/reports/export-utils";
+import { archiveIdChunks, getReportEvidence, readArchiveRows } from "@/features/reports/archive-queries";
+import { createReportZip, ReportArchiveTooLargeError } from "@/features/reports/zip-archive";
+import { reportZipResponse } from "@/features/reports/zip-response";
 import { parseGuideReportFilters } from "@/features/reports/filters";
 import { getGuideReport, getUniversalReportScopes } from "@/features/reports/queries";
 import type { GuideReportData, ProgrammingReportItem, ReportInvoice } from "@/features/reports/types";
@@ -15,10 +17,11 @@ import {
 } from "@/features/reports/workbook-header";
 import { formatStatusLabel } from "@/lib/status-labels";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-const COLORS = { ink: "FF17191F", muted: "FF667085", border: "FFE4E7EC", white: "FFFFFFFF", surface: "FFF7F8FA", red: "FFED1B2F" } as const;
+const COLORS = { ink: "FF17191F", muted: "FF667085", border: "FFE4E7EC", white: "FFFFFFFF", surface: "FFF7F8FA", red: "FFED1B2F", green: "FF15803D", greenSoft: "FFDCFCE7" } as const;
 
 type Column = { header: string; key: string; width: number; kind?: "date" | "datetime" | "quantity" | "money" | "integer" };
 
@@ -46,6 +49,7 @@ const REPORT_COLUMNS: Column[] = [
   { header: "Documentos operativos", key: "documentCount", width: 20, kind: "integer" },
   { header: "Despacho registrado por", key: "dispatchCreatedBy", width: 25 },
   { header: "Fecha registro despacho", key: "dispatchCreatedAt", width: 21, kind: "datetime" },
+  { header: "Validado por", key: "dispatchValidatedBy", width: 27 },
   { header: "Estado conciliación", key: "reconciliationStatus", width: 23 },
   { header: "Diferencia", key: "difference", width: 15, kind: "quantity" },
   { header: "Facturas vigentes", key: "invoiceCount", width: 16, kind: "integer" },
@@ -112,6 +116,7 @@ function addStyledRow(sheet: Worksheet, values: Record<string, unknown>) {
   row.alignment = { vertical: "middle", wrapText: true };
   if ((row.number - REPORT_TABLE_HEADER_ROW) % 2 === 0) row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.surface } };
   row.eachCell((cell) => { cell.border = { bottom: { style: "thin", color: { argb: COLORS.border } } }; });
+  return row;
 }
 
 function invoiceRow(programming: ProgrammingReportItem, dispatch: ProgrammingReportItem["dispatches"][number], invoice: ReportInvoice) {
@@ -160,6 +165,9 @@ async function buildWorkbook(
   setupReportSheet(reportSheet, REPORT_COLUMNS, header);
   setupReportSheet(productSheet, INVOICE_COLUMNS, header);
   setupReportSheet(serviceSheet, INVOICE_COLUMNS, header);
+  reportSheet.getRow(REPORT_TABLE_HEADER_ROW).getCell("dispatchValidatedBy").fill = {
+    type: "pattern", pattern: "solid", fgColor: { argb: COLORS.green },
+  };
   applyColumnFormats(reportSheet, REPORT_COLUMNS);
   applyColumnFormats(productSheet, INVOICE_COLUMNS);
   applyColumnFormats(serviceSheet, INVOICE_COLUMNS);
@@ -167,7 +175,7 @@ async function buildWorkbook(
   for (const programming of report.programming) {
     const dispatches = programming.dispatches.length ? programming.dispatches : [null];
     for (const dispatch of dispatches) {
-      addStyledRow(reportSheet, {
+      const reportRow = addStyledRow(reportSheet, {
         companyName: programming.companyName,
         projectBillingLegalName: programming.projectBillingLegalName ?? "No configurada",
         projectName: programming.projectName,
@@ -191,6 +199,7 @@ async function buildWorkbook(
         documentCount: dispatch?.documentCount ?? 0,
         dispatchCreatedBy: dispatch?.registeredByName ?? "",
         dispatchCreatedAt: excelDate(dispatch?.createdAt),
+        dispatchValidatedBy: dispatch?.completedByName ?? "",
         reconciliationStatus: dispatch ? formatStatusLabel(dispatch.reconciliationStatus) : "Pendiente de despacho",
         difference: dispatch?.difference ?? null,
         invoiceCount: dispatch?.invoiceCount ?? 0,
@@ -203,6 +212,9 @@ async function buildWorkbook(
         serviceInvoiceDate: excelDate(dispatch?.serviceInvoice?.date),
         serviceTotal: dispatch?.serviceInvoice?.total ?? null,
       });
+      reportRow.getCell("dispatchValidatedBy").fill = {
+        type: "pattern", pattern: "solid", fgColor: { argb: COLORS.greenSoft },
+      };
       if (dispatch?.productInvoice) addStyledRow(productSheet, invoiceRow(programming, dispatch, dispatch.productInvoice));
       if (dispatch?.serviceInvoice) addStyledRow(serviceSheet, invoiceRow(programming, dispatch, dispatch.serviceInvoice));
     }
@@ -211,26 +223,26 @@ async function buildWorkbook(
 }
 
 async function buildZip(report: GuideReportData, includeProjectFolders: boolean) {
+  const client = await createClient();
   const admin = createAdminClient();
-  const items = reportArchiveItems(report);
-  const documentIds = [...new Set(items.map((item) => item.invoice.documentId).filter((id): id is string => Boolean(id)))];
-  if (!documentIds.length) return { zip: new JSZip(), fileCount: 0 };
-  const versions = await admin.from("document_versions").select("document_id, storage_bucket, storage_path").in("document_id", documentIds).eq("upload_status", "UPLOADED").eq("is_current", true);
-  if (versions.error) throw new Error("No fue posible preparar los documentos del reporte.");
-  const versionByDocument = new Map((versions.data ?? []).map((version) => [version.document_id, version]));
-  const zip = new JSZip();
-  const usedPaths = new Set<string>();
-  let fileCount = 0;
-  for (const item of items) {
-    const documentId = item.invoice.documentId;
-    const version = documentId ? versionByDocument.get(documentId) : null;
-    if (!version) continue;
-    const downloaded = await admin.storage.from(version.storage_bucket).download(version.storage_path);
-    if (downloaded.error || !downloaded.data) throw new Error("No fue posible descargar uno de los PDF del reporte.");
-    zip.file(reportArchivePath(item, usedPaths, { includeProject: includeProjectFolders }), await downloaded.data.arrayBuffer());
-    fileCount += 1;
+  const evidence = await getReportEvidence(client, report.rows);
+  const items = reportArchiveItems(report, evidence);
+  const documentIds = [...new Set(items.map((item) => item.documentId))];
+  const versions = [];
+  for (const ids of archiveIdChunks(documentIds)) {
+    versions.push(...await readArchiveRows((from, to) => client.from("document_versions")
+      .select("document_id, file_name, mime_type, file_size, storage_bucket, storage_path")
+      .in("document_id", ids).eq("upload_status", "UPLOADED").eq("is_current", true)
+      .order("document_id").range(from, to)));
   }
-  return { zip, fileCount };
+  return createReportZip(items, versions, {
+    includeProjectFolders,
+    download: async (version) => {
+      const downloaded = await admin.storage.from(version.storage_bucket).download(version.storage_path);
+      if (downloaded.error || !downloaded.data) throw new Error("No fue posible descargar uno de los adjuntos del reporte.");
+      return downloaded.data.arrayBuffer();
+    },
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -260,9 +272,8 @@ export async function GET(request: NextRequest) {
 
     if (format === "zip") {
       const { zip, fileCount } = await buildZip(report, universal || projects.length > 1);
-      if (!fileCount) return Response.json({ message: "El resultado filtrado no contiene facturas con PDF disponible." }, { status: 404 });
-      const buffer = await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE", compressionOptions: { level: 6 } });
-      return new Response(buffer, { headers: { "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="Reporte_${safeProject}_${filters.dateFrom}_${filters.dateTo}.zip"`, "Cache-Control": "private, no-store" } });
+      if (!fileCount) return Response.json({ message: "El resultado filtrado no contiene facturas ni evidencias con archivos disponibles." }, { status: 404 });
+      return reportZipResponse(zip, `Reporte_${safeProject}_${filters.dateFrom}_${filters.dateTo}.zip`);
     }
 
     const companyNames = [...new Set(projects.map((project) => project.companyName))];
@@ -288,6 +299,7 @@ export async function GET(request: NextRequest) {
     const buffer = await workbook.xlsx.writeBuffer();
     return new Response(new Uint8Array(buffer), { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="Reporte_${safeProject}_${filters.dateFrom}_${filters.dateTo}.xlsx"`, "Cache-Control": "private, no-store" } });
   } catch (error) {
+    if (error instanceof ReportArchiveTooLargeError) return Response.json({ message: error.message }, { status: 413 });
     console.error("Report export failed", error);
     return Response.json({ message: "No fue posible generar la exportación." }, { status: 500 });
   }

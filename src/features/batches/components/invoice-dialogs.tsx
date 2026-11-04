@@ -11,6 +11,7 @@ import {
   saveDispatchInvoice,
 } from "../actions";
 import { formatBatchQuantity } from "../formatters";
+import { batchInvoiceSaveOrder, inspectBatchInvoiceUploads } from "../invoice-upload-pairing";
 import type {
   BatchDispatchRelation,
   InvoiceInspection,
@@ -65,7 +66,7 @@ function InspectionSummary({ inspection }: { inspection: InvoiceInspection }) {
       )}
       {inspection.operation === "REINVOICE" && (
         <p className="mt-3 text-xs font-semibold">
-          Nueva Factura de Producto · reemplaza la factura {inspection.replacesInvoiceNumber ?? "vigente"}.
+          Nueva Factura de {inspection.requestedType === "SERVICE" ? "Servicio" : "Producto"} · reemplaza la factura {inspection.replacesInvoiceNumber ?? "vigente"}.
         </p>
       )}
     </div>
@@ -113,7 +114,7 @@ export function DispatchInvoiceDialog({
     startTransition(async () => {
       const data = new FormData();
       data.set("file", file);
-      const replaces = replacement ? relation.productInvoice?.id ?? null : inspection.replacesInvoiceId ?? null;
+      const replaces = replacement ? (type === "SERVICE" ? relation.serviceInvoice?.id : relation.productInvoice?.id) ?? null : inspection.replacesInvoiceId ?? null;
       const result = await saveDispatchInvoice(
         projectId,
         batchId,
@@ -124,7 +125,7 @@ export function DispatchInvoiceDialog({
       );
       setMessage(result.message);
       if (result.status === "success") {
-        if (inspection.status === "WITH_DIFFERENCES" || inspection.status === "REQUIRES_REINVOICING") {
+        if (result.reconciliationStatus === "WITH_DIFFERENCES" || inspection.status === "WITH_DIFFERENCES" || inspection.status === "REQUIRES_REINVOICING") {
           notify.warning("Factura cargada con diferencias", "Revisa la conciliación y el estado de refacturación del despacho.");
         } else if (inspection.status === "REQUIRES_RECIPIENT_EXCEPTION") {
           notify.warning("Factura pendiente de decisión", "Compras debe aceptar la excepción C14 o solicitar refacturación.");
@@ -149,7 +150,7 @@ export function DispatchInvoiceDialog({
 
   return (
     <Modal
-      title={replacement ? "Cargar factura refacturada de Producto" : `Cargar factura de ${type === "PRODUCT" ? "producto" : "servicio"}`}
+      title={replacement ? `Cargar factura refacturada de ${type === "SERVICE" ? "Servicio" : "Producto"}` : `Cargar factura de ${type === "PRODUCT" ? "producto" : "servicio"}`}
       description={`${relation.programmingCode} · Pedido ${relation.orderNumber ?? "pendiente"}. Un PDF digital corresponde a una factura.`}
       icon={FileText}
       onClose={onClose}
@@ -167,9 +168,9 @@ export function DispatchInvoiceDialog({
           }}
         />
         <p className="text-xs text-foreground-muted">Solo PDF digital, máximo 10 MiB. No se utiliza OCR.</p>
-        {replacement && relation.productInvoice && (
+        {replacement && (type === "SERVICE" ? relation.serviceInvoice : relation.productInvoice) && (
           <div className="rounded-xl border border-warning/25 bg-warning-soft p-3 text-sm text-warning">
-            <p className="font-semibold">Factura de Producto anterior: {relation.productInvoice.number}</p>
+            <p className="font-semibold">Factura de {type === "SERVICE" ? "Servicio" : "Producto"} anterior: {(type === "SERVICE" ? relation.serviceInvoice : relation.productInvoice)?.number}</p>
             <p className="mt-1 text-xs">La nueva factura debe tener una identidad fiscal distinta. La anterior permanecerá en el historial.</p>
           </div>
         )}
@@ -345,17 +346,14 @@ export function BulkInvoiceDialog({
   function inspectAll() {
     setOperation("inspect");
     startTransition(async () => {
-      const next: BulkRow[] = [];
-      for (const row of rows) {
+      const next = await inspectBatchInvoiceUploads(rows, async (row, { identifyOnly, product }) => {
         const data = new FormData();
         data.set("file", row.file);
-        if (row.saved) {
-          next.push(row);
-          continue;
-        }
-        next.push({ ...row, inspection: await inspectBatchInvoicePdf(projectId, batchId, data), saveError: null });
-      }
-      setRows(next);
+        if (identifyOnly) data.set("identifyOnly", "true");
+        if (product) data.set("productFile", product.file);
+        return inspectBatchInvoicePdf(projectId, batchId, data);
+      });
+      setRows(next.map((row) => row.saved ? row : { ...row, saveError: null }));
       setMessage(null);
       setOperation(null);
     });
@@ -367,12 +365,17 @@ export function BulkInvoiceDialog({
       let saved = 0;
       let reconciled = 0;
       const productDispatches = new Set<string>();
+      const failedProductDispatches = new Set<string>();
       const next = [...rows];
-      for (let index = 0; index < next.length; index += 1) {
+      for (const index of batchInvoiceSaveOrder(next)) {
         const row = next[index];
         const result = row.inspection;
         const duplicateKey = result?.dispatchId && result.requestedType ? `${result.dispatchId}:${result.requestedType}` : "";
         if (row.saved || !result?.payload || !result.dispatchId || !result.requestedType || result.duplicate || duplicateKeys.has(duplicateKey) || !["READY", "WITH_DIFFERENCES", "REQUIRES_RECIPIENT_EXCEPTION", "REQUIRES_REINVOICING"].includes(result.status)) continue;
+        if (result.requestedType === "SERVICE" && failedProductDispatches.has(result.dispatchId)) {
+          next[index] = { ...row, saveError: "No se guardó el Producto de este despacho. Corrige ese error antes de guardar su Servicio." };
+          continue;
+        }
         const data = new FormData();
         data.set("file", row.file);
         const response = await saveDispatchInvoice(projectId, batchId, result.dispatchId, result.requestedType, result.replacesInvoiceId ?? null, data);
@@ -381,6 +384,7 @@ export function BulkInvoiceDialog({
           saved += 1;
           if (result.requestedType === "PRODUCT" && result.operation !== "REINVOICE" && !result.payload.recipient_exception_required) productDispatches.add(result.dispatchId);
         } else {
+          if (result.requestedType === "PRODUCT") failedProductDispatches.add(result.dispatchId);
           next[index] = { ...row, saveError: response.message };
         }
       }

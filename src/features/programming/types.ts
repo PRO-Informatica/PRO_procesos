@@ -1,3 +1,5 @@
+import type { DeliveryMode } from "./invoice-policy";
+
 export const PROGRAMMING_STATUSES = [
   "DRAFT",
   "PENDING_CONFIRMATION",
@@ -50,6 +52,7 @@ export type ProgrammingItem = {
   unitCode: string;
   placementGroup: string | null;
   requiresPumping: boolean;
+  deliveryModes: DeliveryMode[];
   estimatedWorkItemId: string | null;
   estimatedWorkItemLabel: string | null;
   status: ProgrammingStatus;
@@ -70,6 +73,7 @@ export type ProgrammingRevision = {
   status: ProgrammingStatus;
   supplierName: string;
   orderNumber: string | null;
+  deliveryModes: DeliveryMode[];
   scheduledAt: string;
   requestedQuantity: number;
   confirmedQuantity: number | null;
@@ -148,6 +152,7 @@ export type CreateProgrammingState = {
     orderNumber?: string;
     lines?: Array<{ quantity: string; unitCode: string; concreteType: string }>;
     notes?: string;
+    deliveryModes?: DeliveryMode[];
   };
 };
 
@@ -156,6 +161,7 @@ export type BulkProgrammingPreviewRow = {
   scheduledAt: string;
   orderNumber: string;
   concreteType: string;
+  deliveryModes: DeliveryMode[];
   quantity: string;
   unitCode: string;
   placementElement: string;
