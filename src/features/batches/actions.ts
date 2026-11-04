@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { classifyInvoiceLines } from "@/features/invoices/invoice-classification";
 import { getDispatchInvoiceIdentities } from "@/features/invoices/dispatch-invoice-identity-queries";
-import { normalizeOperationalOrder, processInvoicePdf, type InvoiceProcessingContext } from "@/features/invoices/invoice-processing";
+import { normalizeOperationalOrder, processExtractedInvoice, processInvoicePdf, type InvoiceProcessingContext } from "@/features/invoices/invoice-processing";
+import { sameFullPca } from "@/features/invoices/dispatch-invoice-identity";
 import { resolveReconciliationQuantityBasis, selectValidProgrammedQuantity } from "@/features/invoices/reconciliation-quantity";
 import { resolveInvoiceUploadSlot } from "@/features/invoices/reinvoicing";
 import { decideInvoiceRecipientException, type RecipientExceptionDecision } from "@/features/invoices/recipient-exception-service";
@@ -17,6 +18,7 @@ import { createClient } from "@/lib/supabase/server";
 import { extractMixtoListoInvoicePdf } from "./mixto-listo-extractor";
 import { weeklyBatchPeriods } from "./period-policy";
 import { orderNumberFromMixtoListoPca } from "./mixto-listo-parser";
+import { batchInvoiceCanBeSaved } from "./invoice-upload-pairing";
 import type { BatchMutationState, InvoiceInspection, InvoiceType } from "./types";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -203,9 +205,32 @@ export async function inspectDispatchInvoicePdf(projectId: string, batchId: stri
   if (!(await authorize(projectId, "invoice.create"))) return { fileName: file.name, dispatchId, requestedType, status: "ERROR", message: "No tienes permiso para registrar facturas.", payload: null, duplicate: false };
   const context = await invoiceContext(projectId, batchId, dispatchId);
   if (!context) return { fileName: file.name, dispatchId, requestedType, status: "DISPATCH_NOT_FOUND", message: "No se encontró el despacho dentro de este lote.", payload: null, duplicate: false };
+  return inspectInvoiceForContext(file, context, requestedType);
+}
+
+async function inspectInvoiceForContext(
+  file: File,
+  context: DispatchInvoiceContext,
+  requestedType: InvoiceType,
+  raw?: Awaited<ReturnType<typeof extractMixtoListoInvoicePdf>>,
+  productFile?: File,
+): Promise<InvoiceInspection> {
+  const { dispatchId } = context;
   if (context.operationalStatus !== "COMPLETED") return { fileName: file.name, dispatchId, requestedType, status: "IN_EXECUTION", message: "El despacho continúa en ejecución y todavía no puede recibir facturas.", payload: null, duplicate: false };
   try {
-    const processed = await processInvoicePdf(await file.arrayBuffer(), { ...context, expectedType: requestedType });
+    const extracted = raw ?? await extractMixtoListoInvoicePdf(await file.arrayBuffer());
+    let processingContext = context;
+    if (requestedType === "SERVICE" && productFile
+      && !(context.productInvoiceIdentityValid && sameFullPca(extracted.pca_original, context.productInvoicePca))) {
+      // Never trust a browser-supplied validation or PCA. Validate the companion
+      // PDF against this same authorized project, batch, dispatch and concrete.
+      const companion = await inspectInvoiceForContext(productFile, context, "PRODUCT");
+      if (batchInvoiceCanBeSaved(companion)
+        && sameFullPca(extracted.pca_original, companion.payload.pca_original)) {
+        processingContext = { ...context, productInvoicePca: companion.payload.pca_original, productInvoiceIdentityValid: true };
+      }
+    }
+    const processed = processExtractedInvoice(extracted, { ...processingContext, expectedType: requestedType });
     if (processed.status === "error") return { fileName: file.name, dispatchId, requestedType, status: "ERROR", message: [processed.message, ...processed.details].join(" "), payload: null, duplicate: false };
     const invoiceSlot = resolveInvoiceUploadSlot({
       invoiceType: requestedType,
@@ -243,6 +268,7 @@ export async function inspectDispatchInvoicePdf(projectId: string, batchId: stri
         ? `Ya existe una factura de ${requestedType === "PRODUCT" ? "producto" : "servicio"} cargada para este despacho.`
         : processed.payload.warnings.join(" ") || "Factura lista para guardar.",
       payload: processed.payload,
+      pcaOriginal: processed.payload.pca_original,
       duplicate,
       operation: reinvoicing ? "REINVOICE" : "NEW",
       replacesInvoiceId: invoiceSlot.replacesInvoiceId,
@@ -274,8 +300,17 @@ export async function inspectBatchInvoicePdf(projectId: string, batchId: string,
     const dispatchId = matches[0].id;
     const candidateType = classifyInvoiceLines(raw.lines);
     if (candidateType === "UNKNOWN") return { fileName: file.name, dispatchId, requestedType: null, status: "REQUIRES_REVIEW", message: "No fue posible clasificar la factura como Producto o Servicio.", payload: null, duplicate: false };
-    const next = new FormData(); next.set("file", file);
-    return inspectDispatchInvoicePdf(projectId, batchId, dispatchId, candidateType, next);
+    if (value(formData, "identifyOnly") === "true") {
+      return { fileName: file.name, dispatchId, requestedType: candidateType, status: "IDENTIFIED", message: "Factura identificada; pendiente de validación.", payload: null, pcaOriginal: raw.pca_original, duplicate: false };
+    }
+    const productFile = formData.get("productFile");
+    if (productFile !== null && !validPdf(productFile)) {
+      return { fileName: file.name, dispatchId, requestedType: candidateType, status: "ERROR", message: "El PDF de Producto adjunto no es válido.", payload: null, duplicate: false };
+    }
+    const context = await invoiceContext(projectId, batchId, dispatchId);
+    if (!context) return { fileName: file.name, dispatchId, requestedType: candidateType, status: "DISPATCH_NOT_FOUND", message: "No se encontró el despacho dentro de este lote.", payload: null, duplicate: false };
+    const inspection = await inspectInvoiceForContext(file, context, candidateType, raw, productFile ?? undefined);
+    return { ...inspection, pcaOriginal: raw.pca_original };
   } catch {
     return { fileName: file.name, dispatchId: null, requestedType: null, status: "ERROR", message: "Formato no reconocido o PDF sin texto embebido.", payload: null, duplicate: false };
   }

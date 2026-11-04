@@ -24,7 +24,7 @@ function fixture({ rows = [], permitted = true, error = null } = {}) {
     "@/features/projects/queries": { getOperationalProjectAccessForProject: async () => ({ permissions: permitted ? ["batch.modify"] : [] }) },
     "@/lib/supabase/server": { createClient: async () => client },
   };
-  for (const name of ["@/features/invoices/invoice-classification", "@/features/invoices/dispatch-invoice-identity-queries", "@/features/invoices/invoice-processing", "@/features/invoices/reconciliation-quantity", "@/features/invoices/reinvoicing", "@/features/invoices/recipient-exception-service", "@/lib/address-identity", "@/lib/supabase/admin", "./mixto-listo-extractor", "./period-policy", "./mixto-listo-parser"]) imports[name] = {};
+  for (const name of ["@/features/invoices/dispatch-invoice-identity", "./invoice-upload-pairing", "@/features/invoices/invoice-classification", "@/features/invoices/dispatch-invoice-identity-queries", "@/features/invoices/invoice-processing", "@/features/invoices/reconciliation-quantity", "@/features/invoices/reinvoicing", "@/features/invoices/recipient-exception-service", "@/lib/address-identity", "@/lib/supabase/admin", "./mixto-listo-extractor", "./period-policy", "./mixto-listo-parser"]) imports[name] = {};
   runInNewContext(code, { exports, require(name) { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; } });
   return { action: exports.addDispatchToBatchAction, calls, reads };
 }
