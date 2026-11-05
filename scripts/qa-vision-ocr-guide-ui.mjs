@@ -14,8 +14,8 @@ const service={...product,id:'00000000-0000-4000-8000-000000000002',type:'SERVIC
 const variant={...service,id:'00000000-0000-4000-8000-000000000003',observations:'Variante para volumen mayor a 6',price:200};
 const details={customerName:'Cliente QA',projectName:'Proyecto QA',workAddress:'1 calle 3-45 zona 1 Guatemala',guideDate:'2026-10-29',orderNumber:'999',plant:'QU',truck:'0186',loadingTime:'18:00',pilot:'Piloto QA',operator:'0079',observations:'Observación manuscrita'};
 const line={quantity:'1',unit:'UN',productCode:'SERV1',description:'Bomba',type:'SERVICE',catalogItemId:'',candidates:[service,variant],warning:'Selecciona la variante'};
-const draft={guideNumber:'7145427',arrivalTime:'23:22',departureTime:'03:20',details,rawTimes:{loading:'6 pm',arrival:'23:22',departure:'03:20'},confidence:{projectName:.7},warnings:['Revisa el proyecto'],lines:[{...line,quantity:'7',unit:'M3',productCode:product.code,description:product.reference,type:'PRODUCT',catalogItemId:product.id,candidates:[product],warning:null},{...line,productCode:'UNKNOWN',description:'Servicio no catalogado',candidates:[],warning:'Precio pendiente'},line]};
-const result={captureId:'00000000-0000-4000-8000-000000000010',draft,rawText:'Texto OCR de prueba',project:{name:'Proyecto QA',code:'QA',address:details.workAddress,additionalAddresses:[]}};
+const draft={guideNumber:'7145427',arrivalTime:'23:22',departureTime:'03:20',details,rawTimes:{loading:'6 pm',arrival:'23:22',departure:'03:20'},confidence:{projectName:.7},warnings:['Revisa el proyecto','Línea 1: confirma la UM «ma».'],lines:[{...line,quantity:'7',unit:'',productCode:product.code,description:product.reference,type:'PRODUCT',catalogItemId:product.id,candidates:[product],warning:null},{...line,productCode:'UNKNOWN',description:'Servicio no catalogado',candidates:[],warning:'Precio pendiente'},line,{...line,unit:'',catalogItemId:service.id,candidates:[service],warning:null},{...line,unit:'',catalogItemId:service.id,candidates:[service],warning:null}]};
+const result={imageRotation:3,captureId:'00000000-0000-4000-8000-000000000010',draft,rawText:'Texto OCR de prueba',project:{name:'Proyecto QA',code:'QA',address:details.workAddress,additionalAddresses:[]}};
 await writeFile(path.join(harness,'env.js'),`export const getPublicEnvironment=()=>({appEnvironment:'DEV'});`);
 await writeFile(path.join(harness,'client.js'),`export const createClient=()=>({storage:{from:()=>({uploadToSignedUrl:async()=>{window.uploads=(window.uploads||0)+1;return{data:{},error:null};}})}});`);
 await writeFile(path.join(harness,'actions.js'),`export async function searchDispatchCatalogAction(){return{status:'success',items:${JSON.stringify([product,service,variant])}}};export async function saveDispatchGuideAction(){throw Error('OCR must use its guarded endpoint')}`);
@@ -23,9 +23,10 @@ await writeFile(path.join(harness,'navigation.js'),`export const useRouter=()=>(
 await writeFile(path.join(harness,'notification.js'),`export function useActionNotification(){}`);
 await writeFile(path.join(harness,'loader.cjs'),`const ts=require(${JSON.stringify(require.resolve('typescript'))});module.exports=function(source){return ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText}`);
 await writeFile(path.join(harness,'entry.tsx'),`
+import {validateOcrReview} from'${root}/src/features/vision-ocr/guide-draft';
 import React from'react';import{createRoot}from'react-dom/client';import{DispatchGuideDialog}from'${root}/src/features/dispatches/components/dispatch-guide-dialog';
 const realFetch=window.fetch;window.fetch=async(url,options)=>{if(!String(url).startsWith('/api/vision-ocr/guides'))return realFetch(url,options);
- if(options?.method==='PATCH'){window.saves=(window.saves||[]).concat([JSON.parse(options.body)]);if(window.saves.length===1)return Response.json({error:'Foto pendiente. Reintenta.',guideId:'saved-guide'},{status:503});return Response.json({guideId:'saved-guide',newVersion:2});}
+ if(options?.method==='PATCH'){const validation=validateOcrReview(JSON.parse(options.body).draft);if(validation)return Response.json({error:validation},{status:400});window.saves=(window.saves||[]).concat([JSON.parse(options.body)]);if(window.saves.length===1)return Response.json({error:'Foto pendiente. Reintenta.',guideId:'saved-guide'},{status:503});return Response.json({guideId:'saved-guide',newVersion:2});}
  if(String(url).includes('action=prepare'))return Response.json({captureId:'00000000-0000-4000-8000-000000000010',bucket:'fake',path:'fake',token:'fake'});
  if(options?.method==='DELETE')return Response.json({discarded:true});window.extracts=(window.extracts||0)+1;return Response.json(${JSON.stringify(result)});};
 createRoot(document.getElementById('app')).render(<DispatchGuideDialog projectId="00000000-0000-4000-8000-000000000020" dispatchId="00000000-0000-4000-8000-000000000030" programmingId="program" expectedVersion={1} programmedUnitCode="M3" operationDate="2026-10-29" defaultCatalogProduct={${JSON.stringify(product)}} units={[{code:'M3',name:'Metro cúbico'}]} onClose={()=>{window.closedGuide=true}}/>);`);
@@ -45,20 +46,41 @@ const check=String.raw`(async()=>{
  await wait(()=>document.getElementById('guide-number'));await document.fonts.ready;
  // A legible synthetic guide image exercises the real canvas/crop pipeline.
  const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=1600;const ctx=canvas.getContext('2d');ctx.fillStyle='#eee5df';ctx.fillRect(0,0,1200,1600);ctx.fillStyle='#111';ctx.font='28px Arial';for(let y=80;y<1500;y+=60)ctx.fillText('GUIA DE DESPACHO 7145427  PROYECTO QA  86131064',50,y);
- const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',.9)),file=new File([blob],'guia-qa.jpg',{type:'image/jpeg'}),transfer=new DataTransfer();transfer.items.add(file);
+ const sideways=document.createElement('canvas');sideways.width=1600;sideways.height=1200;const side=sideways.getContext('2d');side.translate(1600,0);side.rotate(Math.PI/2);side.drawImage(canvas,0,0);
+ const blob=await new Promise(r=>sideways.toBlob(r,'image/jpeg',.9)),file=new File([blob],'guia-qa.jpg',{type:'image/jpeg'}),transfer=new DataTransfer();transfer.items.add(file);
  const input=document.querySelector('[aria-label="Elegir foto de guía"]');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));
+ await wait(()=>button('Ajustar imagen')&&!button('Ajustar imagen').disabled);
+ const automaticPreparation=!!document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]')&&!document.querySelector('img[alt="Guía a recortar"]')&&!window.extracts;
+ const noFilterChoice=![...document.querySelectorAll('label')].some(l=>/contraste|filtro/i.test(l.textContent));
+ button('Ajustar imagen').click();
  await wait(()=>document.querySelector('img[alt="Guía a recortar"]'));
- const waitsForReading=document.getElementById('guide-number').disabled&&document.querySelector('button[type="submit"]').disabled;
+ const waitsForReading=!document.getElementById('guide-number')&&!document.querySelector('button[type="submit"]');
  const corner=document.querySelector('[aria-label="Esquina superior izquierda"]');corner.focus();corner.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));await pause(100);
- window.qaCropReady=true;await wait(()=>window.qaCropContinue);button('Preparar lectura').click();await wait(()=>button('Extraer datos'));
+ window.qaCropReady=true;await wait(()=>window.qaCropContinue);button('Aplicar ajustes').click();await wait(()=>button('Aceptar foto y extraer datos'));
  const quality=[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Revisé la foto y deseo continuar'));if(quality)quality.querySelector('input').click();
+ const beforeBitmap=await createImageBitmap(await(await fetch(document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]').src)).blob());
+ const beforeDimensions=[beforeBitmap.width,beforeBitmap.height];beforeBitmap.close();
  const preparedVisible=!!document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]');
- button('Extraer datos').click();await wait(()=>document.getElementById('ocr-projectName'));
+ button('Aceptar foto y extraer datos').click();await wait(()=>document.getElementById('ocr-projectName'));
+ const afterBitmap=await createImageBitmap(await(await fetch(document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]').src)).blob());
+ const uprightPreview=afterBitmap.width===beforeDimensions[1]&&afterBitmap.height===beforeDimensions[0];afterBitmap.close();
  const populated=document.getElementById('guide-number').value==='7145427'&&document.getElementById('guide-date').value==='2026-10-29'&&document.getElementById('guide-truck-arrival').value==='23:22'&&document.getElementById('guide-truck-departure').value==='03:20'&&document.getElementById('ocr-truck').value==='0186';
  const unknownPreserved=[...document.querySelectorAll('input')].some(i=>i.value==='UNKNOWN')&&document.body.textContent.includes('Precio pendiente');
  const variants=document.querySelector('[aria-label="Variantes del catálogo"]');if(!variants)throw Error('No variants');variants.querySelectorAll('button')[1].click();await pause(100);
  const selectedVariant=[...document.querySelectorAll('[name="lineCatalogItemId"]')][2].value.endsWith('000003');
  const observationsNotCopied=[...document.querySelectorAll('[name="lineProductDescription"]')][2].value==='Bomba'&&document.getElementById('ocr-observations').value==='Observación manuscrita';
+ const emptyResident=document.getElementById('guide-casting-element').value===''&&!document.getElementById('guide-laboratory-applied').checked;
+ const chooseResident=async()=>{const select=document.getElementById('guide-casting-element');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,'PILES');select.dispatchEvent(new Event('change',{bubbles:true}));if(!document.getElementById('guide-laboratory-applied').checked)document.getElementById('guide-laboratory-applied').click();await pause(100);};
+ const missingUnitOptional=[...document.querySelectorAll('select[id^="line-unit-"]')].every(e=>!e.required)&&document.querySelector('[name="lineUnitCode"]').value==='';
+ const noUnitWarning=!/confirma la UM/.test(document.body.textContent);
+ await chooseResident();
+ const previewDetails=[...document.querySelectorAll('details')].find(d=>d.querySelector('summary')?.textContent==='Ver foto procesada y ampliar');previewDetails.open=true;
+ document.querySelector('[aria-label="Ampliar foto de la guía"]').click();await wait(()=>button('Acercar'));button('Acercar').click();await pause(100);
+ const inlinePreview=!!document.querySelector('[aria-label="Imagen ampliada de la guía"]')&&!document.querySelector('a[target="_blank"]')&&document.querySelector('[aria-label="Imagen ampliada de la guía"] img').style.width==='150%';
+ button('Cerrar ampliación').click();previewDetails.open=false;await pause(100);
+ const list=document.querySelector('[aria-label="Lista de productos y servicios"]');await pause(100);list.scrollTop=100000;await pause(100);
+ const listScroll=list.children.length===5&&list.scrollTop>0&&list.scrollHeight>list.clientHeight&&list.tabIndex===0;list.scrollTop=0;
+ const success=document.querySelector('p.text-success');const successColor=!!success&&success.classList.contains('text-success');
  const panel=document.querySelector('[role="dialog"]'),scroll=document.querySelector('[data-dialog-scroll]')||panel.querySelector('.overflow-y-auto');
  const review=[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Confirmo los datos corregidos'));review.querySelector('input').click();await pause(100);
  document.getElementById('guide-number').scrollIntoView({block:'start'});window.qaReviewReady=true;await wait(()=>window.qaReviewContinue);const save=document.querySelector('button[type="submit"]');if(save.disabled)throw Error('Save unexpectedly disabled');save.scrollIntoView({block:'center'});save.click();
@@ -67,7 +89,7 @@ const check=String.raw`(async()=>{
  const payload=window.saves[0];
  const resetOpen=!window.closedGuide&&document.querySelectorAll('[role="dialog"]').length===1&&document.getElementById('guide-truck-arrival').value===''&&!document.getElementById('ocr-projectName');
  const bounds=panel.getBoundingClientRect();
- return{width:innerWidth,waitsForReading,preparedVisible,populated,unknownPreserved,selectedVariant,observationsNotCopied,locked,resetOpen,oneExtraction:window.extracts===1,oneOriginalUpload:window.uploads===1,retrySameCapture:window.saves.length===2&&window.saves[0].captureId===window.saves[1].captureId,
+ return{width:innerWidth,emptyResident,missingUnitOptional,noUnitWarning,inlinePreview,listScroll,successColor,automaticPreparation,noFilterChoice,uprightPreview,waitsForReading,preparedVisible,populated,unknownPreserved,selectedVariant,observationsNotCopied,locked,resetOpen,oneExtraction:window.extracts===1,oneOriginalUpload:window.uploads===1,retrySameCapture:window.saves.length===2&&window.saves[0].captureId===window.saves[1].captureId,
  noClientPrice:payload.draft.lines.every(l=>!('unitPrice'in l)&&!('price'in l)),unknownSent:payload.draft.lines[1].productCode==='UNKNOWN'&&payload.draft.lines[1].catalogItemId==='',pageFits:document.documentElement.scrollWidth<=innerWidth,panelFits:bounds.left>=0&&bounds.right<=innerWidth&&bounds.top>=0&&bounds.bottom<=innerHeight};
 })()`;
 try{
@@ -105,6 +127,6 @@ try{
    const screenshot=await send('Page.captureScreenshot',{format:'png'},sessionId);await writeFile(`${dir}/${width}-${theme}.png`,Buffer.from(screenshot.data,'base64'));
    for(const[key,value]of Object.entries(values))if(key!=='width')assert.equal(value,true,`${width}: ${key}`);
    console.log(JSON.stringify({status:'PASS',...values,screenshot:`${dir}/${width}-${theme}.png`}));await send('Browser.close');
-  }finally{socket?.close();child.kill();}
+  }finally{socket?.close();child.kill();child.stdin?.destroy();child.stdout?.destroy();child.stderr?.destroy();child.unref();}
  }
 }finally{await new Promise(resolve=>server.close(resolve));}

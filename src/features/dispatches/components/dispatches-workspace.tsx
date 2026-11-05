@@ -65,6 +65,16 @@ function EstimateValue({ estimate }: { estimate: DispatchEstimate }) {
   return <span className="whitespace-nowrap font-semibold">{formatDispatchMoney(estimate.amount, estimate.currency)}</span>;
 }
 
+function DispatchSchedule({ value, timezone }: { value: string; timezone: string }) {
+  const date = new Date(value);
+  return (
+    <time dateTime={value} className="block">
+      <span className="block whitespace-nowrap">{new Intl.DateTimeFormat("es-GT", { day: "numeric", month: "numeric", year: "numeric", timeZone: timezone }).format(date)}</span>
+      <span className="mt-0.5 block">{new Intl.DateTimeFormat("es-GT", { timeStyle: "short", timeZone: timezone }).format(date)}</span>
+    </time>
+  );
+}
+
 function DispatchActions({
   item,
   canCreate,
@@ -137,14 +147,14 @@ export function DispatchesWorkspace({
   };
 
   return (
-    <MotionPage className="mx-auto max-w-[1600px] space-y-5 pb-10">
+    <MotionPage className="dispatches-workspace mx-auto w-full min-w-0 max-w-[1600px] space-y-4 pb-10">
       <MotionSection>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Operación · Despachos en obra</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Despachos</h1>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-[1.75rem]">Despachos</h1>
         <p className="mt-2 text-sm text-foreground-muted">Gestiona una operación progresiva por programación, con múltiples guías y productos.</p>
       </MotionSection>
 
-      <MotionSection className="rounded-xl border border-border bg-surface p-4 shadow-[0_1px_2px_rgba(16,24,40,0.02)]">
+      <MotionSection className="dispatches-filters rounded-xl border border-border bg-surface p-4 shadow-[0_1px_2px_rgba(16,24,40,0.02)]">
         <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">Filtros</p>{hasFilters && <button type="button" onClick={clearFilters} className="secondary-button min-h-9 gap-1.5 px-3 text-xs"><X className="size-3.5" /> Limpiar</button>}</div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_0.8fr_1fr_1.2fr]">
           <select aria-label="Estado programación" value={programmingStatus} onChange={(event) => setProgrammingStatus(event.target.value as ProgrammingDispatchStatus | "")} className="form-input"><option value="">Estado programación</option><option value="CONFIRMED">Confirmada</option><option value="IN_EXECUTION">En ejecución</option><option value="DISPATCH_COMPLETED">Despacho completo</option></select>
@@ -155,12 +165,15 @@ export function DispatchesWorkspace({
         </div>
       </MotionSection>
 
-      <MotionSection className="overflow-hidden rounded-xl border border-border bg-surface">
+      <MotionSection className="dispatches-results min-w-0 overflow-hidden rounded-xl border border-border bg-surface">
         <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6"><div><h2 className="font-semibold">Programaciones listas para despachar</h2><p className="mt-1 text-xs text-foreground-muted">Programaciones confirmadas, en ejecución o con despacho completo</p></div><span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted" aria-live="polite">{filtered.length} resultado(s)</span></div>
         {!filtered.length ? <div className="p-6"><EmptyState icon={Truck} title="No hay programaciones disponibles" description={hasFilters ? "Ajusta los filtros para ver otros resultados." : "Las programaciones confirmadas aparecerán aquí."} /></div> : (
           <>
-            <div className="hidden overflow-x-auto lg:block">
-              <table className="w-full min-w-[1580px] text-left text-sm">
+            <div className="dispatches-table-layout">
+              <table className="dispatches-table w-full table-fixed text-left text-xs">
+                <colgroup>
+                  {[11, 11, 10, 6, 8, 10, 9, 9, 10, 16].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+                </colgroup>
                 <thead className="bg-muted/60 text-[10px] uppercase tracking-[0.08em] text-foreground-muted">
                   <tr>
                     <th className="px-5 py-3">Código programación</th>
@@ -182,8 +195,8 @@ export function DispatchesWorkspace({
                       onClick={() => setSelectedId(item.programmingId)}
                       className={`cursor-pointer hover:bg-muted/35 ${selectedId === item.programmingId ? "bg-brand-soft/35" : ""}`}
                     >
-                      <td className="px-5 py-4 font-mono text-xs font-semibold text-brand-strong">{item.programmingCode}</td>
-                      <td className="px-5 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.programmingStatus)}`}>{formatStatusLabel(item.programmingStatus)}</span></td>
+                      <td className="dispatches-code px-5 py-4 font-mono text-xs font-semibold text-brand-strong">{item.programmingCode}</td>
+                      <td className="px-5 py-4"><span className={`dispatches-programming-status inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.programmingStatus)}`}>{formatStatusLabel(item.programmingStatus)}</span></td>
                       <td className="px-5 py-4 font-medium">{item.supplierName}</td>
                       <td className="px-5 py-4 font-medium">{item.orderNumber ?? "—"}</td>
                       <td className="max-w-64 px-5 py-4 text-foreground-muted">
@@ -191,17 +204,17 @@ export function DispatchesWorkspace({
                           {concreteTypeLabel(item.concreteTypes)}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-foreground-muted">{formatDispatchDateTime(item.scheduledAt, project.timezone)}</td>
+                      <td className="px-5 py-4 text-foreground-muted"><DispatchSchedule value={item.scheduledAt} timezone={project.timezone || "America/Guatemala"} /></td>
                       <td className="px-5 py-4"><EstimateValue estimate={item.productEstimate} /></td>
                       <td className="px-5 py-4"><EstimateValue estimate={item.serviceEstimate} /></td>
-                      <td className="px-5 py-4">{item.dispatchStatus ? <DispatchStatusBadge status={item.dispatchStatus} /> : <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted">Sin iniciar</span>}</td>
+                      <td className="dispatches-dispatch-status px-5 py-4">{item.dispatchStatus ? <DispatchStatusBadge status={item.dispatchStatus} /> : <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted">Sin iniciar</span>}</td>
                       <td className="px-5 py-4" onClick={(event) => event.stopPropagation()}><DispatchActions item={item} canCreate={canCreate} canModify={canModify} onStart={() => setStartItem(item)} onAddGuide={() => setGuideItem(item)} /></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="divide-y divide-border lg:hidden">
+            <div className="dispatches-card-layout divide-y divide-border">
               {filtered.map((item) => (
                 <article
                   key={item.programmingId}

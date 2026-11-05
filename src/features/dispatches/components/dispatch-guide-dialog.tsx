@@ -11,9 +11,12 @@ import { Dialog, DialogFooter } from "@/components/ui/dialog";
 import { IconButton } from "@/components/ui/icon-button";
 import { notifications } from "@/lib/notification-messages";
 import { getPublicEnvironment } from "@/lib/env";
-import { GuidePhotoCapture, guideCaptureUrl, type GuidePhotoResult } from "@/features/vision-ocr/components/guide-photo-capture";
-import { GuideOcrDetails, GuideOcrVariants, SavedGuideOcrDetails } from "@/features/vision-ocr/components/guide-ocr-details";
-import { guideIdentity, type GuideDetails, type GuideOcrDraft } from "@/features/vision-ocr/guide-draft";
+import { GuidePhotoCapture, guideCaptureUrl, type GuidePhotoResult, type GuidePhotoCaptureHandle } from "@/features/vision-ocr/components/guide-photo-capture";
+import { GuideOcrVariants, SavedGuideOcrDetails } from "@/features/vision-ocr/components/guide-ocr-details";
+import { type GuideDetails, type GuideOcrDraft } from "@/features/vision-ocr/guide-draft";
+
+import { GuideOcrReview } from "@/features/vision-ocr/components/guide-ocr-review";
+import { emptyGuideDetails } from "../guide-details";
 
 import { saveDispatchGuideAction } from "../actions";
 import { catalogSelectionDefaults } from "../catalog-selection";
@@ -27,6 +30,8 @@ import {
   type DispatchGuide,
   type DispatchUnit,
 } from "../types";
+import { GuideResidentFields } from "./guide-resident-fields";
+import { GuideLinesList } from "./guide-lines-list";
 import { DispatchCatalogCombobox } from "./dispatch-catalog-combobox";
 
 type EditableLine = {
@@ -129,6 +134,8 @@ export function DispatchGuideDialog({
   const handledResult = useRef<DispatchMutationState | null>(null);
   const [savedVersion, setSavedVersion] = useState(expectedVersion);
   const [guideNumber, setGuideNumber] = useState(guide?.guideNumber ?? "");
+  const [castingElement, setCastingElement] = useState(guide?.castingElement ?? "");
+  const [laboratoryApplied, setLaboratoryApplied] = useState(guide?.laboratoryApplied ?? false);
   const [guideDate, setGuideDate] = useState(guide?.guideDate ?? operationDate ?? today());
   const [truckArrivalTime, setTruckArrivalTime] = useState(truckTime(guide?.truckArrivalAt, timezone));
   const [truckDepartureTime, setTruckDepartureTime] = useState(truckTime(guide?.truckDepartureAt, timezone));
@@ -138,8 +145,8 @@ export function DispatchGuideDialog({
   const [photoSelected, setPhotoSelected] = useState(false);
   const [ocrReviewed, setOcrReviewed] = useState(false);
   const [photoRetryGuide, setPhotoRetryGuide] = useState<string | null>(null);
-  const [captureKey, setCaptureKey] = useState(0);
-  const [details, setDetails] = useState<GuideDetails | null>(null);
+  const photoCaptureRef = useRef<GuidePhotoCaptureHandle>(null);
+  const [details, setDetails] = useState<GuideDetails>(() => ({ ...emptyGuideDetails(), ...guide?.details }));
   const [lines, setLines] = useState<EditableLine[]>(
     guide?.lines.length
       ? guide.lines.map((line) => ({
@@ -161,7 +168,7 @@ export function DispatchGuideDialog({
     let result: DispatchMutationState;
     if (capture && details && !guide && ocrEnabled) {
       const draft: GuideOcrDraft = { ...capture.draft, guideNumber, arrivalTime: truckArrivalTime, departureTime: truckDepartureTime,
-        details: { ...details, guideDate }, lines: lines.map((line) => ({ quantity: line.quantity, unit: line.unitCode, productCode: line.productCode,
+        resident: { castingElement, laboratoryApplied }, details: { ...details, guideDate }, lines: lines.map((line) => ({ quantity: line.quantity, unit: line.unitCode, productCode: line.productCode,
           description: line.productDescription, type: line.catalogType, catalogItemId: line.catalogItemId, candidates: [], warning: null })) };
       try {
         const response = await fetch(guideCaptureUrl(projectId, dispatchId), { method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -175,15 +182,16 @@ export function DispatchGuideDialog({
     } else result = await saveDispatchGuideAction(previous, data);
     if (result.status === "success" && !guide) {
       if (result.newVersion !== undefined) setSavedVersion(result.newVersion);
-      setGuideNumber("");
+      setGuideNumber(""); setCastingElement(""); setLaboratoryApplied(false);
       setTruckArrivalTime("");
       setTruckDepartureTime("");
-      setCapture(null); setDetails(null); setPhotoSelected(false); setOcrReviewed(false); setPhotoRetryGuide(null); setCaptureKey((key) => key + 1);
+      setCapture(null); setDetails(emptyGuideDetails()); setPhotoSelected(false); setOcrReviewed(false); setPhotoRetryGuide(null);
       // A fresh key also clears the catalog search draft for the next guide.
       setLines([{
         ...initialLine(programmedUnitCode, defaultProductDescription ?? "", defaultCatalogProduct),
         key: `new-line-${result.guideId ?? result.newVersion}`,
       }]);
+      if (capture) photoCaptureRef.current?.saved();
     }
     return result;
   }, initialDispatchMutationState);
@@ -194,20 +202,31 @@ export function DispatchGuideDialog({
     handledResult.current = state;
     router.refresh();
     if (guide) onClose();
-    else {
+    else if (!photoCaptureRef.current?.focusPending()) {
       guideNumberRef.current?.focus();
       guideNumberRef.current?.scrollIntoView({ block: "center" });
     }
   }, [guide, onClose, pending, router, state]);
+
+  useEffect(() => {
+    if (!capture) return;
+    const frame = requestAnimationFrame(() => {
+      guideNumberRef.current?.focus({ preventScroll: true });
+      document.getElementById("ocr-review-heading")?.scrollIntoView({ block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [capture]);
 
   const update = (
     key: string,
     field: keyof Omit<EditableLine, "key" | "unitPrice">,
     value: string,
   ) => {
+    setOcrReviewed(false);
     setLines((current) => current.map((line) => line.key === key ? { ...line, [field]: value, ...(field === "productCode" ? { ocrCandidates: [], ocrWarning: null } : {}) } : line));
   };
   const selectCatalogItem = (key: string, item: DispatchCatalogOption) => {
+    setOcrReviewed(false);
     setLines((current) => current.map((line) => {
       if (line.key !== key) return line;
       return {
@@ -217,6 +236,7 @@ export function DispatchGuideDialog({
         productCode: item.code,
         catalogReference: item.reference ?? "",
         ...catalogSelectionDefaults(item, line, programmedUnitCode),
+        ...(capture && !line.unitCode ? { unitCode: "" } : {}),
         unitPrice: item.price,
         currency: item.currency,
       };
@@ -225,11 +245,11 @@ export function DispatchGuideDialog({
 
   const productCount = lines.filter((line) => line.catalogType === "PRODUCT").length;
   const serviceCount = lines.filter((line) => line.catalogType === "SERVICE").length;
-  const addLine = () => setLines((current) => [...current, emptyLine(crypto.randomUUID())]);
+  const addLine = () => { setOcrReviewed(false); setLines((current) => [...current, emptyLine(crypto.randomUUID())]); };
   const locked = readOnly || pending || photoBusy || Boolean(photoRetryGuide) || (photoSelected && !capture);
-  const identity = capture && details ? guideIdentity(capture.project, details) : null;
   const applyCapture = (result: GuidePhotoResult) => {
     setCapture(result); setDetails(result.draft.details); setOcrReviewed(false);
+    setCastingElement(""); setLaboratoryApplied(false);
     setGuideNumber(result.draft.guideNumber); setGuideDate(result.draft.details.guideDate);
     setTruckArrivalTime(result.draft.arrivalTime); setTruckDepartureTime(result.draft.departureTime);
     setLines(result.draft.lines.length ? result.draft.lines.map((line) => {
@@ -241,50 +261,25 @@ export function DispatchGuideDialog({
     }) : [emptyLine(crypto.randomUUID())]);
   };
 
-  return (
-    <Dialog title={guide ? (readOnly ? "Ver guía" : "Editar guía") : "Agregar guía"} description="Registra los horarios del camión y cada producto o servicio de esta guía." icon={PackageOpen} onClose={onClose} pending={pending || photoBusy} size="xl">
-      <form className="dispatch-guide-form" onSubmit={(event) => {
-        event.preventDefault();
-        // Retain every controlled field when the action returns a validation
-        // error. Native form-action resets can clear the visible service unit.
-        const data = new FormData(event.currentTarget);
-        startTransition(() => action(data));
-      }}>
-        <input type="hidden" name="projectId" value={projectId} />
-        <input type="hidden" name="programmingId" value={programmingId} />
-        <input type="hidden" name="dispatchId" value={dispatchId} />
-        <input type="hidden" name="expectedVersion" value={Math.max(expectedVersion, savedVersion)} />
-        <input type="hidden" name="guideId" value={guide?.id ?? ""} />
-        <div className="space-y-5 p-4 sm:p-6">
-          {!guide && state.status === "success" && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">Guía guardada. Puedes ingresar la siguiente o cerrar esta ventana.</p>}
-          {ocrEnabled && !guide && !readOnly && <GuidePhotoCapture key={captureKey} projectId={projectId} dispatchId={dispatchId} disabled={pending || Boolean(photoRetryGuide)} onRead={applyCapture} onReset={(usingPhoto) => {
-            setPhotoSelected(usingPhoto); setCapture(null); setDetails(null); setOcrReviewed(false);
-            if (!usingPhoto) { setGuideNumber(""); setTruckArrivalTime(""); setTruckDepartureTime(""); setLines([initialLine(programmedUnitCode, defaultProductDescription ?? "", defaultCatalogProduct)]); }
-          }} onBusy={setPhotoBusy} />}
-          {ocrEnabled && guide && <SavedGuideOcrDetails projectId={projectId} dispatchId={dispatchId} guideId={guide.id} />}
-          {capture && details && <>
-            {capture.draft.warnings.length > 0 && <ul role="status" className="list-inside list-disc space-y-1 rounded-lg bg-amber-100 p-3 text-sm text-amber-950">{capture.draft.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}
-            <GuideOcrDetails value={details} draft={capture.draft} disabled={locked} onChange={(key, value) => { setDetails((current) => current ? { ...current, [key]: value } : current); setOcrReviewed(false); }} />
-            <p role="status" className={`rounded-lg p-3 text-sm ${identity?.matches ? "bg-emerald-100 text-emerald-950" : "bg-amber-100 text-amber-950"}`}>{identity?.message}</p>
-            <p className="break-words text-xs text-foreground-muted">Proyecto activo: {capture.project.name} · {capture.project.code}. Direcciones admitidas: {[capture.project.address, ...capture.project.additionalAddresses].join(" / ")}</p>
-            {capture.rawText && <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer text-sm">Ver texto reconocido</summary><pre className="mt-2 whitespace-pre-wrap break-words text-xs">{capture.rawText}</pre></details>}
-          </>}
-          <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-            <div className="min-w-0"><label className="form-label" htmlFor="guide-number">Número de guía *</label><input ref={guideNumberRef} id="guide-number" name="guideNumber" required maxLength={120} value={guideNumber} onChange={(event) => setGuideNumber(event.target.value)} disabled={locked} className="form-input min-w-0 disabled:bg-muted" /></div>
-            <div className="min-w-0"><label className="form-label" htmlFor="guide-date">Fecha *</label><input id="guide-date" name="guideDate" type="date" required value={guideDate} onChange={(event) => setGuideDate(event.target.value)} disabled={locked} className="form-input min-w-0 disabled:bg-muted" /></div>
-            <div className="min-w-0"><label className="form-label" htmlFor="guide-truck-arrival">Llegada del camión *</label><input id="guide-truck-arrival" name="truckArrivalTime" type="time" required value={truckArrivalTime} onChange={(event) => setTruckArrivalTime(event.target.value)} disabled={locked} className="form-input min-w-0 disabled:bg-muted" /></div>
-            <div className="min-w-0"><label className="form-label" htmlFor="guide-truck-departure">Salida del camión *</label><input id="guide-truck-departure" name="truckDepartureTime" type="time" required value={truckDepartureTime} onChange={(event) => setTruckDepartureTime(event.target.value)} disabled={locked} className="form-input min-w-0 disabled:bg-muted" /></div>
-          </div>
-          <p className="text-xs leading-5 text-foreground-muted">La fecha de la guía corresponde a la llegada del camión. Si la hora de salida es menor que la de llegada, se registra al día siguiente. Los horarios son independientes del inicio del despacho.</p>
+  const numberField = <div className="min-w-0"><label className="form-label" htmlFor="guide-number">Número de guía *</label><input ref={guideNumberRef} id="guide-number" name="guideNumber" required maxLength={120} value={guideNumber} onChange={(event) => { setGuideNumber(event.target.value); setOcrReviewed(false); }} disabled={locked} className="form-input min-w-0 disabled:bg-muted" /></div>;
+  const dateField = <div className="min-w-0"><label className="form-label" htmlFor="guide-date">Fecha *</label><input id="guide-date" name="guideDate" type="date" required value={guideDate} onChange={(event) => { setGuideDate(event.target.value); setOcrReviewed(false); }} disabled={locked} className="form-input min-w-0 disabled:bg-muted" /></div>;
+  const arrivalField = <div className="min-w-0"><label className="form-label" htmlFor="guide-truck-arrival">Llegada del camión *</label><input id="guide-truck-arrival" name="truckArrivalTime" type="time" required value={truckArrivalTime} onChange={(event) => { setTruckArrivalTime(event.target.value); setOcrReviewed(false); }} disabled={locked} className="form-input min-w-0 disabled:bg-muted" /></div>;
+  const departureField = <div className="min-w-0"><label className="form-label" htmlFor="guide-truck-departure">Salida del camión *</label><input id="guide-truck-departure" name="truckDepartureTime" type="time" required value={truckDepartureTime} onChange={(event) => { setTruckDepartureTime(event.target.value); setOcrReviewed(false); }} disabled={locked} className="form-input min-w-0 disabled:bg-muted" /></div>;
+  const timeHint = <>
+<p className="text-xs leading-5 text-foreground-muted">La fecha de la guía corresponde a la llegada del camión. Si la hora de salida es menor que la de llegada, se registra al día siguiente. Los horarios son independientes del inicio del despacho.</p>
           {truckArrivalTime && truckDepartureTime && truckDepartureTime < truckArrivalTime && <p role="status" className="rounded-lg bg-muted px-3 py-2 text-xs text-foreground">El camión sale al día siguiente de la fecha de la guía.</p>}
-          <section className="space-y-3" aria-labelledby="guide-lines-heading">
+  </>;
+  const residentFields = <GuideResidentFields element={castingElement} laboratory={laboratoryApplied} disabled={locked} onElement={(value) => { setCastingElement(value); setOcrReviewed(false); }} onLaboratory={(value) => { setLaboratoryApplied(value); setOcrReviewed(false); }} />;
+  const warnings = capture?.draft.warnings.filter((warning) => !/^Línea \d+: confirma la UM/u.test(warning)) ?? [];
+  const lineEditor = (
+<section className="space-y-3" aria-labelledby="guide-lines-heading">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><h3 id="guide-lines-heading" className="font-semibold">Productos y servicios</h3><p className="mt-1 text-xs text-foreground-muted">{productCount} producto(s) · {serviceCount} servicio(s). El precio se guarda como histórico.</p></div>
               {!readOnly && <button type="button" onClick={addLine} disabled={locked} className="secondary-button guide-add-desktop min-h-11 gap-2"><Plus aria-hidden="true" className="size-4" /> Agregar producto / servicio</button>}
             </div>
             {serviceCount > 0 && productCount === 0 && <p role="status" className="text-xs text-foreground-muted">Guía de servicios: sus cantidades no suman volumen de concreto.</p>}
             {lines.length === 0 && <p className="rounded-xl border border-dashed border-border p-5 text-sm text-foreground-muted" role="status">Sin líneas. Agrega un producto o servicio para continuar.</p>}
-            {lines.map((line, index) => {
+            <GuideLinesList count={lines.length}>{lines.map((line, index) => {
               const parsedQuantity = Number(line.quantity);
               const subtotal = line.unitPrice === null || !Number.isFinite(parsedQuantity) ? null : line.unitPrice * parsedQuantity;
               const selectionLabel = line.catalogType === "PRODUCT"
@@ -295,7 +290,7 @@ export function DispatchGuideDialog({
                 <article key={line.key} className="min-w-0 rounded-xl border border-border bg-surface shadow-sm" aria-labelledby={`line-title-${line.key}`}>
                   <div className="flex items-center justify-between gap-3 rounded-t-xl border-b border-border bg-muted/50 px-3 py-2 sm:px-4 lg:py-1">
                     <h4 id={`line-title-${line.key}`} className="flex min-w-0 items-center gap-2 text-sm font-semibold"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface text-foreground-muted">{index + 1}</span>{kind}</h4>
-                    {!readOnly && <IconButton label={`Eliminar línea ${index + 1}`} disabled={locked} onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))} tone="destructive"><Trash2 aria-hidden="true" className="size-4" /></IconButton>}
+                    {!readOnly && <IconButton label={`Eliminar línea ${index + 1}`} disabled={locked} onClick={() => { setOcrReviewed(false); setLines((current) => current.filter((item) => item.key !== line.key)); }} tone="destructive"><Trash2 aria-hidden="true" className="size-4" /></IconButton>}
                   </div>
                   {capture && !line.catalogItemId && <div className="space-y-3 border-b border-border bg-amber-50 p-3 text-amber-950 sm:px-4">
                     <p role="status" className="text-sm">{line.ocrWarning || "Sin selección de catálogo: precio pendiente. Si el código tiene variantes, selecciona una en el buscador."}</p>
@@ -311,23 +306,55 @@ export function DispatchGuideDialog({
                     <input type="hidden" name="lineCatalogType" value={line.catalogType} />
                     <input type="hidden" name="lineCatalogItemId" value={line.catalogItemId} />
                     <input type="hidden" name="lineProductDescription" value={line.productDescription} />
-                    <div className="min-w-0 sm:col-span-2 lg:order-3 lg:col-span-1"><label className="form-label" htmlFor={`line-catalog-${line.key}`}>Buscar producto o servicio *</label><DispatchCatalogCombobox id={`line-catalog-${line.key}`} projectId={projectId} value={selectionLabel} selectedId={line.catalogItemId} productUnitCode={programmedUnitCode} disabled={locked} onSelect={(item) => selectCatalogItem(line.key, item)} /></div>
+                    <div className="min-w-0 sm:col-span-2 lg:order-3 lg:col-span-1"><label className="form-label" htmlFor={`line-catalog-${line.key}`}>{capture ? "Código *" : "Buscar producto o servicio *"}</label><DispatchCatalogCombobox id={`line-catalog-${line.key}`} projectId={projectId} value={selectionLabel} selectedId={line.catalogItemId} productUnitCode={programmedUnitCode} disabled={locked} onSelect={(item) => selectCatalogItem(line.key, item)} /></div>
                     <div className="grid min-w-0 grid-cols-2 gap-3 lg:contents">
                       <div className="min-w-0 lg:order-1"><label className="form-label" htmlFor={`line-quantity-${line.key}`}>Cantidad *</label><input id={`line-quantity-${line.key}`} name="lineQuantity" type="number" min="0.001" step="0.001" required value={line.quantity} onChange={(event) => update(line.key, "quantity", event.target.value)} disabled={locked} className="form-input min-w-0 disabled:bg-muted" /></div>
-                      <div className="min-w-0 lg:order-2"><label className="form-label" htmlFor={`line-unit-${line.key}`}>UM *</label><select id={`line-unit-${line.key}`} required value={line.unitCode} onChange={(event) => update(line.key, "unitCode", event.target.value)} disabled={locked || (line.catalogType === "PRODUCT" && Boolean(line.catalogItemId)) || (!line.catalogType && Boolean(line.lineId))} className="form-input min-w-0 disabled:bg-muted"><option value="">Selecciona</option>{Array.from(new Set([...(line.catalogType === "SERVICE" ? SERVICE_UNIT_CODES : units.map((unit) => unit.code)), ...(line.unitCode ? [line.unitCode] : [])])).map((code) => <option key={code} value={code}>{code}</option>)}</select></div>
+                      <div className="min-w-0 lg:order-2"><label className="form-label" htmlFor={`line-unit-${line.key}`}>UM</label><select id={`line-unit-${line.key}`} title={line.unitCode || "Sin unidad de medida"} value={line.unitCode} onChange={(event) => update(line.key, "unitCode", event.target.value)} disabled={locked} className="form-input min-w-0 disabled:bg-muted"><option value="">—</option>{Array.from(new Set([...(line.catalogType === "SERVICE" ? SERVICE_UNIT_CODES : units.map((unit) => unit.code)), ...(line.unitCode ? [line.unitCode] : [])])).map((code) => <option key={code} value={code}>{code}</option>)}</select></div>
                     </div>
                     <div className="min-w-0 lg:order-4"><label className="form-label" htmlFor={`line-description-${line.key}`}>{line.catalogType === "PRODUCT" ? "Referencia" : "Descripción"}</label><textarea id={`line-description-${line.key}`} rows={2} maxLength={500} value={line.productDescription} title={line.productDescription || undefined} onChange={(event) => update(line.key, "productDescription", event.target.value)} disabled={locked || (line.catalogType !== "SERVICE" && !(capture && !line.catalogItemId))} placeholder="Se completa al seleccionar" className="form-input min-w-0 resize-y disabled:bg-muted" /></div>
                     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-sm sm:col-span-2 lg:order-5 lg:col-span-1 lg:flex-col lg:items-start lg:justify-start lg:gap-1 lg:border-t-0 lg:pt-0"><p className="text-xs text-foreground-muted lg:order-2">{line.unitPrice !== null && line.currency ? `${formatDispatchMoney(line.unitPrice, line.currency)} c/u` : capture && line.productCode ? "Precio pendiente de catálogo" : "Selecciona un registro del catálogo"}</p><p className="font-semibold lg:order-1"><span className="lg:hidden">Estimado: </span><span className="hidden text-sm font-medium lg:mb-2 lg:block">Estimado</span>{subtotal === null || !line.currency ? "No disponible" : formatDispatchMoney(subtotal, line.currency)}</p></div>
                   </div>
                 </article>
               );
-            })}
+            })}</GuideLinesList>
             {!readOnly && <button type="button" onClick={addLine} disabled={locked} className="secondary-button guide-add-mobile min-h-11 w-full gap-2 border-dashed"><Plus aria-hidden="true" className="size-4" /> Agregar producto / servicio</button>}
           </section>
-          {capture && <label className="flex min-h-11 items-start gap-3 rounded-xl border border-border p-4 text-sm"><input type="checkbox" className="mt-0.5 size-4 shrink-0" checked={ocrReviewed} disabled={pending || photoBusy || Boolean(photoRetryGuide)} onChange={(event) => setOcrReviewed(event.target.checked)} />Revisé la foto, el proyecto, la dirección, los horarios y las líneas. Confirmo los datos corregidos antes de guardar.</label>}
+  );
+
+  return (
+    <Dialog title={guide ? (readOnly ? "Ver guía" : "Editar guía") : "Agregar guía"} description="Registra los horarios del camión y cada producto o servicio de esta guía." icon={PackageOpen} onClose={onClose} pending={pending || photoBusy} size="xl">
+      <form className="dispatch-guide-form" onSubmit={(event) => {
+        event.preventDefault();
+        if (photoSelected && !capture) return;
+        // Retain every controlled field when the action returns a validation
+        // error. Native form-action resets can clear the visible service unit.
+        const data = new FormData(event.currentTarget);
+        startTransition(() => action(data));
+      }}>
+        <input type="hidden" name="projectId" value={projectId} />
+        <input type="hidden" name="programmingId" value={programmingId} />
+        <input type="hidden" name="dispatchId" value={dispatchId} />
+        <input type="hidden" name="expectedVersion" value={Math.max(expectedVersion, savedVersion)} />
+        <input type="hidden" name="guideId" value={guide?.id ?? ""} />
+        <input type="hidden" name="guideDetails" value={JSON.stringify({ ...details, guideDate })} />
+        <div className="space-y-5 p-4 sm:p-6">
+          {!guide && state.status === "success" && <p role="status" className="text-sm text-success">Guía guardada. Puedes ingresar la siguiente o cerrar esta ventana.</p>}
+          {ocrEnabled && !guide && !readOnly && <GuidePhotoCapture ref={photoCaptureRef} projectId={projectId} dispatchId={dispatchId} disabled={pending || Boolean(photoRetryGuide)} onRead={applyCapture} onReset={(usingPhoto) => {
+            setPhotoSelected(usingPhoto); setCapture(null); setDetails(emptyGuideDetails()); setOcrReviewed(false); setCastingElement(""); setLaboratoryApplied(false);
+            if (!usingPhoto) { setGuideNumber(""); setTruckArrivalTime(""); setTruckDepartureTime(""); setLines([initialLine(programmedUnitCode, defaultProductDescription ?? "", defaultCatalogProduct)]); }
+          }} onBusy={setPhotoBusy} />}
+          {ocrEnabled && guide && <SavedGuideOcrDetails projectId={projectId} dispatchId={dispatchId} guideId={guide.id} />}
+          {capture && details && <>
+            {warnings.length > 0 && <ul role="status" className="list-inside list-disc space-y-1 rounded-lg bg-amber-100 p-3 text-sm text-amber-950">{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}
+          </>}
+          {(capture || !photoSelected) && <GuideOcrReview value={details} draft={capture?.draft} disabled={locked} onChange={(key, value) => {
+            setDetails((current) => ({ ...current, [key]: value })); setOcrReviewed(false);
+          }} number={numberField} date={dateField} arrival={arrivalField} departure={departureField} lines={lineEditor} timeHint={timeHint} />}
+          {(capture || !photoSelected) && residentFields}
           {state.status === "error" && <p role="alert" className="rounded-lg bg-destructive-soft px-4 py-3 text-sm text-destructive">{state.message}</p>}
+          {capture && <label className="flex min-h-11 items-start gap-3 rounded-xl border border-border p-4 text-sm"><input type="checkbox" className="mt-0.5 size-4 shrink-0" checked={ocrReviewed} disabled={pending || photoBusy || Boolean(photoRetryGuide)} onChange={(event) => setOcrReviewed(event.target.checked)} />Revisé la foto y los datos extraídos, incluidos los horarios y todas las líneas. Confirmo los datos corregidos antes de guardar.</label>}
         </div>
-        <DialogFooter><Button variant="secondary" onClick={onClose} disabled={pending || photoBusy}>{readOnly ? "Cerrar" : "Cancelar"}</Button>{!readOnly && <LoadingButton loading={pending} loadingLabel="Guardando…" disabled={photoBusy || (photoSelected && !capture) || lines.length === 0 || (!capture && lines.some((line) => !line.catalogItemId && !line.lineId)) || Boolean(capture && (!ocrReviewed || !identity?.matches))}>{photoRetryGuide ? "Reintentar foto" : capture ? "Guardar y escanear otra" : "Guardar guía"}</LoadingButton>}</DialogFooter>
+        <DialogFooter><Button variant="secondary" onClick={onClose} disabled={pending || photoBusy}>{readOnly ? "Cerrar" : "Cancelar"}</Button>{!readOnly && (!photoSelected || capture) && <LoadingButton loading={pending} loadingLabel="Guardando…" disabled={photoBusy || (photoSelected && !capture) || lines.length === 0 || (!capture && lines.some((line) => !line.catalogItemId && !line.lineId)) || Boolean(capture && !ocrReviewed)}>{photoRetryGuide ? "Reintentar foto" : capture ? "Guardar y escanear otra" : "Guardar guía"}</LoadingButton>}</DialogFooter>
       </form>
     </Dialog>
   );

@@ -1,4 +1,5 @@
 import type { ServiceReconciliationSummary } from "@/features/invoices/service-reconciliation";
+import type { GuideDetails } from "./guide-details";
 export const DISPATCH_STATUSES = ["IN_EXECUTION", "COMPLETED"] as const;
 export const DISPATCH_RESULTS = ["DISPATCHED", "NOT_DISPATCHED"] as const;
 
@@ -44,6 +45,9 @@ export type DispatchGuideLine = {
 };
 
 export type DispatchGuide = {
+  details?: Partial<GuideDetails>;
+  castingElement?: "COLUMNS" | "PILES" | null;
+  laboratoryApplied?: boolean;
   id: string;
   guideNumber: string;
   guideDate: string;

@@ -1,3 +1,4 @@
+import * as guideDetailsModel from "../src/features/dispatches/guide-details.ts";
 import { serviceReconciliationSummary } from "../src/features/invoices/service-reconciliation.ts";
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -12,7 +13,8 @@ const dialogSource = await readFile(new URL('src/features/dispatches/components/
 function load(source, imports) {
   const exports = {};
   const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  runInNewContext(js, { exports, require(name) { assert.ok(Object.hasOwn(imports, name), `Unexpected import ${name}`); return imports[name]; }, Intl, Date });
+  runInNewContext(js, { exports, require(name) {
+    if (['./guide-details','../guide-details'].includes(name)) return guideDetailsModel; assert.ok(Object.hasOwn(imports, name), `Unexpected import ${name}`); return imports[name]; }, Intl, Date });
   return exports;
 }
 const projectId = '78f495d6-d721-4b65-94f0-fdc94a03b8df';
@@ -38,10 +40,10 @@ function actionFixture({ permission = true, rpcError = null } = {}) {
 }
 function form(overrides = {}) {
   const data = new FormData();
-  for (const [key, value] of Object.entries({ projectId, dispatchId, guideId: '', expectedVersion: '2', guideNumber: '1234', guideDate: '2026-10-26', truckArrivalTime: '15:30', truckDepartureTime: '16:10', lineId: '', lineQuantity: '5', lineUnitCode: 'M3', lineCatalogType: 'PRODUCT', lineCatalogItemId: projectId, lineProductDescription: 'CONF4001', ...overrides })) data.set(key, value);
+  for (const [key, value] of Object.entries({ projectId, dispatchId, guideId: '', expectedVersion: '2', castingElement:'COLUMNS',laboratoryApplied:'on',guideNumber: '1234', guideDate: '2026-10-26', truckArrivalTime: '15:30', truckDepartureTime: '16:10', lineId: '', lineQuantity: '5', lineUnitCode: 'M3', lineCatalogType: 'PRODUCT', lineCatalogItemId: projectId, lineProductDescription: 'CONF4001', ...overrides })) data.set(key, value);
   return data;
 }
-for (const [id, rpc] of [['', 'create_dispatch_guide_with_lines'], [guideId, 'update_dispatch_guide_with_lines']]) {
+for (const [id, rpc] of [['', 'create_dispatch_guide_with_details'], [guideId, 'update_dispatch_guide_with_details']]) {
   test(`${rpc} transmite los dos horarios al RPC y refresca el despacho`, async () => {
     const f = actionFixture();
     const result = await f.save({}, form({ guideId: id }));
@@ -50,6 +52,7 @@ for (const [id, rpc] of [['', 'create_dispatch_guide_with_lines'], [guideId, 'up
     assert.equal(f.calls[0].args.p_truck_arrival_time, '15:30');
     assert.equal(f.calls[0].args.p_truck_departure_time, '16:10');
     assert.equal(f.calls[0].args.p_guide_date, '2026-10-26');
+    assert.equal(f.calls[0].args.p_casting_element,'COLUMNS');assert.equal(f.calls[0].args.p_laboratory_applied,true);
     assert.ok(f.paths.includes(`/dispatches/${dispatchId}`));
   });
 }
@@ -78,7 +81,7 @@ test('errores de horario y conflictos no se muestran como éxito ni refrescan da
   }
 });
 
-function nodes(node) { if (!node || typeof node !== 'object') return []; if (Array.isArray(node)) return node.flatMap(nodes); return [node,...nodes(node.props?.children)]; }
+function nodes(node) { if (!node || typeof node !== 'object') return []; if (Array.isArray(node)) return node.flatMap(nodes); if(typeof node.type==='function')return nodes(node.type(node.props));return [node,...nodes(node.props?.children)]; }
 function dialogFixture({readOnly=false,guide}={}) {
   const jsx = (type, props) => ({type,props});
   const dialog = load(dialogSource, {
@@ -93,10 +96,12 @@ function dialogFixture({readOnly=false,guide}={}) {
     '@/lib/env': {getPublicEnvironment:()=>({appEnvironment:'PROD'})},
     '@/features/vision-ocr/components/guide-photo-capture': {},
     '@/features/vision-ocr/components/guide-ocr-details': {},
+    '@/features/vision-ocr/components/guide-ocr-review': {GuideOcrReview:props=>jsx('GuideReview',{children:[props.number,props.date,props.arrival,props.departure,props.lines]})},
     '@/features/vision-ocr/guide-draft': {},
     '../actions': {saveDispatchGuideAction(){}}, '../catalog-selection': {catalogSelectionDefaults(){}},
     '../../platform/project-price-catalogs/service-units': {SERVICE_UNIT_CODES:['M3']},
     '../formatters': {formatDispatchMoney:value=>String(value)}, '../types': {initialDispatchMutationState:{status:'idle'}},
+    './guide-resident-fields': {GuideResidentFields:'ResidentFields'}, './guide-lines-list': {GuideLinesList:'LinesList'},
     './dispatch-catalog-combobox': {DispatchCatalogCombobox:'Picker'},
   }).DispatchGuideDialog;
   return nodes(dialog({projectId,dispatchId,programmingId:projectId,expectedVersion:2,programmedUnitCode:'M3',units:[{code:'M3'}],timezone:'America/Guatemala',guide,readOnly,onClose(){}}));
@@ -120,12 +125,13 @@ test('las consultas trasladan horarios nuevos e históricos sin fabricar datos',
   const loadedQueries = load(queries+'\nexport { buildGuides as testBuildGuides };', {
     '@/features/invoices/service-reconciliation':{serviceReconciliationSummary},'server-only':{}, '@/lib/supabase/admin':{}, '@/lib/supabase/server':{}, './formatters':{},
   });
-  const guide={id:guideId,guide_number:'1234',guide_date:'2026-10-26',quantity:5,unit_code:'M3',truck_arrival_at:'2026-10-26T21:30:00Z',truck_departure_at:'2026-10-26T22:10:00Z'};
+  const guide={casting_element:'PILES',laboratory_applied:true,details:{truck:'0183',pilot:'Piloto manual'},id:guideId,guide_number:'1234',guide_date:'2026-10-26',quantity:5,unit_code:'M3',truck_arrival_at:'2026-10-26T21:30:00Z',truck_departure_at:'2026-10-26T22:10:00Z'};
   const row=loadedQueries.testBuildGuides([guide],[])[0];
+  assert.equal(row.details.truck,'0183');assert.equal(row.details.pilot,'Piloto manual');assert.equal(row.castingElement,'PILES');assert.equal(row.laboratoryApplied,true);
   assert.equal(row.truckArrivalAt,guide.truck_arrival_at); assert.equal(row.truckDepartureAt,guide.truck_departure_at);
   const legacy=loadedQueries.testBuildGuides([{...guide,truck_arrival_at:null,truck_departure_at:null}],[])[0];
   assert.equal(legacy.truckArrivalAt,null); assert.equal(legacy.truckDepartureAt,null);
-  assert.equal(queries.match(/\.select\("id, dispatch_id, guide_number, guide_date, truck_arrival_at, truck_departure_at, quantity, unit_code"\)/gu).length,2);
+  assert.equal(queries.match(/\.select\("id, dispatch_id, guide_number, guide_date, truck_arrival_at, truck_departure_at, casting_element, laboratory_applied, details, quantity, unit_code"\)/gu).length,2);
 });
 
 for (const id of ['', guideId]) {
@@ -138,3 +144,25 @@ for (const id of ['', guideId]) {
     assert.equal(f.calls[0].args.p_truck_departure_time,'03:20');
   });
 }
+
+test('guía manual permite UM vacía y exige elección del residente antes del RPC',async()=>{
+ for(const kind of ['PRODUCT','SERVICE']){const f=actionFixture();assert.equal((await f.save({},form({lineUnitCode:'',lineCatalogType:kind,laboratoryApplied:''}))).status,'success');assert.equal(f.calls[0].args.p_lines[0].unit_code,'');assert.equal(f.calls[0].args.p_laboratory_applied,false);}
+ const f=actionFixture();assert.equal((await f.save({},form({castingElement:''}))).status,'error');assert.equal(f.calls.length,0);
+});
+
+test('crear y editar conservan todos los datos manuales, sin validar proyecto o pedido contra el despacho', async () => {
+ const details={...guideDetailsModel.emptyGuideDetails(),customerName:'Cliente escrito',projectName:'Otra etiqueta de obra',workAddress:'Dirección informativa',guideDate:'2026-10-26',orderNumber:'PEDIDO-PAPEL',plant:'6015',truck:'0183',loadingTime:'18:27',pilot:'Piloto manual',operator:'Operador manual',observations:'Observaciones del residente'};
+ for(const id of ['',guideId]) {
+  const f=actionFixture();const result=await f.save({},form({guideId:id,guideDetails:JSON.stringify(details)}));
+  assert.equal(result.status,'success');assert.equal(JSON.stringify(f.calls[0].args.p_details),JSON.stringify(details));
+  assert.equal(f.calls[0].args.p_dispatch_id ?? dispatchId,dispatchId);
+ }
+});
+
+test('datos manuales malformados no guardan parcialmente ni alteran guías',async()=>{
+ const blank=guideDetailsModel.emptyGuideDetails();
+ for(const value of ['{', 'null', '[]', JSON.stringify({...blank,loadingTime:'25:00'}),JSON.stringify({...blank,pilot:42}),JSON.stringify({...blank,observations:'x'.repeat(4001)}),JSON.stringify({...blank,dispatchId:'otro'})]){
+  const f=actionFixture();assert.equal((await f.save({},form({guideDetails:value}))).status,'error');assert.equal(f.calls.length,0);assert.equal(f.paths.length,0);
+ }
+ const f=actionFixture();assert.equal((await f.save({},form({guideDetails:JSON.stringify(blank)}))).status,'success');
+});

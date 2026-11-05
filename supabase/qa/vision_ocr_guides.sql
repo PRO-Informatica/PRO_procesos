@@ -26,8 +26,8 @@ begin
  dispatch:=public.start_dispatch(program,'2026-11-04T13:05:00Z','QA OCR');
  execute 'reset role';
  version:=1;
- payload:=jsonb_build_object('guide_number','QA-OCR-known','guide_date',day,'arrival','23:10','departure','03:20',
-   'details',jsonb_build_object('projectName','Reviewed project','workAddress','Reviewed address','orderNumber','DIFFERENT-ORDER-ALLOWED'),
+ payload:=jsonb_build_object('casting_element','COLUMNS','laboratory_applied',false,'guide_number','QA-OCR-known','guide_date',day,'arrival','23:10','departure','03:20',
+   'identity_checks','[]'::jsonb,'parser_version','mixto-v2','details',jsonb_build_object('projectName','Reviewed project','workAddress','Reviewed address','orderNumber','DIFFERENT-ORDER-ALLOWED'),
    'lines',jsonb_build_array(jsonb_build_object('catalog_type','PRODUCT','catalog_item_id',product,'quantity',7,'unit_code','M3','unit_price',999999)));
  insert into public.guide_ocr_captures(project_id,dispatch_id,created_by,status,original_path,original_name,original_mime,original_size,original_sha256,
    extraction,review_payload,review_hash) values(project,dispatch,actor,'EXTRACTED','qa/'||gen_random_uuid(),'qa.jpg','image/jpeg',100,repeat('a',64),'{}',payload,'approved') returning id into capture;
@@ -46,6 +46,8 @@ begin
  if (select count(*) from public.guide_documents where guide_id=guide)<>1 then raise exception 'QA_ORIGINAL_DOCUMENT_LINK_FAILED';end if;
  if (select (truck_departure_at at time zone 'America/Guatemala')::date from public.dispatch_guides where id=guide)<>day+1 then raise exception 'QA_OVERNIGHT_FAILED';end if;
  if (select order_number from public.dispatches where id=dispatch)='DIFFERENT-ORDER-ALLOWED' then raise exception 'QA_ORDER_WAS_MUTATED';end if;
+ if not exists(select 1 from public.audit_events where entity_id=guide and action='DISPATCH_GUIDE_OCR_REVIEWED'
+   and new_values->'identity_checks'='[]'::jsonb and new_values->>'parser_version'='mixto-v2') then raise exception 'QA_IDENTITY_AUDIT_POLICY';end if;
  -- Unknown service code is saved with a NULL price, zero product volume.
  lines:=jsonb_build_array(jsonb_build_object('catalog_type','SERVICE','catalog_item_id',null,'quantity',1,'unit_code','UN','product_code','QA-UNKNOWN-'||gen_random_uuid(),'product_description','Manual transcription'));
  payload:=jsonb_set(payload,'{lines}',lines)||jsonb_build_object('guide_number','QA-OCR-service-only');

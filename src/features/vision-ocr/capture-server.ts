@@ -7,7 +7,7 @@ import { getPublicEnvironment } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { hasValidSameOrigin } from "@/lib/http/same-origin";
-import { emptyGuideDetails, guideIdentity, matchGuideCatalog, normalizeGuideDate, normalizeGuideTime, validateOcrReview, type GuideOcrDraft } from "./guide-draft";
+import { emptyGuideDetails, matchGuideCatalog, normalizeGuideDate, normalizeGuideTime, validateOcrReview, type GuideOcrDraft } from "./guide-draft";
 import { extractDocumentText, VisionOcrError } from "./service";
 import { hasValidImageSignature, isAllowedVisionImageType } from "./vision-ocr";
 
@@ -21,7 +21,7 @@ type Capture = {
   id: string; project_id: string; dispatch_id: string; created_by: string;
   original_name: string; original_mime: string; original_size: number; original_path: string;
   original_sha256: string | null; status: string; guide_id: string | null;
-  expires_at: string; extraction: (GuideOcrDraft & { catalogDraft?: GuideOcrDraft }) | null; raw_text: string | null;
+  expires_at: string; extraction: (GuideOcrDraft & { catalogDraft?: GuideOcrDraft; imageRotation?: number }) | null; raw_text: string | null;
   review_payload: { details?: GuideOcrDraft["details"] } | null;
   prepared_upload: { documentId: string; versionId: string; bucket: string; path: string } | null;
   evidence_attached_at: string | null;
@@ -109,7 +109,7 @@ export async function prepareCapture(context: Context, input: { fileName: string
 
 export async function extractCapture(context: Context, id: string, image: File, adjustments: unknown, manual = false) {
   const capture = await ownedCapture(context, id);
-  if (capture.status === "EXTRACTED") return { captureId: id, draft: capture.extraction?.catalogDraft ?? capture.extraction, rawText: capture.raw_text, identity: guideIdentity(context.project, capture.extraction!.details), project: context.project };
+  if (capture.status === "EXTRACTED") return { captureId: id, draft: capture.extraction?.catalogDraft ?? capture.extraction, rawText: capture.raw_text, project: context.project, imageRotation: capture.extraction?.imageRotation ?? 0 };
   if (context.dispatch.status !== "IN_EXECUTION" || capture.status !== "PREPARED") throw new CaptureError("La captura está procesándose o ya se guardó.", 409);
   if (image.size > 3 * 1024 * 1024) throw new CaptureError("El recorte debe pesar menos de 3 MiB.", 413);
   const lock = await context.admin.from("guide_ocr_captures").update({ status: "PROCESSING" }).eq("id", id).eq("status", "PREPARED").select("id");
@@ -119,15 +119,15 @@ export async function extractCapture(context: Context, id: string, image: File, 
     if (original.error || !original.data) throw new CaptureError("No se recibió la foto original. Vuelve a cargarla.");
     const bytes = new Uint8Array(await original.data.arrayBuffer());
     if (bytes.length !== capture.original_size || !hasValidImageSignature(bytes, capture.original_mime)) throw new CaptureError("La foto original no es válida.");
-    const result = manual ? { text: "", guideDraft: { guideNumber: "", arrivalTime: "", departureTime: "", details: emptyGuideDetails(), lines: [], rawTimes: { loading: "", arrival: "", departure: "" }, confidence: {}, warnings: ["Captura completada manualmente desde la fotografía. No se ejecutó Google Vision."] } as GuideOcrDraft }
+    const result = manual ? { text: "", imageRotation: 0, guideDraft: { guideNumber: "", arrivalTime: "", departureTime: "", details: emptyGuideDetails(), lines: [], rawTimes: { loading: "", arrival: "", departure: "" }, confidence: {}, warnings: ["Captura completada manualmente desde la fotografía. No se ejecutó Google Vision."] } as GuideOcrDraft }
       : await extractDocumentText(image, "DISPATCH_GUIDE", null);
-    if (!result.guideDraft) throw new CaptureError("Se detectó otro tipo de documento. Fotografía la guía de despacho.");
+    if (!result.guideDraft) throw new CaptureError("Este documento es un Pedido / Control de operación. Su lectura como guía de servicio está pendiente. Omite esta foto o página y continúa con las guías de despacho.");
     const catalog = await projectCatalog(context);
     const draft = { ...result.guideDraft, lines: result.guideDraft.lines.map((line) => matchGuideCatalog(line, catalog, context.unit)) };
     const saved = await context.admin.from("guide_ocr_captures").update({ status: "EXTRACTED", original_sha256: hash(bytes),
-      processed_sha256: hash(new Uint8Array(await image.arrayBuffer())), raw_text: result.text, extraction: { ...result.guideDraft, catalogDraft: draft }, image_adjustments: { source: manual ? "PHOTO_MANUAL" : "GOOGLE_VISION", settings: adjustments } }).eq("id", id).eq("status", "PROCESSING");
+      processed_sha256: hash(new Uint8Array(await image.arrayBuffer())), raw_text: result.text, extraction: { ...result.guideDraft, catalogDraft: draft, imageRotation: result.imageRotation }, image_adjustments: { source: manual ? "PHOTO_MANUAL" : "GOOGLE_VISION", settings: adjustments } }).eq("id", id).eq("status", "PROCESSING");
     if (saved.error) throw new CaptureError("No se pudo conservar la lectura. Intenta nuevamente.", 503);
-    return { captureId: id, draft, rawText: result.text, identity: guideIdentity(context.project, draft.details), project: context.project };
+    return { captureId: id, draft, rawText: result.text, project: context.project, imageRotation: result.imageRotation };
   } catch (error) {
     await context.admin.from("guide_ocr_captures").update({ status: "PREPARED" }).eq("id", id).eq("status", "PROCESSING");
     if (error instanceof VisionOcrError) throw new CaptureError(error.publicMessage, error.status);
@@ -142,8 +142,8 @@ export async function saveCapture(context: Context, id: string, input: unknown, 
     const validation = validateOcrReview(input);
     if (validation) throw new CaptureError(validation);
     const draft = input as GuideOcrDraft;
-    const identity = guideIdentity(context.project, draft.details);
-    if (!identity.matches) throw new CaptureError(identity.message);
+    // Read project/address/order values are reviewable source data. The active
+    // project and dispatch are enforced by captureContext and ownedCapture.
     const catalog = await projectCatalog(context);
     const lines = draft.lines.map((line) => {
       const match = matchGuideCatalog(line, catalog, context.unit);
@@ -153,8 +153,8 @@ export async function saveCapture(context: Context, id: string, input: unknown, 
       return { quantity: Number(line.quantity), unit_code: line.unit, catalog_type: line.type, catalog_item_id: selection?.id ?? null,
         product_code: line.productCode.trim(), product_description: line.description.trim() || null };
     });
-    const payload = { guide_number: draft.guideNumber.trim(), guide_date: normalizeGuideDate(draft.details.guideDate), arrival: draft.arrivalTime, departure: draft.departureTime,
-      details: { ...draft.details, loadingTime: draft.details.loadingTime ? normalizeGuideTime(draft.details.loadingTime) : "" }, lines, identity };
+    const payload = { casting_element: draft.resident!.castingElement, laboratory_applied: draft.resident!.laboratoryApplied, guide_number: draft.guideNumber.trim(), guide_date: normalizeGuideDate(draft.details.guideDate), arrival: draft.arrivalTime, departure: draft.departureTime,
+      details: { ...draft.details, loadingTime: draft.details.loadingTime ? normalizeGuideTime(draft.details.loadingTime) : "" }, lines, identity_checks: [], parser_version: "mixto-v2" };
     reviewHash = hash(JSON.stringify(payload));
     const approval = await context.admin.from("guide_ocr_captures").update({ review_payload: payload, review_hash: reviewHash }).eq("id", id).eq("status", "EXTRACTED").is("guide_id", null).select("id");
     if (approval.error || !approval.data?.length) throw new CaptureError("Recarga la captura antes de guardar.", 409);

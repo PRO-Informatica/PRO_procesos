@@ -156,7 +156,7 @@ test("el formulario envía identidad de catálogo y no permite código libre", (
   assert.match(dispatchActions, /catalog_item_id:/u);
 });
 
-test("cantidad y UM continúan siendo obligatorias en cada línea de guía", () => {
+test("cantidad sigue obligatoria; UM puede quedar vacía y una UM indicada debe ser válida", () => {
   const base = {
     line_id: null,
     quantity: 12.5,
@@ -166,7 +166,8 @@ test("cantidad y UM continúan siendo obligatorias en cada línea de guía", () 
     product_description: null,
   };
   assert.match(validateDispatchGuideLines([{ ...base, quantity: 0 }]), /cantidad/u);
-  assert.match(validateDispatchGuideLines([{ ...base, unit_code: "" }]), /UM/u);
+  assert.equal(validateDispatchGuideLines([{ ...base, unit_code: "" }]), null);
+  assert.match(validateDispatchGuideLines([{ ...base, unit_code: "ma" }]), /UM/u);
 });
 
 test("la migración persiste etiquetas opcionales como NULL sin relajar cantidad ni UM", () => {

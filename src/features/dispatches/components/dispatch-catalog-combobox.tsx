@@ -100,7 +100,7 @@ export function DispatchCatalogCombobox({
             }
           }}
           className="form-input dispatch-catalog-input min-w-0 disabled:bg-muted" />
-        {selectedId && !open && <Check aria-hidden="true" className="pointer-events-none absolute right-3 top-3.5 size-4 text-emerald-600" />}
+        {selectedId && !open && <Check aria-hidden="true" className="pointer-events-none absolute right-3 top-3.5 size-4 text-success" />}
       </div>
       {open && !disabled && (
         <div className="mt-1 overflow-hidden rounded-xl border border-border bg-surface shadow-lg">

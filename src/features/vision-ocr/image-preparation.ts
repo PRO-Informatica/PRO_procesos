@@ -1,17 +1,8 @@
-export type Point = { x: number; y: number };
-export type GuideCrop = [Point, Point, Point, Point]; // TL, TR, BR, BL, relative to rotated image
-export const FULL_GUIDE_CROP: GuideCrop = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
+import { validGuideCrop, type GuideCrop, type Point } from "./image-geometry.ts";
+import { chooseGuideContrast, detectGuideBoundary, detectGuideOrientation } from "./automatic-image.ts";
+export { FULL_GUIDE_CROP, validGuideCrop, type GuideCrop, type Point } from "./image-geometry.ts";
 export type ImageQuality = { width: number; height: number; contrast: number; sharpness: number; warnings: string[] };
-
-export function validGuideCrop(points: GuideCrop) {
-  if (points.length !== 4 || points.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1)) return false;
-  const crosses = points.map((p, i) => {
-    const q = points[(i + 1) % 4], r = points[(i + 2) % 4];
-    return (q.x - p.x) * (r.y - q.y) - (q.y - p.y) * (r.x - q.x);
-  });
-  const area = Math.abs(points.reduce((sum, p, i) => sum + p.x * points[(i + 1) % 4].y - p.y * points[(i + 1) % 4].x, 0)) / 2;
-  return crosses.every((c) => c > 0.0001) && area > 0.06;
-}
+export type PreparedGuideImage = { file: File; quality: ImageQuality; preview: string; enhanced: boolean };
 
 export function imageQuality(data: Uint8ClampedArray, width: number, height: number, sourceWidth = width, sourceHeight = height): ImageQuality {
   const gray = new Float32Array(width * height);
@@ -50,6 +41,26 @@ export async function rotatedGuideImage(file: File, turns: number): Promise<HTML
   } finally { bitmap.close(); }
 }
 
+export function automaticGuideCrop(source: HTMLCanvasElement) {
+  const sample = document.createElement("canvas");
+  const scale = Math.min(1, 600 / Math.max(source.width, source.height));
+  sample.width = Math.max(1, Math.round(source.width * scale));
+  sample.height = Math.max(1, Math.round(source.height * scale));
+  const ctx = sample.getContext("2d");
+  if (!ctx) throw Error("No se pudo analizar la foto.");
+  ctx.drawImage(source, 0, 0, sample.width, sample.height);
+  return detectGuideBoundary(ctx.getImageData(0, 0, sample.width, sample.height).data, sample.width, sample.height);
+}
+
+export function automaticGuideOrientation(source: HTMLCanvasElement) {
+  const sample = document.createElement("canvas");
+  const scale = Math.min(1, 600 / Math.max(source.width, source.height));
+  sample.width = Math.max(1, Math.round(source.width * scale)); sample.height = Math.max(1, Math.round(source.height * scale));
+  const ctx = sample.getContext("2d"); if (!ctx) return 0;
+  ctx.drawImage(source, 0, 0, sample.width, sample.height);
+  return detectGuideOrientation(ctx.getImageData(0, 0, sample.width, sample.height).data, sample.width, sample.height);
+}
+
 // Unit square -> selected quadrilateral. Projective mapping corrects perspective;
 // bilinear sampling avoids erasing thin handwriting with a binary threshold.
 function projective(crop: GuideCrop) {
@@ -65,7 +76,7 @@ function projective(crop: GuideCrop) {
   };
 }
 
-export async function prepareGuideImage(source: HTMLCanvasElement, crop: GuideCrop, enhance: boolean) {
+export async function prepareGuideImage(source: HTMLCanvasElement, crop: GuideCrop, enhance: boolean | "auto") {
   if (!validGuideCrop(crop)) throw Error("Marca las cuatro esquinas en orden, sin cruzarlas, incluyendo toda la guía.");
   const distance = (a: Point, b: Point) => Math.hypot((b.x - a.x) * source.width, (b.y - a.y) * source.height);
   const rawWidth = Math.max(distance(crop[0], crop[1]), distance(crop[3], crop[2]));
@@ -85,11 +96,6 @@ export async function prepareGuideImage(source: HTMLCanvasElement, crop: GuideCr
     const i2 = (Math.min(y0 + 1, source.height - 1) * source.width + x0) * 4, i3 = (Math.min(y0 + 1, source.height - 1) * source.width + Math.min(x0 + 1, source.width - 1)) * 4;
     const out = (y * width + x) * 4;
     for (let c = 0; c < 3; c++) output.data[out + c] = input[i0 + c] * (1 - fx) * (1 - fy) + input[i1 + c] * fx * (1 - fy) + input[i2 + c] * (1 - fx) * fy + input[i3 + c] * fx * fy;
-    if (enhance) {
-      const gray = output.data[out] * 0.299 + output.data[out + 1] * 0.587 + output.data[out + 2] * 0.114;
-      const value = Math.min(255, Math.max(0, (gray - 128) * 1.12 + 132));
-      output.data[out] = value; output.data[out + 1] = value; output.data[out + 2] = value;
-    }
     output.data[out + 3] = 255;
   }
   ctx.putImageData(output, 0, 0);
@@ -97,7 +103,18 @@ export async function prepareGuideImage(source: HTMLCanvasElement, crop: GuideCr
   sample.width = Math.min(600, width); sample.height = Math.max(1, Math.round(height * sample.width / width));
   sample.getContext("2d")!.drawImage(canvas, 0, 0, sample.width, sample.height);
   const quality = imageQuality(sample.getContext("2d")!.getImageData(0, 0, sample.width, sample.height).data, sample.width, sample.height, width, height);
+  // Assess the unfiltered raster. Enhancement cannot hide a quality warning.
+  const choice = chooseGuideContrast(sample.getContext("2d")!.getImageData(0, 0, sample.width, sample.height).data);
+  const enhanced = enhance === "auto" ? choice.apply : enhance;
+  if (enhanced) {
+    const gain = enhance === "auto" ? choice.gain : 1.12;
+    for (let i = 0; i < output.data.length; i += 4) for (let c = 0; c < 3; c++) {
+      // Soft contrast only: no binary threshold or removal of colored ink.
+      output.data[i + c] = Math.max(0, 255 - (255 - output.data[i + c]) * gain);
+    }
+    ctx.putImageData(output, 0, 0);
+  }
   const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(Error("No se pudo preparar la imagen.")), "image/jpeg", 0.9));
   if (blob.size > 3 * 1024 * 1024) throw Error("El recorte supera 3 MiB. Reduce el área de fondo y vuelve a intentar.");
-  return { file: new File([blob], "guia-lectura.jpg", { type: "image/jpeg" }), quality, preview: URL.createObjectURL(blob) };
+  return { file: new File([blob], "guia-lectura.jpg", { type: "image/jpeg" }), quality, preview: URL.createObjectURL(blob), enhanced };
 }

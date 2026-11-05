@@ -52,6 +52,9 @@ type DispatchRow = {
   updated_at: string;
 };
 type GuideRow = {
+  details: DispatchGuide["details"];
+  casting_element: "COLUMNS" | "PILES" | null;
+  laboratory_applied: boolean;
   id: string;
   dispatch_id: string;
   guide_number: string;
@@ -68,7 +71,7 @@ type LineRow = {
   product_code: string | null;
   product_description: string | null;
   quantity: number | string;
-  unit_code: string;
+  unit_code: string | null;
   catalog_type: "PRODUCT" | "SERVICE" | null;
   product_price_id: string | null;
   service_price_id: string | null;
@@ -137,7 +140,7 @@ function buildGuides(guides: GuideRow[], lines: LineRow[]) {
       productCode: line.product_code,
       productDescription: line.product_description,
       quantity: numberValue(line.quantity),
-      unitCode: line.unit_code,
+      unitCode: line.unit_code ?? "",
       catalogType: line.catalog_type,
       catalogItemId:
         line.catalog_type === "PRODUCT"
@@ -165,6 +168,8 @@ function buildGuides(guides: GuideRow[], lines: LineRow[]) {
       guideDate: guide.guide_date,
       truckArrivalAt: guide.truck_arrival_at,
       truckDepartureAt: guide.truck_departure_at,
+      castingElement: guide.casting_element, laboratoryApplied: guide.laboratory_applied,
+      details: guide.details ?? {},
       quantity: numberValue(guide.quantity),
       unitCode: guide.unit_code,
       productCount: guideLines.filter((line) => line.catalogType !== "SERVICE").length,
@@ -251,7 +256,7 @@ export async function getDispatchPageData(
     dispatchIds.length
       ? supabase
           .from("dispatch_guides")
-          .select("id, dispatch_id, guide_number, guide_date, truck_arrival_at, truck_departure_at, quantity, unit_code")
+          .select("id, dispatch_id, guide_number, guide_date, truck_arrival_at, truck_departure_at, casting_element, laboratory_applied, details, quantity, unit_code")
           .eq("project_id", projectId)
           .in("dispatch_id", dispatchIds)
           .order("guide_date")
@@ -412,7 +417,7 @@ export async function getDispatchDetail(
       supabase.from("suppliers").select("id, name").eq("id", dispatch.supplier_id).maybeSingle(),
       supabase
         .from("dispatch_guides")
-        .select("id, dispatch_id, guide_number, guide_date, truck_arrival_at, truck_departure_at, quantity, unit_code")
+        .select("id, dispatch_id, guide_number, guide_date, truck_arrival_at, truck_departure_at, casting_element, laboratory_applied, details, quantity, unit_code")
         .eq("project_id", projectId)
         .eq("dispatch_id", dispatchId)
         .order("guide_date"),

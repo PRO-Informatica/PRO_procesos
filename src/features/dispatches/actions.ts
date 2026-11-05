@@ -17,6 +17,7 @@ import type {
 } from "./types";
 import { validateDispatchGuideLines, validateGuideTruckTimes } from "./validation";
 import { getDispatchStartLocalDateTime } from "./registration";
+import { emptyGuideDetails, validateGuideDetails } from "./guide-details";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -82,6 +83,10 @@ function localToIso(value: string, timezone: string) {
 
 function dispatchError(message: string) {
   const value = message.toUpperCase();
+  if (value.includes("GUIDE_RESIDENT_SELECTION_REQUIRED"))
+    return "Selecciona el elemento a fundir y revisa si se aplicó laboratorio.";
+  if (value.includes("GUIDE_DETAILS_INVALID"))
+    return "Revisa los datos de la guía, su longitud y la hora de carga.";
   if (value.includes("GUIDE_DATE_REQUIRED"))
     return "Registra una fecha válida para la guía.";
   if (value.includes("GUIDE_TRUCK_TIMES_REQUIRED"))
@@ -363,6 +368,14 @@ export async function saveDispatchGuideAction(
     return { status: "error", message: "Recarga el despacho antes de guardar la guía." };
   if (!guideNumber)
     return { status: "error", message: "Ingresa el número de guía." };
+  const castingElement = text(formData, "castingElement");
+  if (!["COLUMNS", "PILES"].includes(castingElement)) return { status: "error", message: "Selecciona el elemento a fundir." };
+  const laboratoryApplied = formData.get("laboratoryApplied") === "on";
+  let details: unknown;
+  try { details = JSON.parse(text(formData, "guideDetails") || JSON.stringify(emptyGuideDetails())); }
+  catch { return { status: "error", message: "Revisa los campos de la guía." }; }
+  const detailsError = validateGuideDetails(details);
+  if (detailsError) return { status: "error", message: detailsError };
   const truckArrivalTime = text(formData, "truckArrivalTime");
   const truckDepartureTime = text(formData, "truckDepartureTime");
   const timesError = validateGuideTruckTimes(truckArrivalTime, truckDepartureTime);
@@ -374,6 +387,8 @@ export async function saveDispatchGuideAction(
   const supabase = await createClient();
   const params = {
     p_expected_version: expectedVersion,
+    p_casting_element: castingElement, p_laboratory_applied: laboratoryApplied,
+    p_details: details,
     p_guide_number: guideNumber,
     p_guide_date: text(formData, "guideDate"),
     p_truck_arrival_time: truckArrivalTime,
@@ -381,11 +396,11 @@ export async function saveDispatchGuideAction(
     p_lines: lines,
   };
   const response = guideId
-    ? await supabase.rpc("update_dispatch_guide_with_lines", {
+    ? await supabase.rpc("update_dispatch_guide_with_details", {
         ...params,
         p_guide_id: guideId,
       })
-    : await supabase.rpc("create_dispatch_guide_with_lines", {
+    : await supabase.rpc("create_dispatch_guide_with_details", {
         ...params,
         p_dispatch_id: dispatchId,
       });
