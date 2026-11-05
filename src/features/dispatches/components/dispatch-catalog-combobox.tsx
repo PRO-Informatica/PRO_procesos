@@ -46,7 +46,7 @@ export function DispatchCatalogCombobox({
             ? { key, items: response.items }
             : { key, items: [], error: response.message });
         } catch {
-          if (active) setResult({ key, items: [], error: "No se pudo consultar el catálogo. Vuelve a escribir para intentarlo." });
+          if (active) setResult({ key, items: [], error: "No se pudo consultar la cotización. Vuelve a escribir para intentarlo." });
         }
       });
     }, 250);
@@ -115,7 +115,7 @@ export function DispatchCatalogCombobox({
             : loading ? <p role="status" className="flex items-center gap-2 p-3 text-sm text-foreground-muted"><LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> Buscando…</p>
             : current?.error ? <p role="alert" className="p-3 text-sm text-destructive">{current.error}</p>
             : items.length === 0 ? <p role="status" className="p-3 text-sm text-foreground-muted">Sin coincidencias. Prueba otro código o descripción.</p> : null}
-          <div id={listId} ref={listRef} role="listbox" aria-label="Coincidencias del catálogo" aria-busy={loading}
+          <div id={listId} ref={listRef} role="listbox" aria-label="Coincidencias de la cotización" aria-busy={loading}
             className="relative max-h-[min(20rem,40dvh)] overflow-y-auto overscroll-contain divide-y divide-border">
             {!loading && items.map((item, index) => (
               <button key={`${item.type}:${item.id}`} id={`${listId}-${index}`} type="button" role="option"

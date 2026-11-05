@@ -66,7 +66,7 @@ const check=String.raw`(async()=>{
  const uprightPreview=afterBitmap.width===beforeDimensions[1]&&afterBitmap.height===beforeDimensions[0];afterBitmap.close();
  const populated=document.getElementById('guide-number').value==='7145427'&&document.getElementById('guide-date').value==='2026-10-29'&&document.getElementById('guide-truck-arrival').value==='23:22'&&document.getElementById('guide-truck-departure').value==='03:20'&&document.getElementById('ocr-truck').value==='0186';
  const unknownPreserved=[...document.querySelectorAll('input')].some(i=>i.value==='UNKNOWN')&&document.body.textContent.includes('Precio pendiente');
- const variants=document.querySelector('[aria-label="Variantes del catálogo"]');if(!variants)throw Error('No variants');variants.querySelectorAll('button')[1].click();await pause(100);
+ const variants=document.querySelector('[aria-label="Variantes de la cotización"]');if(!variants)throw Error('No variants');variants.querySelectorAll('button')[1].click();await pause(100);
  const selectedVariant=[...document.querySelectorAll('[name="lineCatalogItemId"]')][2].value.endsWith('000003');
  const observationsNotCopied=[...document.querySelectorAll('[name="lineProductDescription"]')][2].value==='Bomba'&&document.getElementById('ocr-observations').value==='Observación manuscrita';
  const emptyResident=document.getElementById('guide-casting-element').value===''&&!document.getElementById('guide-laboratory-applied').checked;

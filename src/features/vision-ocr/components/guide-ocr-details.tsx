@@ -11,7 +11,7 @@ import { formatDispatchMoney } from "@/features/dispatches/formatters";
 // the guide description or the guide's own handwritten observations field.
 export function GuideOcrVariants({ items, disabled, onSelect }: { items: DispatchCatalogOption[]; disabled: boolean; onSelect: (item: DispatchCatalogOption) => void }) {
   if (items.length < 2) return null;
-  return <div className="space-y-2" aria-label="Variantes del catálogo">{items.map((item) => <button type="button" key={item.id} disabled={disabled} className="block min-h-11 w-full rounded-lg border border-amber-300 bg-surface p-3 text-left text-sm text-foreground" onClick={() => onSelect(item)}>{item.code} · {item.description || item.reference} · {item.observations || "Sin observaciones"} · {item.unitCode || "Sin UM"} · {formatDispatchMoney(item.price, item.currency)}</button>)}</div>;
+  return <div className="space-y-2" aria-label="Variantes de la cotización">{items.map((item) => <button type="button" key={item.id} disabled={disabled} className="block min-h-11 w-full rounded-lg border border-amber-300 bg-surface p-3 text-left text-sm text-foreground" onClick={() => onSelect(item)}>{item.code} · {item.description || item.reference} · {item.observations || "Sin observaciones"} · {item.unitCode || "Sin UM"} · {formatDispatchMoney(item.price, item.currency)}</button>)}</div>;
 }
 
 export function SavedGuideOcrDetails({ projectId, dispatchId, guideId }: { projectId: string; dispatchId: string; guideId: string }) {

@@ -122,11 +122,11 @@ export function ImportPriceCatalogDialog({
     <>
       <Button onClick={() => setOpen(true)}>
         <Upload aria-hidden="true" className="size-4" />
-        Importar catálogo Excel
+        Importar cotización Excel
       </Button>
       {open && (
         <Dialog
-          title={`Importar catálogo de ${label}`}
+          title={`Importar cotización de ${label}`}
           description="El archivo se valida primero; ningún dato se guarda hasta confirmar."
           icon={FileSpreadsheet}
           onClose={close}
@@ -161,7 +161,7 @@ export function ImportPriceCatalogDialog({
               </p>
               {catalogKind === "SERVICE" && (
                 <p className="mt-1 text-xs text-foreground-muted">
-                  El código puede repetirse con observaciones distintas. Actualizar modifica la descripción, UM y precio del mismo código y observaciones. Las observaciones solo aparecen en el catálogo y selector, no en la guía.
+                  El código puede repetirse con observaciones distintas. Actualizar modifica la descripción, UM y precio del mismo código y observaciones. Las observaciones solo aparecen en la cotización y el selector, no en la guía.
                 </p>
               )}
             </div>
@@ -216,11 +216,11 @@ export function ImportPriceCatalogDialog({
                     <legend className="px-2 text-sm font-semibold">Modalidad de importación</legend>
                     <label className="flex cursor-pointer items-start gap-3 rounded-lg p-3 hover:bg-muted">
                       <input type="radio" name={`mode-${catalogKind}`} checked={mode === "UPDATE"} onChange={() => setMode("UPDATE")} />
-                      <span><strong>Actualizar catálogo</strong><span className="mt-1 block text-sm text-foreground-muted">Actualiza coincidencias, agrega registros nuevos y conserva los que no aparecen.</span></span>
+                      <span><strong>Actualizar cotización</strong><span className="mt-1 block text-sm text-foreground-muted">Actualiza coincidencias, agrega registros nuevos y conserva los que no aparecen.</span></span>
                     </label>
                     <label className="flex cursor-pointer items-start gap-3 rounded-lg p-3 hover:bg-muted">
                       <input type="radio" name={`mode-${catalogKind}`} checked={mode === "REPLACE"} onChange={() => setMode("REPLACE")} />
-                      <span><strong>Reemplazar catálogo</strong><span className="mt-1 block text-sm text-foreground-muted">Sustituye todo este catálogo de forma atómica. El otro catálogo no cambia.</span></span>
+                      <span><strong>Reemplazar cotización</strong><span className="mt-1 block text-sm text-foreground-muted">Sustituye todos los registros de esta cotización. La otra cotización no cambia.</span></span>
                     </label>
                   </fieldset>
                 )}

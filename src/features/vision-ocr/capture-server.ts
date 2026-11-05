@@ -66,7 +66,7 @@ export async function projectCatalog(context: Context): Promise<DispatchCatalogO
       for (const raw of result.data ?? []) {
         const row = raw as unknown as Record<string, unknown>;
         const price = Number(row.price);
-        if (!Number.isFinite(price) || price < 0) throw new CaptureError("Hay precios inválidos en el catálogo.", 503);
+        if (!Number.isFinite(price) || price < 0) throw new CaptureError("Hay precios inválidos en la cotización.", 503);
         items.push({ id: String(row.id), type, code: String(row.code), price, currency: "GTQ",
           reference: typeof row.reference === "string" ? row.reference : null,
           description: typeof row.description === "string" ? row.description : null,
@@ -75,7 +75,7 @@ export async function projectCatalog(context: Context): Promise<DispatchCatalogO
       }
       if ((result.data?.length ?? 0) < 1000) return items;
     }
-    throw new CaptureError("El catálogo supera el límite de esta versión. Consulta al administrador.", 503);
+    throw new CaptureError("La cotización supera el límite de esta versión. Consulta al administrador.", 503);
   }));
   return results.flat();
 }
@@ -149,7 +149,7 @@ export async function saveCapture(context: Context, id: string, input: unknown, 
       const match = matchGuideCatalog(line, catalog, context.unit);
       const selection = line.catalogItemId ? match.candidates.find((item) => item.id === line.catalogItemId && item.type === line.type) : undefined;
       if (match.candidates.length && !selection) throw new CaptureError(`Selecciona la variante de ${line.productCode} antes de guardar.`);
-      if (line.catalogItemId && !selection) throw new CaptureError("La selección de catálogo cambió o pertenece a otro proyecto.");
+      if (line.catalogItemId && !selection) throw new CaptureError("La selección de la cotización cambió o pertenece a otro proyecto.");
       return { quantity: Number(line.quantity), unit_code: line.unit, catalog_type: line.type, catalog_item_id: selection?.id ?? null,
         product_code: line.productCode.trim(), product_description: line.description.trim() || null };
     });
@@ -164,8 +164,8 @@ export async function saveCapture(context: Context, id: string, input: unknown, 
     const message = saved.error.message;
     throw new CaptureError(message.includes("VERSION_CONFLICT") ? "El despacho cambió. Cierra y vuelve a abrir la guía antes de guardar."
       : message.includes("NUMBER_ALREADY_EXISTS") ? "Este número de guía ya está registrado en el despacho."
-      : message.includes("VARIANT_REQUIRED") ? "El código ya está en el catálogo. Selecciona su variante."
-      : message.includes("UNIT_MISMATCH") ? "Revisa la UM de las líneas contra su catálogo y programación."
+      : message.includes("VARIANT_REQUIRED") ? "El código ya está en la cotización. Selecciona su variante."
+      : message.includes("UNIT_MISMATCH") ? "Revisa la UM de las líneas contra su cotización y programación."
       : "No se pudo guardar la guía. Revisa sus campos e intenta nuevamente.", 409);
   }
   const result = saved.data as { guide_id: string; dispatch_version: number; upload: NonNullable<Capture["prepared_upload"]> };

@@ -164,6 +164,20 @@ export function DispatchGuideDialog({
         }))
       : [initialLine(programmedUnitCode, defaultProductDescription ?? "", defaultCatalogProduct)],
   );
+  const [confirmClose, setConfirmClose] = useState(false);
+  const editSnapshot = JSON.stringify({ guideNumber, guideDate, truckArrivalTime, truckDepartureTime, castingElement, laboratoryApplied, details, lines });
+  const [initialEditSnapshot] = useState(editSnapshot);
+  const hasUnsavedChanges = Boolean(guide && !readOnly && editSnapshot !== initialEditSnapshot);
+  const removedLineCount = guide?.lines.filter((savedLine) => !lines.some((line) => line.lineId === savedLine.id)).length ?? 0;
+  const requestClose = () => {
+    if (hasUnsavedChanges) setConfirmClose(true);
+    else onClose();
+  };
+  const beforeClose = () => {
+    if (confirmClose) { setConfirmClose(false); return false; }
+    if (hasUnsavedChanges) { setConfirmClose(true); return false; }
+    return true;
+  };
   const [state, action, pending] = useActionState(async (previous: DispatchMutationState, data: FormData) => {
     let result: DispatchMutationState;
     if (capture && details && !guide && ocrEnabled) {
@@ -278,13 +292,14 @@ export function DispatchGuideDialog({
               {!readOnly && <button type="button" onClick={addLine} disabled={locked} className="secondary-button guide-add-desktop min-h-11 gap-2"><Plus aria-hidden="true" className="size-4" /> Agregar producto / servicio</button>}
             </div>
             {serviceCount > 0 && productCount === 0 && <p role="status" className="text-xs text-foreground-muted">Guía de servicios: sus cantidades no suman volumen de concreto.</p>}
+            {removedLineCount > 0 && <p role="status" className="rounded-lg bg-muted px-3 py-2 text-sm text-foreground">{removedLineCount === 1 ? "Una línea se eliminará" : `${removedLineCount} líneas se eliminarán`} al guardar la guía. Pulsa Guardar guía para confirmar.</p>}
             {lines.length === 0 && <p className="rounded-xl border border-dashed border-border p-5 text-sm text-foreground-muted" role="status">Sin líneas. Agrega un producto o servicio para continuar.</p>}
             <GuideLinesList count={lines.length}>{lines.map((line, index) => {
               const parsedQuantity = Number(line.quantity);
               const subtotal = line.unitPrice === null || !Number.isFinite(parsedQuantity) ? null : line.unitPrice * parsedQuantity;
               const selectionLabel = line.catalogType === "PRODUCT"
                 ? `${line.productCode}${line.catalogReference ? ` · ${line.catalogReference}` : ""}`
-                : line.productCode || (line.lineId ? "Línea histórica sin catálogo" : "");
+                : line.productCode || (line.lineId ? "Línea histórica sin cotización" : "");
               const kind = line.catalogType === "PRODUCT" ? "Producto" : line.catalogType === "SERVICE" ? "Servicio" : "Producto o servicio";
               return (
                 <article key={line.key} className="min-w-0 rounded-xl border border-border bg-surface shadow-sm" aria-labelledby={`line-title-${line.key}`}>
@@ -293,7 +308,7 @@ export function DispatchGuideDialog({
                     {!readOnly && <IconButton label={`Eliminar línea ${index + 1}`} disabled={locked} onClick={() => { setOcrReviewed(false); setLines((current) => current.filter((item) => item.key !== line.key)); }} tone="destructive"><Trash2 aria-hidden="true" className="size-4" /></IconButton>}
                   </div>
                   {capture && !line.catalogItemId && <div className="space-y-3 border-b border-border bg-amber-50 p-3 text-amber-950 sm:px-4">
-                    <p role="status" className="text-sm">{line.ocrWarning || "Sin selección de catálogo: precio pendiente. Si el código tiene variantes, selecciona una en el buscador."}</p>
+                    <p role="status" className="text-sm">{line.ocrWarning || "Sin precio seleccionado en la cotización: precio pendiente. Si el código tiene variantes, selecciona una en el buscador."}</p>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div><label className="form-label" htmlFor={`ocr-type-${line.key}`}>Confirmar tipo *</label><select id={`ocr-type-${line.key}`} className="form-input bg-surface text-foreground" required value={line.catalogType} disabled={locked} onChange={(event) => update(line.key, "catalogType", event.target.value)}><option value="">Selecciona</option><option value="PRODUCT">Producto</option><option value="SERVICE">Servicio</option></select></div>
                       <div><label className="form-label" htmlFor={`ocr-code-${line.key}`}>Código leído *</label><input id={`ocr-code-${line.key}`} className="form-input bg-surface text-foreground" maxLength={120} required value={line.productCode} disabled={locked} onChange={(event) => update(line.key, "productCode", event.target.value)} /></div>
@@ -312,7 +327,7 @@ export function DispatchGuideDialog({
                       <div className="min-w-0 lg:order-2"><label className="form-label" htmlFor={`line-unit-${line.key}`}>UM</label><select id={`line-unit-${line.key}`} title={line.unitCode || "Sin unidad de medida"} value={line.unitCode} onChange={(event) => update(line.key, "unitCode", event.target.value)} disabled={locked} className="form-input min-w-0 disabled:bg-muted"><option value="">—</option>{Array.from(new Set([...(line.catalogType === "SERVICE" ? SERVICE_UNIT_CODES : units.map((unit) => unit.code)), ...(line.unitCode ? [line.unitCode] : [])])).map((code) => <option key={code} value={code}>{code}</option>)}</select></div>
                     </div>
                     <div className="min-w-0 lg:order-4"><label className="form-label" htmlFor={`line-description-${line.key}`}>{line.catalogType === "PRODUCT" ? "Referencia" : "Descripción"}</label><textarea id={`line-description-${line.key}`} rows={2} maxLength={500} value={line.productDescription} title={line.productDescription || undefined} onChange={(event) => update(line.key, "productDescription", event.target.value)} disabled={locked || (line.catalogType !== "SERVICE" && !(capture && !line.catalogItemId))} placeholder="Se completa al seleccionar" className="form-input min-w-0 resize-y disabled:bg-muted" /></div>
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-sm sm:col-span-2 lg:order-5 lg:col-span-1 lg:flex-col lg:items-start lg:justify-start lg:gap-1 lg:border-t-0 lg:pt-0"><p className="text-xs text-foreground-muted lg:order-2">{line.unitPrice !== null && line.currency ? `${formatDispatchMoney(line.unitPrice, line.currency)} c/u` : capture && line.productCode ? "Precio pendiente de catálogo" : "Selecciona un registro del catálogo"}</p><p className="font-semibold lg:order-1"><span className="lg:hidden">Estimado: </span><span className="hidden text-sm font-medium lg:mb-2 lg:block">Estimado</span>{subtotal === null || !line.currency ? "No disponible" : formatDispatchMoney(subtotal, line.currency)}</p></div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-sm sm:col-span-2 lg:order-5 lg:col-span-1 lg:flex-col lg:items-start lg:justify-start lg:gap-1 lg:border-t-0 lg:pt-0"><p className="text-xs text-foreground-muted lg:order-2">{line.unitPrice !== null && line.currency ? `${formatDispatchMoney(line.unitPrice, line.currency)} c/u` : capture && line.productCode ? "Precio pendiente de cotización" : "Selecciona un registro de la cotización"}</p><p className="font-semibold lg:order-1"><span className="lg:hidden">Estimado: </span><span className="hidden text-sm font-medium lg:mb-2 lg:block">Estimado</span>{subtotal === null || !line.currency ? "No disponible" : formatDispatchMoney(subtotal, line.currency)}</p></div>
                   </div>
                 </article>
               );
@@ -322,8 +337,15 @@ export function DispatchGuideDialog({
   );
 
   return (
-    <Dialog title={guide ? (readOnly ? "Ver guía" : "Editar guía") : "Agregar guía"} description="Registra los horarios del camión y cada producto o servicio de esta guía." icon={PackageOpen} onClose={onClose} pending={pending || photoBusy} size="xl">
-      <form className="dispatch-guide-form" onSubmit={(event) => {
+    <Dialog title={confirmClose ? "¿Descartar los cambios?" : guide ? (readOnly ? "Ver guía" : "Editar guía") : "Agregar guía"} description={confirmClose ? "La guía tiene cambios sin guardar." : "Registra los horarios del camión y cada producto o servicio de esta guía."} icon={PackageOpen} onClose={onClose} onBeforeClose={beforeClose} pending={pending || photoBusy} size={confirmClose ? "sm" : "xl"}>
+      {confirmClose && <>
+        <p className="p-5 text-sm leading-6 text-foreground-muted sm:p-6">Para conservar la eliminación y los demás cambios, vuelve al formulario y pulsa Guardar guía. Si descartas los cambios, la guía conservará sus datos anteriores.</p>
+        <DialogFooter>
+          <Button autoFocus variant="secondary" onClick={() => setConfirmClose(false)}>Seguir editando</Button>
+          <Button variant="destructive" onClick={onClose}>Descartar cambios</Button>
+        </DialogFooter>
+      </>}
+      <form hidden={confirmClose} className="dispatch-guide-form" onSubmit={(event) => {
         event.preventDefault();
         if (photoSelected && !capture) return;
         // Retain every controlled field when the action returns a validation
@@ -354,7 +376,7 @@ export function DispatchGuideDialog({
           {state.status === "error" && <p role="alert" className="rounded-lg bg-destructive-soft px-4 py-3 text-sm text-destructive">{state.message}</p>}
           {capture && <label className="flex min-h-11 items-start gap-3 rounded-xl border border-border p-4 text-sm"><input type="checkbox" className="mt-0.5 size-4 shrink-0" checked={ocrReviewed} disabled={pending || photoBusy || Boolean(photoRetryGuide)} onChange={(event) => setOcrReviewed(event.target.checked)} />Revisé la foto y los datos extraídos, incluidos los horarios y todas las líneas. Confirmo los datos corregidos antes de guardar.</label>}
         </div>
-        <DialogFooter><Button variant="secondary" onClick={onClose} disabled={pending || photoBusy}>{readOnly ? "Cerrar" : "Cancelar"}</Button>{!readOnly && (!photoSelected || capture) && <LoadingButton loading={pending} loadingLabel="Guardando…" disabled={photoBusy || (photoSelected && !capture) || lines.length === 0 || (!capture && lines.some((line) => !line.catalogItemId && !line.lineId)) || Boolean(capture && !ocrReviewed)}>{photoRetryGuide ? "Reintentar foto" : capture ? "Guardar y escanear otra" : "Guardar guía"}</LoadingButton>}</DialogFooter>
+        <DialogFooter><Button variant="secondary" onClick={requestClose} disabled={pending || photoBusy}>{readOnly ? "Cerrar" : "Cancelar"}</Button>{!readOnly && (!photoSelected || capture) && <LoadingButton loading={pending} loadingLabel="Guardando…" disabled={photoBusy || (photoSelected && !capture) || lines.length === 0 || (!capture && lines.some((line) => !line.catalogItemId && !line.lineId)) || Boolean(capture && !ocrReviewed)}>{photoRetryGuide ? "Reintentar foto" : capture ? "Guardar y escanear otra" : "Guardar guía"}</LoadingButton>}</DialogFooter>
       </form>
     </Dialog>
   );

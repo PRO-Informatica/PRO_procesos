@@ -120,13 +120,13 @@ function dispatchError(message: string) {
   if (value.includes("DISPATCH_PROGRAMMING_UNIT_MISMATCH"))
     return "Las líneas de producto deben usar la misma UM de la programación.";
   if (value.includes("DISPATCH_SERVICE_UNIT_MISMATCH"))
-    return "La UM debe coincidir con la unidad de medida del servicio seleccionado en el catálogo.";
+    return "La UM debe coincidir con la unidad de medida del servicio seleccionado en la cotización.";
   if (value.includes("DISPATCH_CATALOG_SELECTION_REQUIRED"))
-    return "Selecciona un producto o servicio del catálogo en cada línea nueva.";
+    return "Selecciona un producto o servicio de la cotización en cada línea nueva.";
   if (value.includes("DISPATCH_CATALOG_ITEM_NOT_FOUND"))
-    return "El producto o servicio seleccionado ya no está disponible en el catálogo de este proyecto.";
+    return "El producto o servicio seleccionado ya no está disponible en la cotización de este proyecto.";
   if (value.includes("DISPATCH_CATALOG_TYPE_INVALID"))
-    return "Selecciona una categoría de catálogo válida.";
+    return "Selecciona una categoría de cotización válida.";
   if (value.includes("INVALID_OR_INACTIVE_UNIT_OF_MEASURE"))
     return "Selecciona una UM válida para el producto o servicio.";
   if (value.includes("NOT_DISPATCHED_INCIDENT_REQUIRED"))
@@ -308,10 +308,10 @@ export async function searchDispatchCatalogAction(
   query: string,
 ): Promise<DispatchCatalogSearchResult> {
   if (!validId(projectId) || !["ALL", "PRODUCT", "SERVICE"].includes(catalogType) || typeof query !== "string") {
-    return { status: "error", message: "La búsqueda del catálogo no es válida.", items: [] };
+    return { status: "error", message: "La búsqueda en la cotización no es válida.", items: [] };
   }
   if (!(await authorize(projectId, "dispatch.view"))) {
-    return { status: "error", message: "No tienes permiso para consultar este catálogo.", items: [] };
+    return { status: "error", message: "No tienes permiso para consultar esta cotización.", items: [] };
   }
 
   const supabase = await createClient();
@@ -460,7 +460,7 @@ export async function completeDispatchAction(
   const expectedVersion = version(formData);
   if (!validId(projectId) || !validId(dispatchId) || expectedVersion === null)
     return { status: "error", message: "Recarga el despacho antes de finalizar." };
-  if (!(await authorize(projectId, "dispatch.modify")))
+  if (!(await authorize(projectId, "dispatch.complete")))
     return { status: "error", message: "No tienes permiso para finalizar el despacho." };
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("complete_dispatch", {
@@ -482,7 +482,7 @@ export async function finalizeDispatchAction(
   const expectedVersion = version(formData);
   if (!validId(projectId) || !validId(dispatchId) || expectedVersion === null)
     return { status: "error", message: "Recarga el despacho antes de finalizar." };
-  const auth = await authorize(projectId, "dispatch.modify");
+  const auth = await authorize(projectId, "dispatch.complete");
   if (!auth)
     return { status: "error", message: "No tienes permiso para finalizar el despacho." };
 

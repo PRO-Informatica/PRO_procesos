@@ -61,7 +61,7 @@ export function matchGuideCatalog(line: OcrDraftLine, catalog: DispatchCatalogOp
     type: candidates.length && candidates.every((item) => item.type === candidates[0].type) ? candidates[0].type
       : code.startsWith("SERV") ? "SERVICE" : line.type,
     warning: candidates.length ? "El código tiene varias opciones. Selecciona la variante según sus observaciones; no se ha elegido precio."
-      : "Código fuera del catálogo del proyecto. Puedes guardar la guía con precio pendiente.",
+      : "Código fuera de la cotización del proyecto. Puedes guardar la guía con precio pendiente.",
   };
   const item = candidates[0];
   return { ...line, productCode: code, type: item.type, catalogItemId: item.id, candidates,

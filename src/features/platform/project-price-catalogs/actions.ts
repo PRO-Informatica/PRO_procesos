@@ -64,10 +64,10 @@ export async function previewProjectPriceCatalogAction(
   const catalogKind = readCatalogKind(formData);
   const file = readFile(formData);
   if (!catalogKind || !file) {
-    return { status: "error", message: "Selecciona el catálogo y un archivo Excel válido." };
+    return { status: "error", message: "Selecciona la cotización y un archivo Excel válido." };
   }
   if (!(await authorizeAndValidateProject(companyId, projectId))) {
-    return { status: "error", message: "No tienes autorización para administrar este catálogo." };
+    return { status: "error", message: "No tienes autorización para administrar esta cotización." };
   }
 
   try {
@@ -95,7 +95,7 @@ export async function importProjectPriceCatalogAction(
 
   const supabase = await authorizeAndValidateProject(companyId, projectId);
   if (!supabase) {
-    return { status: "error", message: "No tienes autorización para administrar este catálogo." };
+    return { status: "error", message: "No tienes autorización para administrar esta cotización." };
   }
 
   try {
@@ -133,7 +133,7 @@ export async function importProjectPriceCatalogAction(
     revalidatePath(`/platform/companies/${companyId}`);
     return {
       status: "success",
-      message: mode === "REPLACE" ? "Catálogo reemplazado correctamente." : "Catálogo actualizado correctamente.",
+      message: mode === "REPLACE" ? "Cotización reemplazada correctamente." : "Cotización actualizada correctamente.",
       insertedCount,
       updatedCount,
       totalCount,
@@ -141,11 +141,11 @@ export async function importProjectPriceCatalogAction(
   } catch (error) {
     const message = error instanceof Error ? error.message.toUpperCase() : "";
     if (message.includes("PERMISSION_DENIED")) {
-      return { status: "error", message: "No tienes autorización para administrar este catálogo." };
+      return { status: "error", message: "No tienes autorización para administrar esta cotización." };
     }
     if (message.includes("PROJECT_NOT_FOUND")) {
       return { status: "error", message: "El proyecto ya no existe o no pertenece a esta empresa." };
     }
-    return { status: "error", message: "No fue posible importar el catálogo. No se guardó ningún cambio." };
+    return { status: "error", message: "No fue posible importar la cotización. No se guardó ningún cambio." };
   }
 }

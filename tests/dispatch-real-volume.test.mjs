@@ -18,7 +18,7 @@ function guide(quantity, index = 0) {
 
 // Render the actual component with persistent hook state, as on router.refresh().
 // Only UI/navigation boundaries are stubbed; volume logic and handlers are real.
-function fixture(overrides = {}, permissions = { canModify: true }) {
+function fixture(overrides = {}, permissions = { canModify: true, canComplete: true }) {
   let detail = {
     id: "dispatch", programmingId: "programming", programmingCode: "PRG-TEST", version: 1,
     programmingScheduledAt: "2026-10-23T19:00:00Z", status: "IN_EXECUTION", result: "DISPATCHED",
@@ -99,6 +99,20 @@ test("precarga el total actual y mantiene el campo editable", () => {
   assert.equal(f.input().props.disabled, false);
   assert.equal(f.input().props.readOnly, undefined);
   assert.equal(f.input().props.step, "0.001");
+});
+
+test("Supervisor conserva guías y evidencias sin mostrar finalización ni su modal", () => {
+  const supervisor = fixture({}, { canModify: true, canComplete: false, canRegisterIncident: true });
+  assert.equal(supervisor.input().props.disabled, false);
+  assert.ok(supervisor.find(node => node.type === "button" && node.props.children?.includes?.(" Agregar guía")));
+  assert.ok(supervisor.find(node => node.type === "DocumentUploader"));
+  assert.ok(supervisor.find(node => node.type === "LoadingButton" && node.props.children === "Guardar cambios"));
+  assert.equal(supervisor.find(node => node.type === "Button" && node.props.variant === "success"), undefined);
+  assert.equal(supervisor.find(node => node.type === "Dialog" && node.props.title === "¿Finalizar despacho?"), undefined);
+  const resident = fixture();
+  assert.ok(resident.find(node => node.type === "Button" && node.props.variant === "success"));
+  const completed = fixture({ status: "COMPLETED" });
+  assert.equal(completed.find(node => node.type === "Button" && node.props.variant === "success"), undefined);
 });
 
 test("la llegada inicia con el valor guardado, admite corrección y se envía al guardar y finalizar", () => {

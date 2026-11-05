@@ -194,6 +194,7 @@ export type DispatchDetail = {
 export type DispatchPermissions = {
   canCreate: boolean;
   canModify: boolean;
+  canComplete: boolean;
   canManageBatch: boolean;
   canRegisterIncident: boolean;
 };

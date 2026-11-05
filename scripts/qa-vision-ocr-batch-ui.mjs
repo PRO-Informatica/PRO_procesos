@@ -84,7 +84,7 @@ const check=String.raw`(async()=>{
  button('Aceptar foto y extraer datos').click();await wait(()=>document.getElementById('ocr-projectName'));
  const populated=document.getElementById('guide-number').value==='7145427'&&document.getElementById('guide-date').value==='2026-10-29'&&document.getElementById('guide-truck-arrival').value==='23:22'&&document.getElementById('guide-truck-departure').value==='03:20'&&document.getElementById('ocr-truck').value==='0186';
  const unknownPreserved=[...document.querySelectorAll('input')].some(i=>i.value==='UNKNOWN')&&document.body.textContent.includes('Precio pendiente');
- const variants=document.querySelector('[aria-label="Variantes del catálogo"]');if(!variants)throw Error('No variants');variants.querySelectorAll('button')[1].click();await pause(100);
+ const variants=document.querySelector('[aria-label="Variantes de la cotización"]');if(!variants)throw Error('No variants');variants.querySelectorAll('button')[1].click();await pause(100);
  const selectedVariant=[...document.querySelectorAll('[name="lineCatalogItemId"]')][2].value.endsWith('000003');
  const observationsNotCopied=[...document.querySelectorAll('[name="lineProductDescription"]')][2].value==='Bomba'&&document.getElementById('ocr-observations').value==='Observación manuscrita';
  const consistentClocks=['ocr-loadingTime','guide-truck-arrival','guide-truck-departure'].every(id=>document.getElementById(id)?.type==='time');
@@ -116,7 +116,7 @@ const check=String.raw`(async()=>{
  await extractActive();await wait(()=>document.getElementById('guide-number')?.value==='7145428');
  const emptyReview=!document.querySelector('button[type="submit"]').disabled;
  const residentReset=document.getElementById('guide-casting-element').value===''&&!document.getElementById('guide-laboratory-applied').checked;await chooseResident();
- const secondVariants=document.querySelector('[aria-label="Variantes del catálogo"]');secondVariants.querySelectorAll('button')[1].click();
+ const secondVariants=document.querySelector('[aria-label="Variantes de la cotización"]');secondVariants.querySelectorAll('button')[1].click();
  [...document.querySelectorAll('label')].find(l=>l.textContent.includes('Confirmo los datos corregidos')).querySelector('input').click();await pause(100);document.querySelector('button[type="submit"]').click();await wait(()=>window.saves.length===3&&!document.getElementById('ocr-projectName'));
  const versionAdvanced=window.saves[2].expectedVersion===3&&window.saves[2].captureId!==window.saves[1].captureId;
  window.deferNext=true;await extractActive();await wait(()=>document.body.textContent.includes('Control de operación pendiente'));

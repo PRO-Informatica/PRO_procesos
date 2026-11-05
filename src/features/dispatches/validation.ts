@@ -85,7 +85,7 @@ export function validateDispatchGuideLines(lines: DispatchGuideLineInput[]) {
       return !line.catalog_item_id && !line.line_id;
     })
   ) {
-    return "Selecciona un producto o servicio del catálogo en cada línea nueva.";
+    return "Selecciona un producto o servicio de la cotización en cada línea nueva.";
   }
 
   return null;

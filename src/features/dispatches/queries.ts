@@ -295,7 +295,7 @@ export async function getDispatchPageData(
     : { data: [], error: null };
   assertNoError(
     catalogMatchesResult.error,
-    "No fue posible relacionar el tipo de concreto con el catálogo.",
+    "No fue posible relacionar el tipo de concreto con la cotización.",
   );
   const catalogProductsByReference = new Map<string, CatalogProductRow[]>();
   for (const row of (catalogMatchesResult.data ?? []) as CatalogProductRow[]) {
@@ -460,7 +460,7 @@ export async function getDispatchDetail(
     : { data: [], error: null };
   assertNoError(
     defaultCatalogResult.error,
-    "No fue posible relacionar el tipo de concreto con el catálogo.",
+    "No fue posible relacionar el tipo de concreto con la cotización.",
   );
   const guideRows = (guidesResult.data ?? []) as GuideRow[];
   const guideIds = guideRows.map((row) => row.id);
