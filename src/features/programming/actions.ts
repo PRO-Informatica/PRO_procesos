@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { normalizeCastingElement } from "@/features/dispatches/casting-elements";
 
 import { requireActiveProfile } from "@/features/auth/queries";
 import { getProjectContext } from "@/features/projects/queries";
@@ -718,6 +719,7 @@ export async function createProgrammingBatchAction(
       scheduled_at: scheduledAt,
       order_number: row.orderNumber,
       delivery_modes: row.deliveryModes,
+      casting_element: normalizeCastingElement(row.placementElement),
       lines: [{ quantity, unit_code: m3Unit.code, concrete_type: row.concreteType }],
       notes: submitted.notes?.trim() || row.notes || null,
     });

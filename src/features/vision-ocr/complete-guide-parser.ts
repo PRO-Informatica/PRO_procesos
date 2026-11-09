@@ -79,11 +79,11 @@ export function orientedGuideWords(response: GoogleVisionResponse): Word[] {
   });
 }
 
-function findLabels(words: Word[]) {
+export function findGuideLabels(words: Word[], aliases: Record<string, string[]> = LABELS) {
   const labels: Label[] = [];
   for (const first of words) {
-    for (const [name, aliases] of Object.entries(LABELS)) {
-      for (const alias of aliases) {
+    for (const [name, options] of Object.entries(aliases)) {
+      for (const alias of options) {
         const parts = alias.split(" ");
         if (normalizeOcrText(first.text) !== parts[0]) continue;
         const matched = [first];
@@ -107,7 +107,7 @@ function findLabels(words: Word[]) {
 
 export function parseCompleteGuide(response: GoogleVisionResponse): GuideOcrDraft {
   let words = orientedGuideWords(response);
-  let labels = findLabels(words);
+  let labels = findGuideLabels(words);
   const warnings: string[] = [];
   const headers = labels.filter((l) => l.name === "guide");
   // Multiple sheets in one photo are unsafe to silently merge.
@@ -116,7 +116,7 @@ export function parseCompleteGuide(response: GoogleVisionResponse): GuideOcrDraf
     const main = [...headers].sort((a, b) => (b.right - b.x) - (a.right - a.x))[0];
     const next = headers.filter((h) => h.y > main.y + 0.04).sort((a, b) => a.y - b.y)[0];
     words = words.filter((w) => centerY(w) >= main.y - 0.04 && centerY(w) < (next?.y ?? 1));
-    labels = findLabels(words);
+    labels = findGuideLabels(words);
   }
   // Ignore the operations form/background before and after the primary guide.
   const guideTop = labels.find((l) => l.name === "guide")?.y;

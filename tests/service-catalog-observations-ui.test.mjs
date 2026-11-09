@@ -1,3 +1,4 @@
+import * as castingElements from '../src/features/dispatches/casting-elements.ts';
 import * as guideDetailsModel from "../src/features/dispatches/guide-details.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -41,6 +42,7 @@ const service = { id: "service-one", type: "SERVICE", code: "86180185", referenc
   description: "Dosis extra de retardante", observations: "Una dosis", unitCode: "M3", price: 10.92, currency: "GTQ" };
 const otherService = { ...service, id: "service-two", observations: "Doble dosis", price: 21.84 };
 const shared = {
+  "../casting-elements":castingElements,
   "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "Fragment" },
   "lucide-react": {}, "@/components/ui/button": { Button: "Button" },
   "@/components/ui/dialog": { Dialog: "Dialog", DialogFooter: "DialogFooter" },

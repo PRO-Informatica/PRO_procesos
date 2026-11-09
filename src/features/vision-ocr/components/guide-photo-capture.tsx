@@ -6,12 +6,15 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { automaticGuideCrop, automaticGuideOrientation, FULL_GUIDE_CROP, prepareGuideImage, rotatedGuideImage, validGuideCrop, type GuideCrop, type PreparedGuideImage } from "../image-preparation";
 import type { GuideOcrDraft } from "../guide-draft";
+import { isVisionTemplateType, VISION_TEMPLATE_LABELS, type VisionTemplateType } from "../template-classifier";
 import { GuideImagePreview } from "./guide-image-preview";
 import { GuidePagePicker } from "./guide-page-picker";
+import { GuideBulkScan } from "./guide-bulk-scan";
 import { countGuidePdfPages, GUIDE_BATCH_MAX_BYTES, GUIDE_QUEUE_LIMIT, guideSourceLabel, renderGuidePdfPage, validateGuideSource, type GuideSource } from "../guide-sources";
 
 export type GuidePhotoResult = {
   captureId: string; draft: GuideOcrDraft; rawText: string; imageRotation?: number;
+  variants?: Record<VisionTemplateType, GuideOcrDraft>;
   project: { name: string; code: string; address: string; additionalAddresses: string[] };
 };
 export function guideCaptureUrl(projectId: string, dispatchId: string) {
@@ -37,6 +40,8 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
   useEffect(() => { callbacks.current = { onReset, onBusy }; }, [onReset, onBusy]);
   const [sources, setSources] = useState<GuideSource[]>([]);
   const [pageChoices, setPageChoices] = useState<GuideSource[]>([]);
+  const [bulkSources, setBulkSources] = useState<GuideSource[]>([]);
+  const bulkRef = useRef<GuidePhotoCaptureHandle>(null);
   const [savedCount, setSavedCount] = useState(0), [skippedCount, setSkippedCount] = useState(0);
   const current = sources[0];
   const [file, setFile] = useState<File | null>(null);
@@ -47,6 +52,9 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
   const [acceptQuality, setAcceptQuality] = useState(false), [busy, setBusy] = useState(false);
   const [error, setError] = useState(""), [stage, setStage] = useState("");
   const [read, setRead] = useState(false);
+  const [reading, setReading] = useState<GuidePhotoResult | null>(null);
+  const [documentType, setDocumentType] = useState<VisionTemplateType>("DISPATCH_GUIDE");
+  const [typeConfirmed, setTypeConfirmed] = useState(false);
   const url = guideCaptureUrl(projectId, dispatchId);
   const working = disabled || busy;
   useEffect(() => () => { selection.current++; }, []);
@@ -56,16 +64,19 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
     captureRef.current = null;
   };
   const resetImage = () => {
+    setReading(null); setDocumentType("DISPATCH_GUIDE"); setTypeConfirmed(false);
     canvasRef.current = null; setFile(null); setSourceUrl(""); setTurns(0); setCrop(FULL_GUIDE_CROP);
     setPrepared(null); setCropMode("full"); setAcceptQuality(false); setRead(false); setError(""); setStage("");
   };
   useImperativeHandle(ref, () => ({ saved() {
+    if (bulkSources.length) { bulkRef.current?.saved(); return; }
     // Called only after guide + evidence succeeded, including an idempotent
     // retry. Never discard the saved capture or advance on a failed save.
     captureRef.current = null; resetImage();
     setSavedCount((count) => count + 1); setSources((items) => items.slice(1));
     onReset(sources.length > 1);
   }, focusPending() {
+    if (bulkSources.length) return bulkRef.current?.focusPending() ?? false;
     if (!current) return false;
     headingRef.current?.focus({ preventScroll: true });
     headingRef.current?.scrollIntoView({ block: "start" });
@@ -179,7 +190,7 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
       }
       setStage("Leyendo con Google Vision…");
       const data = new FormData(); data.set("captureId", captureRef.current!); data.set("image", prepared.file); data.set("manual", "false");
-      data.set("adjustments", JSON.stringify({ turns: (automaticTurns.current + turns) % 4, crop, cropMode, enhance: prepared.enhanced, preparationVersion: "automatic-v2", quality: prepared.quality, parserVersion: "mixto-v3", ...(current?.pageNumber ? { pdf: { fileName: current.file.name.slice(0, 200), pageNumber: current.pageNumber, totalPages: current.totalPages } } : {}) }));
+      data.set("adjustments", JSON.stringify({ turns: (automaticTurns.current + turns) % 4, crop, cropMode, enhance: prepared.enhanced, preparationVersion: "automatic-v2", quality: prepared.quality, parserVersion: "guides-controls-v3", ...(current?.pageNumber ? { pdf: { fileName: current.file.name.slice(0, 200), pageNumber: current.pageNumber, totalPages: current.totalPages } } : {}) }));
       const result = await readResponse(await fetch(url, { method: "POST", body: data })) as GuidePhotoResult;
       // Vision already read sideways/upside-down text. Rotate the review photo
       // using that same result, keeping the exact OCR input/hash unchanged.
@@ -190,16 +201,18 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
           if (blob) setPrepared({ ...prepared, preview: URL.createObjectURL(blob) });
         } catch { /* A preview failure must never discard a successful OCR read. */ }
       }
-      onRead(result); setRead(true);
+      setReading(result);
+      setDocumentType(isVisionTemplateType(result.draft.details.documentType) ? result.draft.details.documentType : "DISPATCH_GUIDE");
+      setTypeConfirmed(false); setRead(true);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo leer la guía."); }
     finally { setBusy(false); onBusy(false); setStage(""); }
   };
   return <section className="min-w-0 space-y-3 rounded-xl border border-border bg-muted/20 p-3 sm:p-4" aria-labelledby="guide-photo-heading">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h3 ref={headingRef} tabIndex={-1} id="guide-photo-heading" className="font-semibold">Cargar guías con OCR · DEV</h3><p className="mt-1 text-xs text-foreground-muted">Revisa y guarda una guía por vez, con todos sus productos y servicios.</p></div>
-      <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={working || pageChoices.length > 0 || Boolean(current)} onClick={() => cameraInput.current?.click()}><Camera className="size-4" />Tomar foto</Button><Button variant="secondary" disabled={working || pageChoices.length > 0 || Boolean(current)} onClick={() => fileInput.current?.click()}><FileImage className="size-4" />Subir fotos</Button><Button variant="secondary" disabled={working || pageChoices.length > 0 || Boolean(current)} onClick={() => pdfInput.current?.click()}><FileText className="size-4" />Subir PDF</Button></div>
+      <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={working || bulkSources.length > 0 || pageChoices.length > 0 || Boolean(current)} onClick={() => cameraInput.current?.click()}><Camera className="size-4" />Tomar foto</Button><Button variant="secondary" disabled={working || bulkSources.length > 0 || pageChoices.length > 0 || Boolean(current)} onClick={() => fileInput.current?.click()}><FileImage className="size-4" />Subir fotos</Button><Button variant="secondary" disabled={working || bulkSources.length > 0 || pageChoices.length > 0 || Boolean(current)} onClick={() => pdfInput.current?.click()}><FileText className="size-4" />Subir PDF</Button></div>
     </div>
-    <details className="text-xs text-foreground-muted"><summary className="cursor-pointer py-2">Formatos y límites</summary><p>Hasta 20 fotos o páginas pendientes. Fotos JPG, PNG o WEBP de hasta 10 MiB; PDF de hasta 20 MiB y 20 páginas, con una guía por página. Se conserva la foto original o cada página completa como imagen de evidencia al guardar. Los formatos Pedido / Control de operación de Mixto Listo y Panexus quedan pendientes.</p></details>
+    <details className="text-xs text-foreground-muted"><summary className="cursor-pointer py-2">Formatos y límites</summary><p>Hasta 20 fotos o páginas pendientes. Fotos JPG, PNG o WEBP de hasta 10 MiB; PDF de hasta 20 MiB y 20 páginas, con un documento por página. Puedes incluir guías de despacho y pedidos de control de Mixto Listo o Panexus. Se conserva la foto original o cada página completa como evidencia al guardar.</p></details>
     <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" aria-label="Elegir foto de guía" disabled={working} onChange={(event) => { void addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
     <input ref={pdfInput} type="file" accept="application/pdf,.pdf" className="sr-only" aria-label="Elegir PDF de guías" disabled={working} onChange={(event) => { void addFiles(Array.from(event.target.files ?? []), true); event.target.value = ""; }} />
     <input ref={cameraInput} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="sr-only" aria-label="Tomar foto de guía" disabled={working} onChange={(event) => { void addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
@@ -211,8 +224,11 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
     </ol>}
     {pageChoices.length > 0 && <GuidePagePicker sources={pageChoices} disabled={working} onAccept={(selected) => {
       setSources((items) => [...items, ...selected]); setPageChoices([]);
-    }} onCancel={() => { setPageChoices([]); if (!current) onReset(false); }} />}
-    {(savedCount > 0 || skippedCount > 0) && <p role="status" className="text-sm text-foreground-muted">{savedCount} guardada(s) · {skippedCount} omitida(s) · {sources.length} pendiente(s)</p>}
+    }} onCancel={() => { setPageChoices([]); if (!current) onReset(false); }} onBulkScan={(pages) => {
+      resetImage(); setPageChoices([]); setBulkSources(pages); onReset(true);
+    }} />}
+    {bulkSources.length > 0 && <GuideBulkScan ref={bulkRef} sources={bulkSources} url={url} disabled={disabled} onRead={onRead} onReset={onReset} onBusy={onBusy} onDone={() => { setBulkSources([]); onReset(false); }} />}
+    {bulkSources.length === 0 && (savedCount > 0 || skippedCount > 0) && <p role="status" className="text-sm text-foreground-muted">{savedCount} guardada(s) · {skippedCount} omitida(s) · {sources.length} pendiente(s)</p>}
     {current && pageChoices.length === 0 && <div className="min-w-0 space-y-2 rounded-lg border border-border bg-surface p-3">
       <p className="break-words text-sm font-semibold" role="status">Revisando: {guideSourceLabel(current)}</p>
       <p className="text-xs leading-5 text-foreground-muted">{sources.length} guía(s) en cola. Acepta la imagen, revisa sus datos y guarda para pasar a la siguiente.</p>
@@ -250,7 +266,20 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
       <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={working} onClick={() => { setPrepared(null); setAcceptQuality(false); }}>Ajustar imagen</Button><Button disabled={working || (prepared.quality.warnings.length > 0 && !acceptQuality)} onClick={() => void extract()}><ScanLine className="size-4" />Aceptar foto y extraer datos</Button></div>
     </>}
     {stage && <p role="status" className="flex items-center gap-2 text-sm"><LoaderCircle className="size-4 animate-spin" />{stage}</p>}
-    {read && <p role="status" className="text-sm text-success">Lectura lista. Revisa la guía, corrige los campos y confirma antes de guardar.</p>}
+    {reading && !typeConfirmed && <section className="space-y-3 rounded-xl border border-border bg-surface p-4" aria-labelledby="guide-type-heading">
+      <h4 id="guide-type-heading" className="font-semibold">Confirma el tipo de documento</h4>
+      <p className="text-sm text-foreground-muted">Seleccionamos el formato detectado. Si no corresponde a la foto, cámbialo antes de continuar.</p>
+      <label className="form-label" htmlFor="detected-guide-type">Tipo de documento</label>
+      <select id="detected-guide-type" className="form-input" disabled={working} value={documentType} onChange={(event) => setDocumentType(event.target.value as VisionTemplateType)}>
+        {Object.entries(VISION_TEMPLATE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+      </select>
+      <Button disabled={working} onClick={() => {
+        const draft = reading.variants?.[documentType] ?? reading.draft;
+        onRead({ ...reading, draft: { ...draft, details: { ...draft.details, documentType } } }); setTypeConfirmed(true);
+      }}>Continuar con {VISION_TEMPLATE_LABELS[documentType]}</Button>
+    </section>}
+    {read && typeConfirmed && <p role="status" className="text-sm text-success">Lectura lista. Revisa la guía, corrige los campos y confirma antes de guardar.</p>}
+    {read && typeConfirmed && <Button variant="secondary" disabled={working} onClick={() => { onReset(true); setTypeConfirmed(false); }}>Cambiar tipo de documento</Button>}
     {error && <p role="alert" className="break-words rounded-lg bg-destructive-soft p-3 text-sm text-destructive">{error}</p>}
   </section>;
 });

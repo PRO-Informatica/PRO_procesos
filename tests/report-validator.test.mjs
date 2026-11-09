@@ -5,10 +5,11 @@ import {runInNewContext} from 'node:vm';
 import ts from 'typescript';
 import ExcelJS from 'exceljs';
 import {REPORT_TABLE_HEADER_ROW,setupReportSheet} from '../src/features/reports/workbook-header.ts';
+import {guideReportMetadata} from '../src/features/reports/guide-metadata.ts';
 import {reportDispatchProcessStatus} from '../src/features/reports/presentation.ts';
 
 const root=new URL('../',import.meta.url);
-const [querySource,routeSource,viewSource]=await Promise.all(['src/features/reports/queries.ts','src/app/(dashboard)/reports/export/route.ts','src/features/reports/components/guide-report.tsx'].map(f=>readFile(new URL(f,root),'utf8')));
+const [querySource,routeSource,cardSource]=await Promise.all(['src/features/reports/queries.ts','src/app/(dashboard)/reports/export/route.ts','src/features/reports/components/dispatch-report-card.tsx'].map(f=>readFile(new URL(f,root),'utf8')));
 function load(source,imports){const exports={};const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;runInNewContext(compiled,{exports,require(name){assert.ok(Object.hasOwn(imports,name),name);return imports[name];},Date,Intl,Response});return exports;}
 const projects=[{id:'project-a',name:'ADO',code:'ADO-PRO',companyName:'Empresa',timezone:'America/Guatemala',billingLegalName:'Cliente'}];
 const base={project_id:'project-a',supplier_id:'supplier',programming_id:'program-a',status:'COMPLETED',result:'DISPATCHED',created_by:'registrar',created_at:'2026-10-27T13:00:00Z',order_number:'47',real_volume:7,real_unit_code:'M3',completed_by:'validator'};
@@ -16,7 +17,7 @@ function fixture({labelsMissing=false}={}){
  const calls=[];
  const tables={programming:[{id:'program-a',project_id:'project-a',supplier_id:'supplier',created_by:'program-creator',status:'CONFIRMED',scheduled_at:'2026-10-27T13:00:00Z',requested_quantity:7,confirmed_quantity:7,unit_code:'M3'}],dispatches:[{...base,id:'completed'},{...base,id:'open',status:'IN_EXECUTION'},{...base,id:'legacy',completed_by:null},{...base,id:'foreign',programming_id:'program-b',project_id:'project-b'}],suppliers:[{id:'supplier',name:'Mixto Listo'}]};
  const client={from(table){calls.push({table});const checks=[];const q={select(value){calls.push({table,select:value});return q;},in(key,values){checks.push(row=>values.includes(row[key]));return q;},eq(key,value){checks.push(row=>row[key]===value);return q;},gte(){return q;},lte(){return q;},order(){return q;},is(){return q;},then(resolve,reject){return Promise.resolve({data:(tables[table]??[]).filter(row=>checks.every(check=>check(row))),error:null}).then(resolve,reject);}};return q;},async rpc(name,args){calls.push({rpc:name,args});return {data:[{profile_id:'program-creator',display_label:'Creador de programación'},{profile_id:'registrar',display_label:'Registró Uno'},...(!labelsMissing?[{profile_id:'validator',display_label:'Validó Dos'}]:[]),{profile_id:'unrelated',display_label:'Otro proyecto'}],error:null};}};
- const {getGuideReport}=load(querySource,{'server-only':{},'@/lib/supabase/admin':{createAdminClient:()=>client},'@/lib/supabase/server':{createClient:async()=>client},'@/features/projects/queries':{},'@/features/projects/access-policy':{}});
+ const {getGuideReport}=load(querySource,{'server-only':{},'@/lib/supabase/admin':{createAdminClient:()=>client},'@/lib/supabase/server':{createClient:async()=>client},'@/features/projects/queries':{},'@/features/projects/access-policy':{},'./guide-metadata':{guideReportMetadata}});
  return {calls,report:()=>getGuideReport(projects,{dateFrom:'2026-10-01',dateTo:'2026-10-31'})};
 }
 test('Reportería usa completed_by, distinto al registrador, sin atribuir validación a despachos abiertos',async()=>{
@@ -53,7 +54,7 @@ test('el Excel conserva la columna Validado por y su fondo verde al guardar y re
 function nodes(node){if(!node||typeof node!=='object')return[];if(Array.isArray(node))return node.flatMap(nodes);return[node,...nodes(node.props?.children)];}
 function text(node){if(node==null||typeof node==='boolean')return'';if(typeof node!=='object')return String(node);return Array.isArray(node)?node.map(text).join(''):text(node.props?.children);}
 const jsx=(type,props)=>({type,props});
-const {testDispatchBlock}=load(viewSource+'\nexport {DispatchBlock as testDispatchBlock};',{
+const {DispatchReportCard: testDispatchBlock}=load(cardSource,{
  'react/jsx-runtime':{jsx,jsxs:jsx},'lucide-react':{},'next/link':{},'@/components/feedback/empty-state':{},'@/components/motion/motion-page':{},'@/components/motion/motion-section':{},'@/components/ui/badge':{},'@/lib/status-labels':{formatStatusLabel:value=>value??''},'@/features/programming/formatters':{programmingStatusTone:()=>''},'../filters':{},'../presentation':{reportDispatchProcessStatus},'./report-export-actions':{},'./report-results-pagination':{},'./project-scoped-report-link':{},
 });
 test('la casilla de Reportería muestra el validador con fondo verde y conserva Pendiente/No registrado',async()=>{

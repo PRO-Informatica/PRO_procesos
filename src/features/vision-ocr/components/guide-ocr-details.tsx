@@ -5,6 +5,7 @@ import { GUIDE_FIELDS, type GuideDetails, type GuideField } from "../guide-draft
 import { GuideImagePreview } from "./guide-image-preview";
 import { guideCaptureUrl } from "./guide-photo-capture";
 import type { DispatchCatalogOption } from "@/features/dispatches/types";
+import { isVisionTemplateType, VISION_TEMPLATE_LABELS } from "../template-classifier";
 import { formatDispatchMoney } from "@/features/dispatches/formatters";
 
 // Commercial observations belong to selection options only. They never become
@@ -38,7 +39,7 @@ export function SavedGuideOcrDetails({ projectId, dispatchId, guideId }: { proje
       } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo adjuntar la foto."); }
       finally { setRetrying(false); }
     }}>{retrying ? "Adjuntando…" : "Reintentar foto pendiente"}</button>}
-    <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">{Object.entries(GUIDE_FIELDS).map(([key, label]) => <div className="min-w-0" key={key}><dt className="text-foreground-muted">{label}</dt><dd className="break-words whitespace-pre-wrap">{result.details?.[key as GuideField] || "Sin dato"}</dd></div>)}</dl>
+    <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">{Object.entries(GUIDE_FIELDS).map(([key, label]) => { const value = result.details?.[key as GuideField]; return <div className="min-w-0" key={key}><dt className="text-foreground-muted">{label}</dt><dd className="break-words whitespace-pre-wrap">{key === "documentType" && isVisionTemplateType(value) ? VISION_TEMPLATE_LABELS[value] : value || "Sin dato"}</dd></div>; })}</dl>
     {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
   </details>;
 }

@@ -51,6 +51,12 @@ test('guardado deja pedido informativo, elimina precios enviados por cliente y a
  const payload=f.calls.updates.find(x=>x.review_payload).review_payload;
  assert.equal(payload.details.orderNumber,'999');assert.equal(payload.lines[0].product_code,'UNKNOWN');assert.ok(!('unitPrice'in payload.lines[0]));assert.ok(!('unit_price'in payload.lines[0]));assert.equal(payload.lines[0].catalog_item_id,null);
 });
+test('una incidencia de catálogo desactivada informa la causa y no reporta guardado exitoso',async()=>{
+ const f=fixture();
+ f.context.db.rpc=async()=>({data:null,error:{message:'GUIDE_CATALOG_INCIDENT_TYPE_INACTIVE'}});
+ await assert.rejects(f.server.saveCapture(f.context,id,f.draft,1),/tipo de incidencia.*inactivo/);
+ assert.equal(f.calls.inserts,0);assert.equal(f.calls.copies,0);
+});
 test('proyecto, dirección y pedido leídos son informativos: conserva distintos y vacíos sin bloquear',async()=>{
  for(const change of [{projectName:'Otro proyecto'},{workAddress:'1 calle 3-46 zona 1 Guatemala'},{projectName:'',workAddress:'',orderNumber:''}]){
   const f=fixture();await f.server.saveCapture(f.context,id,{...f.draft,details:{...f.draft.details,...change}},1);
@@ -75,10 +81,15 @@ test('alternativa manual guarda procedencia manual y no consume OCR',async()=>{
  const result=await f.server.extractCapture(f.context,id,new File([new Uint8Array([255,216,255,4])],'qa.jpg',{type:'image/jpeg'}),{},true);
  assert.equal(f.calls.extracts,0);assert.equal(result.draft.guideNumber,'');assert.ok(f.calls.updates.some(x=>x.image_adjustments?.source==='PHOTO_MANUAL'));
 });
-test('control de operación queda pendiente sin crear guía, asociar evidencia ni impedir omitir la captura',async()=>{
- const f=fixture({deferredOperation:true});f.capture.status='PREPARED';
- await assert.rejects(f.server.extractCapture(f.context,id,new File([new Uint8Array([255,216,255,4])],'operacion.jpg',{type:'image/jpeg'}),{}),/Control de operación.*pendiente.*Omite/);
- assert.equal(f.capture.status,'PREPARED');assert.equal(f.calls.commits,0);assert.equal(f.calls.inserts,0);assert.equal(f.calls.copies,0);
+test('controles extraídos devuelven alternativas de la misma lectura sin guardar aún guías',async()=>{
+ const f=fixture();f.capture.status='PREPARED';
+ const control={...f.draft,resident:undefined,arrivalTime:'',departureTime:'',details:{...draftModel.emptyGuideDetails(),documentType:'MIXTO_OPERATION',orderNumber:'88'},lines:[{quantity:'14',unit:'M3',type:'SERVICE',productCode:'',description:'',catalogItemId:'',candidates:[],warning:null}]};
+ const g=fixture({visionResult:{text:'PEDIDO CONTROL OPERACION',guideDraft:control,guideVariants:{MIXTO_OPERATION:control,PANEXUS_OPERATION:{...control,details:{...control.details,documentType:'PANEXUS_OPERATION'}},DISPATCH_GUIDE:control},imageRotation:3}});g.capture.status='PREPARED';
+ const result=await g.server.extractCapture(g.context,id,new File([new Uint8Array([255,216,255,4])],'operacion.jpg',{type:'image/jpeg'}),{});
+ assert.equal(result.draft.details.documentType,'MIXTO_OPERATION');assert.equal(result.draft.lines[0].quantity,'14');assert.equal(result.draft.arrivalTime,'');
+ assert.equal(result.variants.PANEXUS_OPERATION.details.documentType,'PANEXUS_OPERATION');assert.equal(g.calls.extracts,1);assert.equal(g.calls.commits,0);assert.equal(g.capture.status,'EXTRACTED');
+ const cached=await g.server.extractCapture(g.context,id,new File(['unused'],'qa.jpg',{type:'image/jpeg'}),{});
+ assert.equal(cached.variants.PANEXUS_OPERATION.details.documentType,'PANEXUS_OPERATION');assert.equal(g.calls.extracts,1);
 });
 test('reintentar una lectura conserva orientación sin repetir OCR ni transformar la evidencia original',async()=>{
  const f=fixture();f.capture.extraction={...f.draft,catalogDraft:f.draft,imageRotation:3};

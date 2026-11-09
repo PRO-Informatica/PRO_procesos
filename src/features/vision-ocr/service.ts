@@ -11,7 +11,8 @@ import {
 } from "./vision-ocr";
 import { detectVisionTemplate, parseVisionDocument } from "./document-parser";
 import type { VisionTemplateType } from "./template-classifier";
-import { guideReadingTurns, parseCompleteGuide } from "./complete-guide-parser";
+import { guideReadingTurns } from "./complete-guide-parser";
+import { parseGuideVariants } from "./control-guide-parser";
 
 export class VisionOcrError extends Error {
   constructor(
@@ -120,6 +121,7 @@ export async function extractDocumentText(
   const confirmedTemplate = detectVisionTemplate(result.text, payload);
   const templateType = confirmedTemplate ?? requestedTemplate;
   const document = parseVisionDocument(payload, templateType, curedByMixto);
+  const guideVariants = parseGuideVariants(payload);
   if (confirmedTemplate && confirmedTemplate !== requestedTemplate) {
     document.warnings.unshift("La plantilla detectada en el servidor fue distinta a la estimación local; se usó la identificación confirmada por el contenido.");
   }
@@ -128,7 +130,8 @@ export async function extractDocumentText(
     text: result.text,
     templateType,
     document,
-    guideDraft: templateType === "DISPATCH_GUIDE" ? parseCompleteGuide(payload) : null,
-    imageRotation: templateType === "DISPATCH_GUIDE" ? guideReadingTurns(payload) : 0,
+    guideDraft: guideVariants[templateType],
+    guideVariants,
+    imageRotation: guideReadingTurns(payload),
   };
 }

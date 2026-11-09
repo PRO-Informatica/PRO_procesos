@@ -13,9 +13,10 @@ import { notifications } from "@/lib/notification-messages";
 import { getPublicEnvironment } from "@/lib/env";
 import { GuidePhotoCapture, guideCaptureUrl, type GuidePhotoResult, type GuidePhotoCaptureHandle } from "@/features/vision-ocr/components/guide-photo-capture";
 import { GuideOcrVariants, SavedGuideOcrDetails } from "@/features/vision-ocr/components/guide-ocr-details";
-import { type GuideDetails, type GuideOcrDraft } from "@/features/vision-ocr/guide-draft";
+import { guideCatalogReviewWarnings, type GuideDetails, type GuideOcrDraft } from "@/features/vision-ocr/guide-draft";
 
 import { GuideOcrReview } from "@/features/vision-ocr/components/guide-ocr-review";
+import { normalizeCastingElement, type CastingElement } from "../casting-elements";
 import { emptyGuideDetails } from "../guide-details";
 
 import { saveDispatchGuideAction } from "../actions";
@@ -108,6 +109,7 @@ export function DispatchGuideDialog({
   programmedUnitCode,
   defaultProductDescription,
   defaultCatalogProduct = null,
+  defaultCastingElement = null,
   units,
   operationDate,
   timezone = "America/Guatemala",
@@ -122,6 +124,7 @@ export function DispatchGuideDialog({
   programmedUnitCode: string;
   defaultProductDescription?: string | null;
   defaultCatalogProduct?: DispatchCatalogOption | null;
+  defaultCastingElement?: CastingElement | null;
   units: DispatchUnit[];
   operationDate?: string;
   timezone?: string;
@@ -134,7 +137,7 @@ export function DispatchGuideDialog({
   const handledResult = useRef<DispatchMutationState | null>(null);
   const [savedVersion, setSavedVersion] = useState(expectedVersion);
   const [guideNumber, setGuideNumber] = useState(guide?.guideNumber ?? "");
-  const [castingElement, setCastingElement] = useState(guide?.castingElement ?? "");
+  const [castingElement, setCastingElement] = useState<string>(guide ? guide.castingElement ?? "" : normalizeCastingElement(defaultCastingElement) ?? "");
   const [laboratoryApplied, setLaboratoryApplied] = useState(guide?.laboratoryApplied ?? false);
   const [guideDate, setGuideDate] = useState(guide?.guideDate ?? operationDate ?? today());
   const [truckArrivalTime, setTruckArrivalTime] = useState(truckTime(guide?.truckArrivalAt, timezone));
@@ -196,7 +199,7 @@ export function DispatchGuideDialog({
     } else result = await saveDispatchGuideAction(previous, data);
     if (result.status === "success" && !guide) {
       if (result.newVersion !== undefined) setSavedVersion(result.newVersion);
-      setGuideNumber(""); setCastingElement(""); setLaboratoryApplied(false);
+      setGuideNumber(""); setCastingElement(normalizeCastingElement(defaultCastingElement) ?? ""); setLaboratoryApplied(false);
       setTruckArrivalTime("");
       setTruckDepartureTime("");
       setCapture(null); setDetails(emptyGuideDetails()); setPhotoSelected(false); setOcrReviewed(false); setPhotoRetryGuide(null);
@@ -226,7 +229,9 @@ export function DispatchGuideDialog({
     if (!capture) return;
     const frame = requestAnimationFrame(() => {
       guideNumberRef.current?.focus({ preventScroll: true });
-      document.getElementById("ocr-review-heading")?.scrollIntoView({ block: "center" });
+      const alerts = document.getElementById("guide-review-alerts");
+      if (alerts) alerts.scrollIntoView({ block: "start" });
+      else document.getElementById("ocr-review-heading")?.scrollIntoView({ block: "center" });
     });
     return () => cancelAnimationFrame(frame);
   }, [capture]);
@@ -263,7 +268,7 @@ export function DispatchGuideDialog({
   const locked = readOnly || pending || photoBusy || Boolean(photoRetryGuide) || (photoSelected && !capture);
   const applyCapture = (result: GuidePhotoResult) => {
     setCapture(result); setDetails(result.draft.details); setOcrReviewed(false);
-    setCastingElement(""); setLaboratoryApplied(false);
+    setCastingElement(normalizeCastingElement(defaultCastingElement) ?? ""); setLaboratoryApplied(false);
     setGuideNumber(result.draft.guideNumber); setGuideDate(result.draft.details.guideDate);
     setTruckArrivalTime(result.draft.arrivalTime); setTruckDepartureTime(result.draft.departureTime);
     setLines(result.draft.lines.length ? result.draft.lines.map((line) => {
@@ -284,7 +289,8 @@ export function DispatchGuideDialog({
           {truckArrivalTime && truckDepartureTime && truckDepartureTime < truckArrivalTime && <p role="status" className="rounded-lg bg-muted px-3 py-2 text-xs text-foreground">El camión sale al día siguiente de la fecha de la guía.</p>}
   </>;
   const residentFields = <GuideResidentFields element={castingElement} laboratory={laboratoryApplied} disabled={locked} onElement={(value) => { setCastingElement(value); setOcrReviewed(false); }} onLaboratory={(value) => { setLaboratoryApplied(value); setOcrReviewed(false); }} />;
-  const warnings = capture?.draft.warnings.filter((warning) => !/^Línea \d+: confirma la UM/u.test(warning)) ?? [];
+  const catalogWarnings = capture ? guideCatalogReviewWarnings(lines) : [];
+  const warnings = [...(capture?.draft.warnings.filter((warning) => !/^Línea \d+: confirma la UM/u.test(warning)) ?? []), ...catalogWarnings];
   const lineEditor = (
 <section className="space-y-3" aria-labelledby="guide-lines-heading">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -307,7 +313,7 @@ export function DispatchGuideDialog({
                     <h4 id={`line-title-${line.key}`} className="flex min-w-0 items-center gap-2 text-sm font-semibold"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface text-foreground-muted">{index + 1}</span>{kind}</h4>
                     {!readOnly && <IconButton label={`Eliminar línea ${index + 1}`} disabled={locked} onClick={() => { setOcrReviewed(false); setLines((current) => current.filter((item) => item.key !== line.key)); }} tone="destructive"><Trash2 aria-hidden="true" className="size-4" /></IconButton>}
                   </div>
-                  {capture && !line.catalogItemId && <div className="space-y-3 border-b border-border bg-amber-50 p-3 text-amber-950 sm:px-4">
+                  {capture && !line.catalogItemId && Boolean(line.productCode) && <div className="space-y-3 border-b border-border bg-amber-50 p-3 text-amber-950 sm:px-4">
                     <p role="status" className="text-sm">{line.ocrWarning || "Sin precio seleccionado en la cotización: precio pendiente. Si el código tiene variantes, selecciona una en el buscador."}</p>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div><label className="form-label" htmlFor={`ocr-type-${line.key}`}>Confirmar tipo *</label><select id={`ocr-type-${line.key}`} className="form-input bg-surface text-foreground" required value={line.catalogType} disabled={locked} onChange={(event) => update(line.key, "catalogType", event.target.value)}><option value="">Selecciona</option><option value="PRODUCT">Producto</option><option value="SERVICE">Servicio</option></select></div>
@@ -362,12 +368,12 @@ export function DispatchGuideDialog({
         <div className="space-y-5 p-4 sm:p-6">
           {!guide && state.status === "success" && <p role="status" className="text-sm text-success">Guía guardada. Puedes ingresar la siguiente o cerrar esta ventana.</p>}
           {ocrEnabled && !guide && !readOnly && <GuidePhotoCapture ref={photoCaptureRef} projectId={projectId} dispatchId={dispatchId} disabled={pending || Boolean(photoRetryGuide)} onRead={applyCapture} onReset={(usingPhoto) => {
-            setPhotoSelected(usingPhoto); setCapture(null); setDetails(emptyGuideDetails()); setOcrReviewed(false); setCastingElement(""); setLaboratoryApplied(false);
+            setPhotoSelected(usingPhoto); setCapture(null); setDetails(emptyGuideDetails()); setOcrReviewed(false); setCastingElement(normalizeCastingElement(defaultCastingElement) ?? ""); setLaboratoryApplied(false);
             if (!usingPhoto) { setGuideNumber(""); setTruckArrivalTime(""); setTruckDepartureTime(""); setLines([initialLine(programmedUnitCode, defaultProductDescription ?? "", defaultCatalogProduct)]); }
           }} onBusy={setPhotoBusy} />}
           {ocrEnabled && guide && <SavedGuideOcrDetails projectId={projectId} dispatchId={dispatchId} guideId={guide.id} />}
           {capture && details && <>
-            {warnings.length > 0 && <ul role="status" className="list-inside list-disc space-y-1 rounded-lg bg-amber-100 p-3 text-sm text-amber-950">{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}
+            {warnings.length > 0 && <div id="guide-review-alerts" className="space-y-2 rounded-lg bg-amber-100 p-3 text-sm text-amber-950" role="status"><ul className="list-inside list-disc space-y-1">{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>{catalogWarnings.length > 0 && <p>Si guardas la guía con códigos fuera de la cotización, se registrará una incidencia en este despacho con el detalle de los productos o servicios.</p>}</div>}
           </>}
           {(capture || !photoSelected) && <GuideOcrReview value={details} draft={capture?.draft} disabled={locked} onChange={(key, value) => {
             setDetails((current) => ({ ...current, [key]: value })); setOcrReviewed(false);

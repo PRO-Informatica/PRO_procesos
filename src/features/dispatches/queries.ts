@@ -1,4 +1,5 @@
 import "server-only";
+import type { CastingElement } from "./casting-elements";
 import { serviceReconciliationSummary } from "@/features/invoices/service-reconciliation";
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -23,6 +24,7 @@ import type {
 } from "./types";
 
 type ProgrammingRow = {
+  casting_element: CastingElement | null;
   id: string;
   supplier_id: string;
   order_number: string | null;
@@ -53,7 +55,7 @@ type DispatchRow = {
 };
 type GuideRow = {
   details: DispatchGuide["details"];
-  casting_element: "COLUMNS" | "PILES" | null;
+  casting_element: CastingElement | null;
   laboratory_applied: boolean;
   id: string;
   dispatch_id: string;
@@ -225,7 +227,7 @@ export async function getDispatchPageData(
     supabase
       .from("programming")
       .select(
-        "id, supplier_id, order_number, status, scheduled_at, requested_quantity, confirmed_quantity, unit_code",
+        "id, supplier_id, order_number, status, scheduled_at, requested_quantity, confirmed_quantity, unit_code, casting_element",
       )
       .eq("project_id", projectId)
       .in("status", ["CONFIRMED", "IN_EXECUTION", "DISPATCH_COMPLETED"])
@@ -338,6 +340,7 @@ export async function getDispatchPageData(
     const guides = dispatch ? (guidesByDispatch.get(dispatch.id) ?? []) : [];
     return {
       programmingId: row.id,
+      programmingCastingElement: row.casting_element,
       programmingCode: formatIdentifier("PRG", row.id),
       programmingStatus: row.status,
       scheduledAt: row.scheduled_at,
@@ -409,7 +412,7 @@ export async function getDispatchDetail(
       supabase
         .from("programming")
         .select(
-          "id, supplier_id, order_number, status, scheduled_at, requested_quantity, confirmed_quantity, unit_code",
+          "id, supplier_id, order_number, status, scheduled_at, requested_quantity, confirmed_quantity, unit_code, casting_element",
         )
         .eq("project_id", projectId)
         .eq("id", dispatch.programming_id)
@@ -722,6 +725,7 @@ export async function getDispatchDetail(
     id: dispatch.id,
     projectId,
     programmingId: programming.id,
+    programmingCastingElement: programming.casting_element,
     programmingCode: formatIdentifier("PRG", programming.id),
     programmingStatus: programming.status,
     programmingScheduledAt: programming.scheduled_at,

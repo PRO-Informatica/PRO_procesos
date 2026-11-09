@@ -1,5 +1,6 @@
 import type { ServiceReconciliationSummary } from "@/features/invoices/service-reconciliation";
 import type { GuideDetails } from "./guide-details";
+import type { CastingElement } from "./casting-elements";
 export const DISPATCH_STATUSES = ["IN_EXECUTION", "COMPLETED"] as const;
 export const DISPATCH_RESULTS = ["DISPATCHED", "NOT_DISPATCHED"] as const;
 
@@ -46,7 +47,7 @@ export type DispatchGuideLine = {
 
 export type DispatchGuide = {
   details?: Partial<GuideDetails>;
-  castingElement?: "COLUMNS" | "PILES" | null;
+  castingElement?: CastingElement | null;
   laboratoryApplied?: boolean;
   id: string;
   guideNumber: string;
@@ -61,6 +62,7 @@ export type DispatchGuide = {
 };
 
 export type ProgrammingDispatchItem = {
+  programmingCastingElement?: CastingElement | null;
   programmingId: string;
   programmingCode: string;
   programmingStatus: ProgrammingDispatchStatus;
@@ -147,6 +149,7 @@ export type DispatchInvoiceSummary = {
 };
 
 export type DispatchDetail = {
+  programmingCastingElement?: CastingElement | null;
   id: string;
   projectId: string;
   programmingId: string;

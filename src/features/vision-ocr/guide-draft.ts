@@ -1,4 +1,6 @@
 import { normalizeServiceUnit } from "../platform/project-price-catalogs/service-units.ts";
+import { CASTING_ELEMENTS } from "../dispatches/casting-elements.ts";
+import { validateGuideDetails } from "../dispatches/guide-details.ts";
 import type { DispatchCatalogOption } from "../dispatches/types";
 import { GUIDE_FIELDS, type GuideField, type GuideDetails } from "../dispatches/guide-details.ts";
 export { GUIDE_FIELDS, emptyGuideDetails, type GuideField, type GuideDetails } from "../dispatches/guide-details.ts";
@@ -15,6 +17,15 @@ export type GuideOcrDraft = {
   confidence: Record<string, number | null>;
   warnings: string[];
 };
+
+// Recompute from the edited lines so a catalog selection or removal clears its alert.
+export function guideCatalogReviewWarnings(lines: { productCode: string; catalogItemId: string; catalogType: string; ocrWarning?: string | null }[]) {
+  return lines.flatMap((line, index) => {
+    if (line.catalogItemId || !line.productCode.trim()) return [];
+    const kind = line.catalogType === "PRODUCT" ? "Producto" : line.catalogType === "SERVICE" ? "Servicio" : "Producto o servicio";
+    return [`Línea ${index + 1} · ${kind} ${line.productCode.trim()}: ${line.ocrWarning || "Sin precio seleccionado en la cotización del proyecto. Revisa el código y sus variantes."}`];
+  });
+}
 // No guessing AM/PM for a bare hour, and no coercing an invalid date to today.
 export function normalizeGuideTime(raw: string): string | null {
   const value = raw.normalize("NFKC").trim().toLowerCase().replace(/(\d)\s*\.\s*(\d{2})(?=\D|$)/u, "$1:$2").replace(/[.\s]/gu, "");
@@ -55,6 +66,7 @@ export function normalizeGuideUnit(raw: string) {
 export function matchGuideCatalog(line: OcrDraftLine, catalog: DispatchCatalogOption[], productUnit: string): OcrDraftLine {
   // Exact code only: never infer a price from a vaguely similar description.
   const code = line.productCode.normalize("NFKC").replace(/\s+/gu, "").toUpperCase();
+  if (!code) return { ...line, candidates: [], catalogItemId: "", warning: null };
   const candidates = catalog.filter((item) => item.code.replace(/\s+/gu, "").toUpperCase() === code);
   if (candidates.length !== 1) return {
     ...line, productCode: code, catalogItemId: "", candidates,
@@ -73,12 +85,14 @@ export function matchGuideCatalog(line: OcrDraftLine, catalog: DispatchCatalogOp
 export function validateOcrReview(value: unknown): string | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return "Revisa los datos extraídos.";
   const draft = value as GuideOcrDraft;
+  const detailsError = validateGuideDetails(draft.details);
+  if (detailsError) return detailsError;
   if (typeof draft.guideNumber !== "string" || !draft.guideNumber.trim() || draft.guideNumber.length > 120) return "Registra un número de guía válido.";
   if (!draft.details || Object.keys(GUIDE_FIELDS).some((key) => typeof draft.details[key as GuideField] !== "string" || draft.details[key as GuideField].length > (key === "observations" ? 4000 : 500))) return "Revisa los campos de la guía y su longitud.";
   if (!normalizeGuideDate(draft.details.guideDate)) return "Confirma una fecha válida en la guía.";
   if (![draft.arrivalTime, draft.departureTime].every((time) => typeof time === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/u.test(time))) return "Confirma las horas de llegada y salida del camión.";
   if (draft.details.loadingTime && !normalizeGuideTime(draft.details.loadingTime)) return "Corrige la hora de carga o déjala vacía si no es legible.";
-  if (!draft.resident || !["COLUMNS", "PILES"].includes(draft.resident.castingElement) || typeof draft.resident.laboratoryApplied !== "boolean") return "Selecciona el elemento a fundir y revisa si se aplicó laboratorio.";
+  if (!draft.resident || !Object.hasOwn(CASTING_ELEMENTS, draft.resident.castingElement) || typeof draft.resident.laboratoryApplied !== "boolean") return "Selecciona el elemento a fundir y revisa si se aplicó laboratorio.";
   if (!Array.isArray(draft.lines) || !draft.lines.length || draft.lines.length > 100) return "Agrega al menos una línea y hasta 100.";
   for (const line of draft.lines) {
     if (!line || typeof line !== "object") return "Revisa las líneas de la guía.";

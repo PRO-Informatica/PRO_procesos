@@ -1,63 +1,52 @@
+import { normalizeCastingElement } from "../dispatches/casting-elements.ts";
 import type { GuideReportFilters } from "./types";
 
-type Params = URLSearchParams | Record<string, string | string[] | undefined>;
+export type ReportParams = URLSearchParams | Record<string, string | string[] | undefined>;
 
-function read(params: Params, key: string) {
+export function readReportParam(params: ReportParams, key: string) {
   const value = params instanceof URLSearchParams ? params.get(key) : params[key];
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
 function validDate(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/u.test(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
+  const date = new Date(`${value}T12:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
-function isoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-export function parseGuideReportFilters(params: Params): GuideReportFilters {
+export function reportDateRange(params: ReportParams) {
   const now = new Date();
-  const defaultTo = isoDate(now);
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 12));
-  const periodValue = read(params, "period");
-  const period = ["day", "week", "month", "custom"].includes(periodValue) ? periodValue as GuideReportFilters["period"] : "month";
-  let defaultFrom = isoDate(start);
-  let defaultEnd = isoDate(
-    new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 12)),
-  );
-  if (period === "day") defaultFrom = defaultEnd = defaultTo;
-  if (period === "week") {
-    const weekday = now.getUTCDay();
-    const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (weekday === 0 ? 6 : weekday - 1), 12));
-    defaultFrom = isoDate(monday);
-    defaultEnd = isoDate(new Date(monday.getTime() + 6 * 86400000));
-  }
-  const from = read(params, "from");
-  const to = read(params, "to");
-  const incidents = read(params, "incidents");
+  const from = readReportParam(params, "from");
+  const to = readReportParam(params, "to");
+  const dateFrom = validDate(from) ? from : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 12)).toISOString().slice(0, 10);
+  const dateTo = validDate(to) ? to : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 12)).toISOString().slice(0, 10);
+  return dateFrom <= dateTo ? { dateFrom, dateTo } : { dateFrom: dateTo, dateTo: dateFrom };
+}
+
+export function parseGuideReportFilters(params: ReportParams): GuideReportFilters {
+  const read = (key: string) => readReportParam(params, key);
+  const incidents = read("incidents");
   return {
-    period,
-    projectId: read(params, "project") || undefined,
-    supplierId: read(params, "supplier") || undefined,
-    userId: read(params, "user") || undefined,
-    orderNumber: read(params, "order") || undefined,
-    batchId: read(params, "batch") || undefined,
-    dispatchStatus: read(params, "dispatchStatus") || undefined,
-    programmingStatus: read(params, "programmingStatus") || undefined,
-    orderStatus: read(params, "orderStatus") || undefined,
-    reconciliationStatus: read(params, "reconciliation") || undefined,
+    ...reportDateRange(params),
+    projectId: read("project") || undefined,
+    supplierId: read("supplier") || undefined,
+    userId: read("user") || undefined,
+    orderNumber: read("order") || undefined,
+    batchId: read("batch") || undefined,
+    dispatchStatus: read("dispatchStatus") || undefined,
+    programmingStatus: read("programmingStatus") || undefined,
+    castingElement: normalizeCastingElement(read("castingElement")) ?? undefined,
+    reconciliationStatus: read("reconciliation") || undefined,
     withIncidents: incidents === "yes" || incidents === "no" ? incidents : undefined,
-    dateFrom: period === "custom" && validDate(from) ? from : defaultFrom,
-    dateTo: period === "custom" && validDate(to) ? to : defaultEnd,
   };
 }
 
 export function reportSearchParams(filters: GuideReportFilters) {
-  const params = new URLSearchParams({ period: filters.period ?? "custom", from: filters.dateFrom, to: filters.dateTo });
+  const params = new URLSearchParams({ from: filters.dateFrom, to: filters.dateTo });
   const values: Array<[string, string | undefined]> = [
     ["project", filters.projectId], ["supplier", filters.supplierId], ["user", filters.userId],
     ["order", filters.orderNumber], ["batch", filters.batchId], ["dispatchStatus", filters.dispatchStatus], ["programmingStatus", filters.programmingStatus],
-    ["orderStatus", filters.orderStatus], ["reconciliation", filters.reconciliationStatus], ["incidents", filters.withIncidents],
+    ["castingElement", filters.castingElement], ["reconciliation", filters.reconciliationStatus], ["incidents", filters.withIncidents],
   ];
   for (const [key, value] of values) if (value) params.set(key, value);
   return params;

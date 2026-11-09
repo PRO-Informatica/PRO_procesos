@@ -10,6 +10,7 @@ import { hasValidSameOrigin } from "@/lib/http/same-origin";
 import { emptyGuideDetails, matchGuideCatalog, normalizeGuideDate, normalizeGuideTime, validateOcrReview, type GuideOcrDraft } from "./guide-draft";
 import { extractDocumentText, VisionOcrError } from "./service";
 import { hasValidImageSignature, isAllowedVisionImageType } from "./vision-ocr";
+import type { VisionTemplateType } from "./template-classifier";
 
 const BUCKET = "vision-ocr-dev";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -21,7 +22,7 @@ type Capture = {
   id: string; project_id: string; dispatch_id: string; created_by: string;
   original_name: string; original_mime: string; original_size: number; original_path: string;
   original_sha256: string | null; status: string; guide_id: string | null;
-  expires_at: string; extraction: (GuideOcrDraft & { catalogDraft?: GuideOcrDraft; imageRotation?: number }) | null; raw_text: string | null;
+  expires_at: string; extraction: (GuideOcrDraft & { catalogDraft?: GuideOcrDraft; variants?: Record<VisionTemplateType, GuideOcrDraft>; imageRotation?: number }) | null; raw_text: string | null;
   review_payload: { details?: GuideOcrDraft["details"] } | null;
   prepared_upload: { documentId: string; versionId: string; bucket: string; path: string } | null;
   evidence_attached_at: string | null;
@@ -109,7 +110,7 @@ export async function prepareCapture(context: Context, input: { fileName: string
 
 export async function extractCapture(context: Context, id: string, image: File, adjustments: unknown, manual = false) {
   const capture = await ownedCapture(context, id);
-  if (capture.status === "EXTRACTED") return { captureId: id, draft: capture.extraction?.catalogDraft ?? capture.extraction, rawText: capture.raw_text, project: context.project, imageRotation: capture.extraction?.imageRotation ?? 0 };
+  if (capture.status === "EXTRACTED") return { captureId: id, draft: capture.extraction?.catalogDraft ?? capture.extraction, variants: capture.extraction?.variants, rawText: capture.raw_text, project: context.project, imageRotation: capture.extraction?.imageRotation ?? 0 };
   if (context.dispatch.status !== "IN_EXECUTION" || capture.status !== "PREPARED") throw new CaptureError("La captura está procesándose o ya se guardó.", 409);
   if (image.size > 3 * 1024 * 1024) throw new CaptureError("El recorte debe pesar menos de 3 MiB.", 413);
   const lock = await context.admin.from("guide_ocr_captures").update({ status: "PROCESSING" }).eq("id", id).eq("status", "PREPARED").select("id");
@@ -121,13 +122,14 @@ export async function extractCapture(context: Context, id: string, image: File, 
     if (bytes.length !== capture.original_size || !hasValidImageSignature(bytes, capture.original_mime)) throw new CaptureError("La foto original no es válida.");
     const result = manual ? { text: "", imageRotation: 0, guideDraft: { guideNumber: "", arrivalTime: "", departureTime: "", details: emptyGuideDetails(), lines: [], rawTimes: { loading: "", arrival: "", departure: "" }, confidence: {}, warnings: ["Captura completada manualmente desde la fotografía. No se ejecutó Google Vision."] } as GuideOcrDraft }
       : await extractDocumentText(image, "DISPATCH_GUIDE", null);
-    if (!result.guideDraft) throw new CaptureError("Este documento es un Pedido / Control de operación. Su lectura como guía de servicio está pendiente. Omite esta foto o página y continúa con las guías de despacho.");
     const catalog = await projectCatalog(context);
-    const draft = { ...result.guideDraft, lines: result.guideDraft.lines.map((line) => matchGuideCatalog(line, catalog, context.unit)) };
+    const matchDraft = (value: GuideOcrDraft) => ({ ...value, lines: value.lines.map((line) => matchGuideCatalog(line, catalog, context.unit)) });
+    const draft = matchDraft(result.guideDraft);
+    const variants = "guideVariants" in result ? Object.fromEntries(Object.entries(result.guideVariants).map(([key, value]) => [key, matchDraft(value)])) as Record<VisionTemplateType, GuideOcrDraft> : undefined;
     const saved = await context.admin.from("guide_ocr_captures").update({ status: "EXTRACTED", original_sha256: hash(bytes),
-      processed_sha256: hash(new Uint8Array(await image.arrayBuffer())), raw_text: result.text, extraction: { ...result.guideDraft, catalogDraft: draft, imageRotation: result.imageRotation }, image_adjustments: { source: manual ? "PHOTO_MANUAL" : "GOOGLE_VISION", settings: adjustments } }).eq("id", id).eq("status", "PROCESSING");
+      processed_sha256: hash(new Uint8Array(await image.arrayBuffer())), raw_text: result.text, extraction: { ...result.guideDraft, catalogDraft: draft, variants, imageRotation: result.imageRotation }, image_adjustments: { source: manual ? "PHOTO_MANUAL" : "GOOGLE_VISION", settings: adjustments } }).eq("id", id).eq("status", "PROCESSING");
     if (saved.error) throw new CaptureError("No se pudo conservar la lectura. Intenta nuevamente.", 503);
-    return { captureId: id, draft, rawText: result.text, project: context.project, imageRotation: result.imageRotation };
+    return { captureId: id, draft, variants, rawText: result.text, project: context.project, imageRotation: result.imageRotation };
   } catch (error) {
     await context.admin.from("guide_ocr_captures").update({ status: "PREPARED" }).eq("id", id).eq("status", "PROCESSING");
     if (error instanceof VisionOcrError) throw new CaptureError(error.publicMessage, error.status);
@@ -154,7 +156,7 @@ export async function saveCapture(context: Context, id: string, input: unknown, 
         product_code: line.productCode.trim(), product_description: line.description.trim() || null };
     });
     const payload = { casting_element: draft.resident!.castingElement, laboratory_applied: draft.resident!.laboratoryApplied, guide_number: draft.guideNumber.trim(), guide_date: normalizeGuideDate(draft.details.guideDate), arrival: draft.arrivalTime, departure: draft.departureTime,
-      details: { ...draft.details, loadingTime: draft.details.loadingTime ? normalizeGuideTime(draft.details.loadingTime) : "" }, lines, identity_checks: [], parser_version: "mixto-v2" };
+      details: { ...draft.details, loadingTime: draft.details.loadingTime ? normalizeGuideTime(draft.details.loadingTime) : "" }, lines, identity_checks: [], parser_version: "guides-controls-v3" };
     reviewHash = hash(JSON.stringify(payload));
     const approval = await context.admin.from("guide_ocr_captures").update({ review_payload: payload, review_hash: reviewHash }).eq("id", id).eq("status", "EXTRACTED").is("guide_id", null).select("id");
     if (approval.error || !approval.data?.length) throw new CaptureError("Recarga la captura antes de guardar.", 409);
@@ -166,6 +168,7 @@ export async function saveCapture(context: Context, id: string, input: unknown, 
       : message.includes("NUMBER_ALREADY_EXISTS") ? "Este número de guía ya está registrado en el despacho."
       : message.includes("VARIANT_REQUIRED") ? "El código ya está en la cotización. Selecciona su variante."
       : message.includes("UNIT_MISMATCH") ? "Revisa la UM de las líneas contra su cotización y programación."
+      : message.includes("GUIDE_CATALOG_INCIDENT_TYPE_INACTIVE") ? "El tipo de incidencia para códigos fuera de la cotización está inactivo. Solicita su activación antes de guardar."
       : "No se pudo guardar la guía. Revisa sus campos e intenta nuevamente.", 409);
   }
   const result = saved.data as { guide_id: string; dispatch_version: number; upload: NonNullable<Capture["prepared_upload"]> };

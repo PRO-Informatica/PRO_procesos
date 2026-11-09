@@ -13,9 +13,11 @@ const dir=await mkdtemp('tmp/vision-ocr-batch-ui-'),harness=await mkdtemp(path.j
 const product={id:'00000000-0000-4000-8000-000000000001',type:'PRODUCT',code:'86131064',reference:'CONF4001',description:null,observations:null,unitCode:null,price:1224.16,currency:'GTQ'};
 const service={...product,id:'00000000-0000-4000-8000-000000000002',type:'SERVICE',code:'SERV1',reference:null,description:'Bomba',observations:'Variante para volumen menor a 6',unitCode:'UN',price:100};
 const variant={...service,id:'00000000-0000-4000-8000-000000000003',observations:'Variante para volumen mayor a 6',price:200};
-const details={customerName:'Cliente QA',projectName:'Proyecto QA',workAddress:'1 calle 3-45 zona 1 Guatemala',guideDate:'2026-10-29',orderNumber:'999',plant:'QU',truck:'0186',loadingTime:'18:00',pilot:'Piloto QA',operator:'0079',observations:'Observación manuscrita'};
+const details={documentType:'DISPATCH_GUIDE',customerName:'Cliente QA',projectName:'Proyecto QA',workAddress:'1 calle 3-45 zona 1 Guatemala',guideDate:'2026-10-29',orderNumber:'999',plant:'QU',truck:'0186',loadingTime:'18:00',pilot:'Piloto QA',operator:'0079',observations:'Observación manuscrita'};
 const line={quantity:'1',unit:'UN',productCode:'SERV1',description:'Bomba',type:'SERVICE',catalogItemId:'',candidates:[service,variant],warning:'Selecciona la variante'};
 const draft={guideNumber:'7145427',arrivalTime:'23:22',departureTime:'03:20',details,rawTimes:{loading:'6 pm',arrival:'23:22',departure:'03:20'},confidence:{projectName:.7},warnings:['Revisa el proyecto','Línea 1: confirma la UM «ma».'],lines:[{...line,quantity:'7',unit:'',productCode:product.code,description:product.reference,type:'PRODUCT',catalogItemId:product.id,candidates:[product],warning:null},{...line,productCode:'UNKNOWN',description:'Servicio no catalogado',candidates:[],warning:'Precio pendiente'},line,{...line,unit:'',catalogItemId:service.id,candidates:[service],warning:null},{...line,unit:'',catalogItemId:service.id,candidates:[service],warning:null}]};
+const control=(type,number)=>({...draft,guideNumber:number,arrivalTime:'',departureTime:'',details:{...details,documentType:type,customerName:'',projectName:'',workAddress:'',guideDate:'2026-11-03',orderNumber:'88',plant:'',truck:'',loadingTime:'',pilot:'',operator:'',observations:'Se usó tubería normal.'},confidence:{},warnings:['Revisa el volumen real manuscrito.'],lines:[{quantity:'14',unit:'M3',productCode:'',description:'',type:'SERVICE',catalogItemId:'',candidates:[],warning:null}]});
+const controls={DISPATCH_GUIDE:draft,MIXTO_OPERATION:control('MIXTO_OPERATION','349463'),PANEXUS_OPERATION:control('PANEXUS_OPERATION','12082')};
 const result={captureId:'00000000-0000-4000-8000-000000000010',draft,rawText:'Texto OCR de prueba',project:{name:'Proyecto activo DIFERENTE',code:'QA',address:'Otra dirección',additionalAddresses:[]}};
 await writeFile(path.join(harness,'env.js'),`export const getPublicEnvironment=()=>({appEnvironment:'DEV'});`);
 await writeFile(path.join(harness,'client.js'),`export const createClient=()=>({storage:{from:()=>({uploadToSignedUrl:async()=>{window.uploads=(window.uploads||0)+1;return{data:{},error:null};}})}});`);
@@ -24,12 +26,30 @@ await writeFile(path.join(harness,'navigation.js'),`export const useRouter=()=>(
 await writeFile(path.join(harness,'notification.js'),`export function useActionNotification(){}`);
 await writeFile(path.join(harness,'loader.cjs'),`const ts=require(${JSON.stringify(require.resolve('typescript'))});module.exports=function(source){return ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText}`);
 await writeFile(path.join(harness,'entry.tsx'),`
+window.qaReveal=(element,block='center')=>element?.scrollIntoView({block});
 import {validateOcrReview} from'${root}/src/features/vision-ocr/guide-draft';
 import React from'react';import{createRoot}from'react-dom/client';import{DispatchGuideDialog}from'${root}/src/features/dispatches/components/dispatch-guide-dialog';
 const realFetch=window.fetch;window.fetch=async(url,options)=>{if(!String(url).startsWith('/api/vision-ocr/guides'))return realFetch(url,options);
+ if(window.bulkMode){
+  if(options?.method==='PATCH'){
+   const body=JSON.parse(options.body),validation=validateOcrReview(body.draft);if(validation)return Response.json({error:validation},{status:400});
+   window.bulkSaves=(window.bulkSaves||[]).concat([body]);
+   if(window.bulkSaves.length===1)return Response.json({error:'Evidencia pendiente de reintento',guideId:'bulk-saved-1'},{status:503});
+   return Response.json({guideId:'bulk-saved-'+(window.bulkSaves.length-1),newVersion:window.bulkSaves.length+3});
+  }
+  if(String(url).includes('action=prepare')){const id=crypto.randomUUID();window.bulkCaptures=(window.bulkCaptures||[]).concat(id);return Response.json({captureId:id,bucket:'fake',path:'fake',token:'fake'});}
+  if(options?.method==='DELETE'){window.bulkDiscarded=(window.bulkDiscarded||[]).concat(JSON.parse(options.body).captureId);return Response.json({discarded:true});}
+  const metadata=JSON.parse(options.body.get('adjustments')),page=metadata.pdf.pageNumber;
+  window.bulkReads=(window.bulkReads||[]).concat([{page,captureId:options.body.get('captureId'),metadata}]);
+  if(page===2&&window.bulkReads.filter(r=>r.page===2).length===1)return Response.json({error:'Fallo temporal página 2'},{status:503});
+  const normal={...${JSON.stringify(draft)},guideNumber:'BULK-'+page,warnings:[],lines:[${JSON.stringify(draft.lines[0])}]};
+  const all={DISPATCH_GUIDE:normal,MIXTO_OPERATION:${JSON.stringify(controls.MIXTO_OPERATION)},PANEXUS_OPERATION:${JSON.stringify(controls.PANEXUS_OPERATION)}};
+  const type=page<=2?'DISPATCH_GUIDE':page===3?'MIXTO_OPERATION':'PANEXUS_OPERATION';
+  return Response.json({...${JSON.stringify(result)},captureId:options.body.get('captureId'),draft:all[type],variants:all});
+ }
  if(options?.method==='PATCH'){const validation=validateOcrReview(JSON.parse(options.body).draft);if(validation)return Response.json({error:validation},{status:400});window.saves=(window.saves||[]).concat([JSON.parse(options.body)]);if(window.saves.length===1)return Response.json({error:'Foto pendiente. Reintenta.',guideId:'saved-guide'},{status:503});return Response.json({guideId:window.saves.length===2?'saved-guide':'saved-guide-2',newVersion:window.saves.length===2?3:4});}
  if(String(url).includes('action=prepare')){window.currentCapture=crypto.randomUUID();return Response.json({captureId:window.currentCapture,bucket:'fake',path:'fake',token:'fake'});}
- if(options?.method==='DELETE')return Response.json({discarded:true});window.extracts=(window.extracts||0)+1;if(window.deferNext)return Response.json({error:'Pedido / Control de operación pendiente. Omite esta página.'},{status:400});return Response.json({...${JSON.stringify(result)},captureId:window.currentCapture,draft:{...${JSON.stringify(draft)},guideNumber:window.extracts===1?'7145427':'7145428'}});};
+ if(options?.method==='DELETE')return Response.json({discarded:true});window.extracts=(window.extracts||0)+1;if(window.controlNext)return Response.json({...${JSON.stringify(result)},captureId:window.currentCapture,draft:${JSON.stringify(controls.MIXTO_OPERATION)},variants:${JSON.stringify(controls)}});return Response.json({...${JSON.stringify(result)},captureId:window.currentCapture,draft:{...${JSON.stringify(draft)},guideNumber:window.extracts===1?'7145427':'7145428'}});};
 createRoot(document.getElementById('app')).render(<DispatchGuideDialog projectId="00000000-0000-4000-8000-000000000020" dispatchId="00000000-0000-4000-8000-000000000030" programmingId="program" expectedVersion={1} programmedUnitCode="M3" operationDate="2026-10-29" defaultCatalogProduct={${JSON.stringify(product)}} units={[{code:'M3',name:'Metro cúbico'}]} onClose={()=>{window.closedGuide=true}}/>);`);
 await new Promise((resolve,reject)=>webpack({mode:'development',target:'web',devtool:false,entry:path.join(harness,'entry.tsx'),output:{path:harness,filename:'bundle.js'},
  resolve:{extensions:['.tsx','.ts','.js','.json'],modules:[path.join(root,'node_modules'),'node_modules'],alias:{'@/lib/env':path.join(harness,'env.js'),'@/lib/supabase/client':path.join(harness,'client.js'),'@/components/feedback/use-action-notification':path.join(harness,'notification.js'),'@':path.join(root,'src'),'next/navigation':path.join(harness,'navigation.js')}},
@@ -46,7 +66,7 @@ const server=createServer(async(req,res)=>{try{
  res.setHeader('content-type','text/html; charset=utf-8');res.end(`<!doctype html><html class="${url.searchParams.get('theme')==='dark'?'dark':''}"><head><meta name="viewport" content="width=device-width,initial-scale=1">${css}</head><body><div id="app"></div><script src="/bundle.js"></script></body></html>`);
 }catch(e){res.statusCode=500;res.end(String(e));}});await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const check=String.raw`(async()=>{
- const pause=ms=>new Promise(r=>setTimeout(r,ms));const wait=async(fn)=>{for(let i=0;i<300;i++){if(fn())return;await pause(50)}throw Error('Timeout: '+fn)};
+ const pause=ms=>new Promise(r=>setTimeout(r,ms));const wait=async(fn)=>{for(let i=0;i<900;i++){if(fn())return;await pause(50)}throw Error('Timeout: '+fn)};
  const button=text=>[...document.querySelectorAll('button')].find(b=>b.getClientRects().length&&b.textContent.trim()===text);
  await wait(()=>document.getElementById('guide-number'));await document.fonts.ready;
  const setValue=async(id,value)=>{const e=document.getElementById(id);const prototype=e instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:e instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(prototype,'value').set.call(e,value);e.dispatchEvent(new Event(e instanceof HTMLSelectElement?'change':'input',{bubbles:true}));await pause(30);};
@@ -55,11 +75,21 @@ const check=String.raw`(async()=>{
  const residentLastManual=!!(document.querySelector('[aria-labelledby="guide-staff-heading"]').compareDocumentPosition(document.querySelector('[aria-labelledby="guide-resident-heading"]'))&Node.DOCUMENT_POSITION_FOLLOWING);
  for(const[k,v]of Object.entries(manualValues))await setValue('guide-field-'+k,v);
  await setValue('guide-number','MANUAL-123');await setValue('guide-truck-arrival','23:00');await setValue('guide-truck-departure','03:00');await setValue(document.querySelector('input[name="lineQuantity"]').id,'7');await setValue('guide-casting-element','PILES');document.getElementById('guide-laboratory-applied').click();await pause(100);
- document.getElementById('guide-number').scrollIntoView({block:'start'});window.qaManualReady=true;await wait(()=>window.qaManualContinue);
+ const manualTypeOptions=[...document.getElementById('guide-document-type').options].map(o=>o.textContent).join('|')==='Guía de despacho|Control de operación';
+ await setValue('guide-document-type','MIXTO_OPERATION');
+ const manualControlForm=!!document.getElementById('guide-field-truck')&&!!document.getElementById('guide-field-observations')&&!document.getElementById('guide-field-customerName')&&!document.getElementById('guide-field-plant')&&!document.getElementById('guide-field-loadingTime')&&!document.getElementById('guide-field-pilot')&&document.getElementById('guide-number').value==='MANUAL-123'&&document.querySelector('input[name="lineQuantity"]').value==='7';
+ await setValue('guide-document-type','DISPATCH_GUIDE');
+ const manualSwitchPreservesData=Object.entries(manualValues).every(([k,v])=>document.getElementById('guide-field-'+k)?.value===v)&&document.getElementById('guide-truck-arrival').value==='23:00'&&document.getElementById('guide-truck-departure').value==='03:00'&&document.getElementById('guide-casting-element').value==='PILES'&&document.getElementById('guide-laboratory-applied').checked;
+ window.qaReveal(document.getElementById('guide-number'),'start');window.qaManualReady=true;await wait(()=>window.qaManualContinue);
  document.querySelector('button[type="submit"]').click();await wait(()=>window.manualSaves?.length===1&&document.getElementById('guide-number').value==='');
  const submitted=JSON.parse(window.manualSaves[0].guideDetails);
  const manualPayloadComplete=Object.entries(manualValues).every(([k,v])=>submitted[k]===v)&&submitted.guideDate==='2026-10-29';
  const manualReset=Object.keys(manualValues).every(k=>document.getElementById('guide-field-'+k).value==='')&&document.getElementById('guide-casting-element').value===''&&!document.getElementById('guide-laboratory-applied').checked&&!window.closedGuide;
+ await setValue('guide-document-type','MIXTO_OPERATION');await setValue('guide-number','CONTROL-MANUAL');await setValue('guide-field-orderNumber','88');await setValue('guide-field-truck','183');await setValue('guide-field-observations','Control ingresado manualmente');await setValue('guide-truck-arrival','23:00');await setValue('guide-truck-departure','03:00');await setValue(document.querySelector('input[name="lineQuantity"]').id,'14');await setValue('guide-casting-element','PILES_AND_COLUMNS');
+ window.qaReveal(document.getElementById('guide-document-type'),'start');window.qaManualControlReady=true;await wait(()=>window.qaManualControlContinue);
+ document.querySelector('button[type="submit"]').click();await wait(()=>window.manualSaves?.length===2&&document.getElementById('guide-number').value==='');
+ const manualControlDetails=JSON.parse(window.manualSaves[1].guideDetails);
+ const manualControlSaved=manualControlDetails.documentType==='MIXTO_OPERATION'&&manualControlDetails.orderNumber==='88'&&manualControlDetails.truck==='183'&&manualControlDetails.observations==='Control ingresado manualmente'&&window.manualSaves[1].lineQuantity==='14'&&!window.closedGuide;
 
  // A legible synthetic guide image exercises the real canvas/crop pipeline.
  const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=1600;const ctx=canvas.getContext('2d');ctx.fillStyle='#333';ctx.fillRect(0,0,1200,1600);ctx.save();ctx.translate(600,800);ctx.rotate(.04);ctx.translate(-600,-800);ctx.fillStyle='#f5f3ef';ctx.fillRect(60,80,1080,1440);ctx.fillStyle='#111';ctx.font='26px Arial';for(let y=130;y<1450;y+=60)ctx.fillText('GUIA DE DESPACHO 7145427  PROYECTO QA  86131064',95,y);ctx.restore();
@@ -68,7 +98,7 @@ const check=String.raw`(async()=>{
  await wait(()=>button('Ajustar imagen')&&!button('Ajustar imagen').disabled);
  const automaticPreparation=!!document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]')&&!document.querySelector('img[alt="Guía a recortar"]')&&!window.extracts;
  const automaticCrop=document.body.textContent.includes('Recorte y perspectiva preparados automáticamente.');
- document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]').scrollIntoView({block:'center'});window.qaAutoReady=true;await wait(()=>window.qaAutoContinue);
+ window.qaReveal(document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]'));window.qaAutoReady=true;await wait(()=>window.qaAutoContinue);
  const noFilterChoice=![...document.querySelectorAll('label')].some(l=>/contraste|filtro/i.test(l.textContent));
  button('Ajustar imagen').click();
  await wait(()=>document.querySelector('img[alt="Guía a recortar"]'));
@@ -81,7 +111,7 @@ const check=String.raw`(async()=>{
  button('Aplicar ajustes').click();await wait(()=>button('Aceptar foto y extraer datos'));
  const quality=[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Revisé la foto y deseo continuar'));if(quality)quality.querySelector('input').click();
  const preparedVisible=!!document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]');
- button('Aceptar foto y extraer datos').click();await wait(()=>document.getElementById('ocr-projectName'));
+ button('Aceptar foto y extraer datos').click();await wait(()=>document.getElementById('detected-guide-type'));const detectsBeforeForm=!document.getElementById('guide-number')&&!document.querySelector('button[type="submit"]');[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('Continuar con Guía')).click();await wait(()=>document.getElementById('ocr-projectName'));
  const populated=document.getElementById('guide-number').value==='7145427'&&document.getElementById('guide-date').value==='2026-10-29'&&document.getElementById('guide-truck-arrival').value==='23:22'&&document.getElementById('guide-truck-departure').value==='03:20'&&document.getElementById('ocr-truck').value==='0186';
  const unknownPreserved=[...document.querySelectorAll('input')].some(i=>i.value==='UNKNOWN')&&document.body.textContent.includes('Precio pendiente');
  const variants=document.querySelector('[aria-label="Variantes de la cotización"]');if(!variants)throw Error('No variants');variants.querySelectorAll('button')[1].click();await pause(100);
@@ -105,23 +135,39 @@ const check=String.raw`(async()=>{
  const success=document.querySelector('p.text-success'),probe=document.createElement('span');probe.style.color='var(--success)';document.body.append(probe);const successColor=!!success&&getComputedStyle(success).color===getComputedStyle(probe).color;probe.remove();
  const panel=document.querySelector('[role="dialog"]'),scroll=document.querySelector('[data-dialog-scroll]')||panel.querySelector('.overflow-y-auto');
  const review=[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Confirmo los datos corregidos'));review.querySelector('input').click();await pause(100);
- document.getElementById('guide-number').scrollIntoView({block:'start'});window.qaReviewReady=true;await wait(()=>window.qaReviewContinue);const save=document.querySelector('button[type="submit"]');if(save.disabled)throw Error('Save unexpectedly disabled');save.scrollIntoView({block:'center'});save.click();
- await wait(()=>document.querySelector('button[type="submit"]').textContent.includes('Reintentar foto'));const locked=document.getElementById('guide-number').disabled;const failedDoesNotAdvance=document.querySelector('[aria-label="Cola de guías"]').children.length===3;
+ window.qaReveal(document.getElementById('guide-number'),'start');window.qaReviewReady=true;await wait(()=>window.qaReviewContinue);const save=document.querySelector('button[type="submit"]');if(save.disabled)throw Error('Save unexpectedly disabled');window.qaReveal(save);save.click();
+ await wait(()=>document.querySelector('button[type="submit"]').textContent.includes('Reintentar foto')&&!document.querySelector('button[type="submit"]').disabled);const locked=document.getElementById('guide-number').disabled;const failedDoesNotAdvance=document.querySelector('[aria-label="Cola de guías"]').children.length===3;
  document.querySelector('button[type="submit"]').click();await wait(()=>!document.getElementById('ocr-projectName')&&window.refreshed);
  const payload=window.saves[0];
  const resetOpen=!window.closedGuide&&document.querySelectorAll('[role="dialog"]').length===1&&!document.getElementById('guide-truck-arrival')&&!document.getElementById('ocr-projectName');
 
  const preservedQueue=document.querySelector('[aria-label="Cola de guías"]').children.length===2&&document.body.textContent.includes('guia-qa-2.jpg');
  const extractActive=async()=>{await wait(()=>button('Ajustar imagen')&&!button('Ajustar imagen').disabled);await wait(()=>button('Aceptar foto y extraer datos'));const label=[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Revisé la foto y deseo continuar'));if(label)label.querySelector('input').click();button('Aceptar foto y extraer datos').click();};
- await extractActive();await wait(()=>document.getElementById('guide-number')?.value==='7145428');
+ await extractActive();await wait(()=>document.getElementById('detected-guide-type'));[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('Continuar con Guía')).click();await wait(()=>document.getElementById('guide-number')?.value==='7145428');
  const emptyReview=!document.querySelector('button[type="submit"]').disabled;
  const residentReset=document.getElementById('guide-casting-element').value===''&&!document.getElementById('guide-laboratory-applied').checked;await chooseResident();
  const secondVariants=document.querySelector('[aria-label="Variantes de la cotización"]');secondVariants.querySelectorAll('button')[1].click();
  [...document.querySelectorAll('label')].find(l=>l.textContent.includes('Confirmo los datos corregidos')).querySelector('input').click();await pause(100);document.querySelector('button[type="submit"]').click();await wait(()=>window.saves.length===3&&!document.getElementById('ocr-projectName'));
  const versionAdvanced=window.saves[2].expectedVersion===3&&window.saves[2].captureId!==window.saves[1].captureId;
- window.deferNext=true;await extractActive();await wait(()=>document.body.textContent.includes('Control de operación pendiente'));
- const deferredNoDraft=!document.getElementById('ocr-projectName')&&!document.querySelector('button[type="submit"]');
- button('Omitir esta foto').click();await wait(()=>!document.body.textContent.includes('Revisando:'));
+ window.controlNext=true;await extractActive();await wait(()=>document.getElementById('detected-guide-type'));
+ const controlDetected=document.getElementById('detected-guide-type').value==='MIXTO_OPERATION'&&!document.getElementById('guide-number');
+ await setValue('detected-guide-type','PANEXUS_OPERATION');[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('Continuar con Pedido')).click();await wait(()=>document.getElementById('guide-number'));
+ const panexusForm=document.getElementById('guide-number').value==='12082'&&document.getElementById('ocr-orderNumber').value==='88'&&!document.getElementById('ocr-projectName')&&!document.getElementById('ocr-plant')&&!document.getElementById('ocr-pilot');
+ window.qaReveal(document.getElementById('guide-number'),'start');window.qaPanexusReady=true;await wait(()=>window.qaPanexusContinue);
+ const controlManualTimes=document.getElementById('guide-truck-arrival').value===''&&document.getElementById('guide-truck-departure').value==='';
+ const controlBlankCode=document.querySelector('input[name="lineQuantity"]').value==='14'&&document.querySelector('input[role="combobox"]').value===''&&document.querySelector('[name="lineCatalogItemId"]').value==='';
+ button('Cambiar tipo de documento').click();await wait(()=>document.getElementById('detected-guide-type'));await setValue('detected-guide-type','MIXTO_OPERATION');[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('Continuar con Pedido')).click();await wait(()=>document.getElementById('guide-number'));
+ const mixtoForm=document.getElementById('guide-number').value==='349463'&&document.getElementById('ocr-orderNumber').value==='88';
+ const typeCorrectionNoOcr=window.extracts===3&&window.uploads===3;
+ await setValue('guide-truck-arrival','23:00');await setValue('guide-truck-departure','03:00');await setValue('guide-casting-element','PILES_AND_COLUMNS');
+ const combo=document.querySelector('input[role="combobox"]');combo.focus();await setValue(combo.id,'SERV1');await wait(()=>document.querySelectorAll('[role="option"]').length===3);document.querySelectorAll('[role="option"]')[1].click();await pause(100);
+ const quantityRetained=document.querySelector('[name="lineQuantity"]').value==='14'&&document.querySelector('[name="lineCatalogItemId"]').value.endsWith('000002');
+ const confirmation=[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Confirmo los datos corregidos'));
+ const confirmationLast=!!(document.querySelector('[aria-labelledby="guide-resident-heading"]').compareDocumentPosition(confirmation)&Node.DOCUMENT_POSITION_FOLLOWING);confirmation.querySelector('input').click();await pause(100);
+ window.qaReveal(document.getElementById('guide-number'),'start');window.qaControlReady=true;await wait(()=>window.qaControlContinue);
+ document.querySelector('button[type="submit"]').click();await wait(()=>window.saves.length===4&&!document.body.textContent.includes('Revisando:'));
+ const controlPayload=window.saves[3].draft;
+ const controlSaved=controlPayload.details.documentType==='MIXTO_OPERATION'&&controlPayload.details.orderNumber==='88'&&controlPayload.lines[0].quantity==='14'&&controlPayload.lines[0].productCode==='SERV1'&&controlPayload.arrivalTime==='23:00'&&controlPayload.departureTime==='03:00'&&controlPayload.resident.castingElement==='PILES_AND_COLUMNS';
  const pdfBlob=await(await fetch('/sample.pdf')).blob(),pdfFile=new File([pdfBlob],'muestra-cuatro-guias.pdf',{type:'application/pdf'}),pdfTransfer=new DataTransfer();pdfTransfer.items.add(pdfFile);
  const pdfInput=document.querySelector('[aria-label="Elegir PDF de guías"]');pdfInput.files=pdfTransfer.files;pdfInput.dispatchEvent(new Event('change',{bubbles:true}));
  await wait(()=>document.querySelector('[aria-label="Páginas del PDF"]')||[...document.querySelectorAll('[role="alert"]')].some(e=>e.textContent.includes('PDF')));
@@ -131,14 +177,14 @@ const check=String.raw`(async()=>{
  const pickerHidesForm=!document.getElementById('guide-number')&&!document.querySelector('img[alt="Guía a recortar"]');
  const noAutoSelection=document.querySelectorAll('[aria-label="Páginas del PDF"] input:checked').length===0;
  document.querySelector('[aria-label="Seleccionar página 1"]').click();document.querySelector('[aria-label="Seleccionar página 2"]').click();await pause(100);
- document.getElementById('guide-pages-title').scrollIntoView({block:'start'});window.qaPdfReady=true;await wait(()=>window.qaPdfContinue);
+ window.qaReveal(document.getElementById('guide-pages-title'),'start');window.qaPdfReady=true;await wait(()=>window.qaPdfContinue);
  button('Continuar con 2 guía(s)').click();
  await wait(()=>document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]')&&!button('Omitir esta página').disabled);
  const pdfQueued=document.querySelector('[aria-label="Cola de guías"]').children.length===2;
  const pdfPhoto=await(await fetch(document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]').src)).blob();
  const pdfDims=await createImageBitmap(pdfPhoto);const pdfRendered=pdfDims.width>1000&&pdfDims.height>1000,pdfLandscape=pdfDims.width>pdfDims.height;pdfDims.close();
  await fetch('/qa/prepared',{method:'POST',body:pdfPhoto});
- document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]').scrollIntoView({block:'center'});window.qaOrientationReady=true;await wait(()=>window.qaOrientationContinue);
+ window.qaReveal(document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]'));window.qaOrientationReady=true;await wait(()=>window.qaOrientationContinue);
  const eachPage=[];
  for(let number=1;number<=2;number++){
   await wait(()=>[...document.querySelectorAll('p[role="status"]')].some(p=>p.textContent.startsWith('Revisando:')&&p.textContent.includes('página '+number+' de 4'))&&document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]')&&!button('Omitir esta página').disabled);
@@ -148,8 +194,66 @@ const check=String.raw`(async()=>{
  const pagesIndependent=new Set(eachPage).size===2;
  const pdfDidNotExtract=window.extracts===3;
  const queueEnded=!document.querySelector('img[alt="Recorte de la guía, con perspectiva corregida"]')&&!document.getElementById('guide-number').disabled;
+ const originalUploads=window.uploads,originalSaves=window.saves.length;
+ // The additional bulk action reads all pages, independent of thumbnail checks.
+ const openBulkPdf=async()=>{await wait(()=>button('Subir PDF')&&!button('Subir PDF').disabled);await pause(100);const chooser=document.querySelector('[aria-label="Elegir PDF de guías"]'),files=new DataTransfer();files.items.add(pdfFile);chooser.files=files.files;chooser.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>button('Escaneo masivo'));};
+ window.bulkMode=true;await openBulkPdf();
+ await wait(()=>button('Escaneo masivo'));
+ const bulkAdditionalOption=!!button('Continuar con 0 guía(s)')&&!!button('Cancelar selección')&&!!button('Escaneo masivo');
+ button('Escaneo masivo').click();
+ await wait(()=>document.getElementById('bulk-document-type'));
+ const bulkNoAutoSave=!window.bulkSaves&&!document.getElementById('guide-number');
+ const bulkAllPages=window.bulkReads?.length===4&&new Set(window.bulkReads.map(r=>r.page)).size===4&&window.uploads-originalUploads===4;
+ const bulkBeforeRetry=window.bulkReads[1];
+ button('Reintentar 1 página(s) con error').click();await wait(()=>document.getElementById('bulk-document-type')&&window.bulkReads.length===5);
+ const bulkRetryOnlyFailed=window.bulkReads.map(r=>r.page).join(',')==='1,2,3,4,2'&&window.bulkReads[4].captureId===bulkBeforeRetry.captureId&&window.uploads-originalUploads===4&&JSON.stringify(window.bulkReads[4].metadata)===JSON.stringify(bulkBeforeRetry.metadata);
+ window.qaReveal(document.getElementById('bulk-scan-heading'),'start');window.qaBulkClassifyReady=true;await wait(()=>window.qaBulkClassifyContinue);
+ const acceptBulk=async()=>{const q=[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Revisé la foto y deseo continuar'));if(q&&!q.querySelector('input').checked)q.querySelector('input').click();await pause(70);button('Aceptar tipo y continuar').click();await pause(100);};
+ const detectedTypes=[];
+ for(let page=1;page<=4;page++){
+  await wait(()=>document.getElementById('bulk-document-type'));
+  detectedTypes.push(document.getElementById('bulk-document-type').value);
+  if(page===3)await setValue('bulk-document-type','PANEXUS_OPERATION');
+  await acceptBulk();
+ }
+ await wait(()=>button('Revisar 4 guía(s)'));
+ const bulkClassifiesBeforeForms=detectedTypes.join(',')==='DISPATCH_GUIDE,DISPATCH_GUIDE,MIXTO_OPERATION,PANEXUS_OPERATION'&&!document.getElementById('guide-number')&&!window.bulkSaves;
+ // Navigate back and correct a type again. Cached supplier fields must change.
+ button('Revisar clasificación').click();await wait(()=>document.getElementById('bulk-document-type'));
+ for(let page=1;page<=4;page++){if(page===3)await setValue('bulk-document-type','MIXTO_OPERATION');await acceptBulk();}
+ button('Revisar 4 guía(s)').click();await wait(()=>document.getElementById('guide-number')?.value==='BULK-1');
+ const bulkKeepsExistingSave=!!document.querySelector('button[type="submit"]')&&document.querySelector('button[type="submit"]').disabled&&window.bulkReads.length===5;
+ window.qaReveal(document.getElementById('guide-number'),'start');window.qaBulkReviewReady=true;await wait(()=>window.qaBulkReviewContinue);
+ const bulkNumbers=[];
+ for(let page=1;page<=4;page++){
+  await wait(()=>document.getElementById('guide-number'));
+  bulkNumbers.push(document.getElementById('guide-number').value);
+  if(page>=3){
+   await setValue('guide-truck-arrival','23:00');await setValue('guide-truck-departure','03:00');await setValue('ocr-truck','183');
+   const combobox=document.querySelector('input[role="combobox"]');combobox.focus();await setValue(combobox.id,'SERV1');await wait(()=>document.querySelectorAll('[role="option"]').length===3);document.querySelectorAll('[role="option"]')[1].click();await pause(100);
+  }
+  await setValue('guide-casting-element','PILES_AND_COLUMNS');
+  const label=[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Confirmo los datos corregidos'));label.querySelector('input').click();await pause(100);
+  const before=window.bulkSaves?.length||0;document.querySelector('button[type="submit"]').click();
+  if(page===1){
+   await wait(()=>document.querySelector('button[type="submit"]')?.textContent.includes('Reintentar foto')&&!document.querySelector('button[type="submit"]').disabled);
+   if(document.getElementById('guide-number')?.value!=='BULK-1'||!document.getElementById('guide-number').disabled)throw Error('Bulk save failure advanced or lost draft');
+   document.querySelector('button[type="submit"]').click();
+  }
+  if(page<4)await wait(()=>window.bulkSaves?.length>before&&document.getElementById('guide-number')?.value!==(bulkNumbers.at(-1)));
+  else await wait(()=>button('Terminar escaneo masivo'));
+ }
+ const bulkSavedOneByOne=bulkNumbers.join(',')==='BULK-1,BULK-2,349463,12082'&&window.bulkSaves.length===5&&window.bulkSaves[0].captureId===window.bulkSaves[1].captureId&&window.bulkSaves.map(s=>s.expectedVersion).join(',')==='4,4,5,6,7'&&new Set(window.bulkSaves.slice(1).map(s=>s.captureId)).size===4;
+ const bulkCorrectedVariants=window.bulkSaves[3].draft.details.documentType==='MIXTO_OPERATION'&&window.bulkSaves[3].draft.guideNumber==='349463'&&window.bulkSaves[4].draft.details.documentType==='PANEXUS_OPERATION'&&window.bulkSaves[4].draft.guideNumber==='12082'&&window.bulkReads.length===5;
+ const bulkControlsManual=window.bulkSaves.slice(3).every(s=>s.draft.arrivalTime==='23:00'&&s.draft.departureTime==='03:00'&&s.draft.details.truck==='183'&&s.draft.lines[0].quantity==='14');
+ button('Terminar escaneo masivo').click();await wait(()=>document.getElementById('guide-number')?.value==='');await pause(100);
+ const bulkRestoresManual=!!document.getElementById('guide-document-type')&&!document.querySelector('button[type="submit"]').disabled&&!button('Escaneo masivo')&&!window.closedGuide;
+ // Leaving an unsaved batch discards temporary captures, never saved ones.
+ const savedCaptureIds=window.bulkCaptures.slice();await openBulkPdf();button('Escaneo masivo').click();await wait(()=>document.getElementById('bulk-document-type')&&window.bulkCaptures.length===8);
+ const unsavedIds=window.bulkCaptures.slice(4);button('Omitir página').click();await pause(100);button('Descartar pendientes y salir del escaneo masivo').click();await wait(()=>document.getElementById('guide-number'));await pause(100);
+ const bulkCleanup=unsavedIds.every(id=>window.bulkDiscarded.includes(id))&&savedCaptureIds.every(id=>!window.bulkDiscarded.includes(id));
  const bounds=panel.getBoundingClientRect();
- return{width:innerWidth,manualFieldsComplete,manualPayloadComplete,manualReset,residentLastManual,residentLastOcr,emptyResident,missingUnitOptional,noUnitWarning,inlinePreview,listScroll,noInnerOverflow:list.scrollWidth<=list.clientWidth+1,successColor,residentReset,residentPersisted:payload.draft.resident.castingElement==='PILES'&&payload.draft.resident.laboratoryApplied===true&&payload.draft.lines[0].unit==='',pdfLandscape,consistentClocks,noRawText,noManualPhoto,automaticPreparation,automaticCrop,noFilterChoice,preparationHasOnePhoto,backKeepsPage,thumbnailsReady,pickerHidesForm,noAutoSelection,failedDoesNotAdvance,preservedQueue,versionAdvanced,deferredNoDraft,pdfQueued,pdfRendered,pagesIndependent,pdfDidNotExtract,queueEnded,reviewRequired:!emptyReview,waitsForReading,preparedVisible,populated,unknownPreserved,selectedVariant,observationsNotCopied,locked,resetOpen,oneExtraction:window.extracts===3,oneOriginalUpload:window.uploads===3,retrySameCapture:window.saves.length===3&&window.saves[0].captureId===window.saves[1].captureId,
+ return{bulkAdditionalOption,bulkNoAutoSave,bulkAllPages,bulkRetryOnlyFailed,bulkClassifiesBeforeForms,bulkKeepsExistingSave,bulkSavedOneByOne,bulkCorrectedVariants,bulkControlsManual,bulkRestoresManual,bulkCleanup,width:innerWidth,detectsBeforeForm,manualTypeOptions,manualControlForm,manualSwitchPreservesData,manualControlSaved,manualFieldsComplete,manualPayloadComplete,manualReset,residentLastManual,residentLastOcr,emptyResident,missingUnitOptional,noUnitWarning,inlinePreview,listScroll,noInnerOverflow:list.scrollWidth<=list.clientWidth+1,successColor,residentReset,residentPersisted:payload.draft.resident.castingElement==='PILES'&&payload.draft.resident.laboratoryApplied===true&&payload.draft.lines[0].unit==='',pdfLandscape,consistentClocks,noRawText,noManualPhoto,automaticPreparation,automaticCrop,noFilterChoice,preparationHasOnePhoto,backKeepsPage,thumbnailsReady,pickerHidesForm,noAutoSelection,failedDoesNotAdvance,preservedQueue,versionAdvanced,controlDetected,panexusForm,controlManualTimes,controlBlankCode,mixtoForm,typeCorrectionNoOcr,quantityRetained,confirmationLast,controlSaved,pdfQueued,pdfRendered,pagesIndependent,pdfDidNotExtract,queueEnded,reviewRequired:!emptyReview,waitsForReading,preparedVisible,populated,unknownPreserved,selectedVariant,observationsNotCopied,locked,resetOpen,oneExtraction:window.extracts===3,oneOriginalUpload:originalUploads===3,retrySameCapture:originalSaves===4&&window.saves[0].captureId===window.saves[1].captureId,
  noClientPrice:payload.draft.lines.every(l=>!('unitPrice'in l)&&!('price'in l)),unknownSent:payload.draft.lines[1].productCode==='UNKNOWN'&&payload.draft.lines[1].catalogItemId==='',pageFits:document.documentElement.scrollWidth<=innerWidth,panelFits:bounds.left>=0&&bounds.right<=innerWidth&&bounds.top>=0&&bounds.bottom<=innerHeight};
 })()`;
 try{
@@ -159,17 +263,21 @@ try{
    const address=await new Promise((resolve,reject)=>{let text='';const timer=setTimeout(()=>reject(Error('Chrome startup timeout')),15000);child.stderr.on('data',data=>{text+=data;const match=text.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[a-z0-9-]+)/u);if(match){clearTimeout(timer);resolve(match[1])}});child.on('error',reject)});
    socket=new WebSocket(address);await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true})});let id=0;const waiting=new Map();
    socket.addEventListener('message',event=>{const data=JSON.parse(event.data),handler=waiting.get(data.id);if(!handler)return;waiting.delete(data.id);clearTimeout(handler.timer);if(data.error)handler.reject(Error(JSON.stringify(data.error)));else handler.resolve(data.result)});
-   const send=(method,params={},sessionId)=>new Promise((resolve,reject)=>{const request=++id,timer=setTimeout(()=>{waiting.delete(request);reject(Error('CDP timeout: '+method))},90000);waiting.set(request,{resolve,reject,timer});socket.send(JSON.stringify({id:request,method,params,...sessionId?{sessionId}:{}}))});
+   const send=(method,params={},sessionId)=>new Promise((resolve,reject)=>{const request=++id,timer=setTimeout(()=>{waiting.delete(request);reject(Error('CDP timeout: '+method))},180000);waiting.set(request,{resolve,reject,timer});socket.send(JSON.stringify({id:request,method,params,...sessionId?{sessionId}:{}}))});
    const{targetId}=await send('Target.createTarget',{url:'about:blank'}),{sessionId}=await send('Target.attachToTarget',{targetId,flatten:true});
    await send('Page.enable',{},sessionId);await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<=500},sessionId);await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]},sessionId);
    await send('Page.navigate',{url:`http://127.0.0.1:${server.address().port}/?theme=${theme}`},sessionId);
-   const evaluation=send('Runtime.evaluate',{expression:check,awaitPromise:true,returnByValue:true},sessionId);
-   const until=async flag=>{for(let i=0;i<1200;i++){const result=await send('Runtime.evaluate',{expression:flag,returnByValue:true},sessionId);if(result.result.value)return;await new Promise(r=>setTimeout(r,50));}throw Error('UI stage timeout')};
+   let completed;
+   const evaluation=send('Runtime.evaluate',{expression:check,awaitPromise:true,returnByValue:true},sessionId).then(result=>{completed=result;return result;});
+   const until=async flag=>{for(let i=0;i<1200;i++){const result=await send('Runtime.evaluate',{expression:flag,returnByValue:true},sessionId);if(result.result.value)return;if(completed){const debug=await send('Runtime.evaluate',{expression:`JSON.stringify({text:document.body.innerText,reads:window.bulkReads,saves:window.bulkSaves,buttons:[...document.querySelectorAll('button')].map(x=>({text:x.textContent,disabled:x.disabled}))})`,returnByValue:true},sessionId);console.log(debug.result.value);throw Error('UI stopped before '+flag+': '+JSON.stringify(completed));}await new Promise(r=>setTimeout(r,50));}throw Error('UI stage timeout: '+flag)};
    await until('window.qaManualReady');
    const manualShot=await send('Page.captureScreenshot',{format:'png'},sessionId);await writeFile(`${dir}/${width}-${theme}-manual.png`,Buffer.from(manualShot.data,'base64'));
-   await send('Runtime.evaluate',{expression:`document.querySelector('[aria-labelledby="guide-resident-heading"]').scrollIntoView({block:'end'})`},sessionId);
+   await send('Runtime.evaluate',{expression:`window.qaReveal(document.querySelector('[aria-labelledby="guide-resident-heading"]'),'start')`},sessionId);
    const residentShot=await send('Page.captureScreenshot',{format:'png'},sessionId);await writeFile(`${dir}/${width}-${theme}-resident.png`,Buffer.from(residentShot.data,'base64'));
    await send('Runtime.evaluate',{expression:'window.qaManualContinue=true'},sessionId);
+   await until('window.qaManualControlReady');
+   const manualControlShot=await send('Page.captureScreenshot',{format:'png'},sessionId);await writeFile(`${dir}/${width}-${theme}-manual-control.png`,Buffer.from(manualControlShot.data,'base64'));
+   await send('Runtime.evaluate',{expression:'window.qaManualControlContinue=true'},sessionId);
    await until('window.qaAutoReady');
    const autoShot=await send('Page.captureScreenshot',{format:'png'},sessionId);await writeFile(`${dir}/${width}-${theme}-automatic.png`,Buffer.from(autoShot.data,'base64'));
    await send('Runtime.evaluate',{expression:'window.qaAutoContinue=true'},sessionId);
@@ -190,19 +298,31 @@ try{
    await send('Runtime.evaluate',{expression:'window.qaCropContinue=true'},sessionId);
    await until('window.qaReviewReady');
    const reviewShot=await send('Page.captureScreenshot',{format:'png'},sessionId);await writeFile(`${dir}/${width}-${theme}-review.png`,Buffer.from(reviewShot.data,'base64'));
-   const region=await send('Runtime.evaluate',{expression:`(()=>{const e=document.querySelector('[aria-label="Lista de productos y servicios"]');e.scrollTop=0;e.scrollIntoView({block:'center'});e.focus({preventScroll:true});return true})()`,returnByValue:true},sessionId);
+   const region=await send('Runtime.evaluate',{expression:`(()=>{const e=document.querySelector('[aria-label="Lista de productos y servicios"]');e.scrollTop=0;window.qaReveal(e);e.focus({preventScroll:true});return true})()`,returnByValue:true},sessionId);
    assert.equal(region.result.value,true);
    await send('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowDown',code:'ArrowDown',windowsVirtualKeyCode:40},sessionId);await send('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowDown',code:'ArrowDown',windowsVirtualKeyCode:40},sessionId);
    await new Promise(r=>setTimeout(r,180));
    const listKeyboardScroll=(await send('Runtime.evaluate',{expression:`document.querySelector('[aria-label="Lista de productos y servicios"]').scrollTop>0`,returnByValue:true},sessionId)).result.value;
    const rowsShot=await send('Page.captureScreenshot',{format:'png'},sessionId);await writeFile(`${dir}/${width}-${theme}-lines.png`,Buffer.from(rowsShot.data,'base64'));
    await send('Runtime.evaluate',{expression:'window.qaReviewContinue=true'},sessionId);
+   await until('window.qaPanexusReady');
+   const panexusShot=await send('Page.captureScreenshot',{format:'png'},sessionId);await writeFile(`${dir}/${width}-${theme}-panexus.png`,Buffer.from(panexusShot.data,'base64'));
+   await send('Runtime.evaluate',{expression:'window.qaPanexusContinue=true'},sessionId);
+   await until('window.qaControlReady');
+   const controlShot=await send('Page.captureScreenshot',{format:'png'},sessionId);await writeFile(`${dir}/${width}-${theme}-control.png`,Buffer.from(controlShot.data,'base64'));
+   await send('Runtime.evaluate',{expression:'window.qaControlContinue=true'},sessionId);
    await until('window.qaPdfReady');
    const pdfShot=await send('Page.captureScreenshot',{format:'png'},sessionId);await writeFile(`${dir}/${width}-${theme}-pdf.png`,Buffer.from(pdfShot.data,'base64'));
    await send('Runtime.evaluate',{expression:'window.qaPdfContinue=true'},sessionId);
    await until('window.qaOrientationReady');
    const orientedShot=await send('Page.captureScreenshot',{format:'png'},sessionId);await writeFile(`${dir}/${width}-${theme}-real-guide.png`,Buffer.from(orientedShot.data,'base64'));
    await send('Runtime.evaluate',{expression:'window.qaOrientationContinue=true'},sessionId);
+   await until('window.qaBulkClassifyReady');
+   const bulkClassifyShot=await send('Page.captureScreenshot',{format:'png'},sessionId);await writeFile(`${dir}/${width}-${theme}-bulk-classification.png`,Buffer.from(bulkClassifyShot.data,'base64'));
+   await send('Runtime.evaluate',{expression:'window.qaBulkClassifyContinue=true'},sessionId);
+   await until('window.qaBulkReviewReady');
+   const bulkReviewShot=await send('Page.captureScreenshot',{format:'png'},sessionId);await writeFile(`${dir}/${width}-${theme}-bulk-review.png`,Buffer.from(bulkReviewShot.data,'base64'));
+   await send('Runtime.evaluate',{expression:'window.qaBulkReviewContinue=true'},sessionId);
    const result=await evaluation;
    if(result.exceptionDetails){const debug=await send('Runtime.evaluate',{expression:`JSON.stringify({statuses:[...document.querySelectorAll('[role="status"]')].map(x=>x.textContent),alerts:[...document.querySelectorAll('[role="alert"]')].map(x=>x.textContent),images:[...document.images].map(x=>({alt:x.alt,src:x.src})),buttons:[...document.querySelectorAll('button')].map(x=>({text:x.textContent,disabled:x.disabled}))})`,returnByValue:true},sessionId);console.log(debug.result.value);}
    assert.ok(!result.exceptionDetails,JSON.stringify(result.exceptionDetails));const values={...result.result.value,touchScroll,listKeyboardScroll};

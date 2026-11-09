@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { guidePdfThumbnails, type GuideSource } from "../guide-sources";
 
-export function GuidePagePicker({ sources, disabled, onAccept, onCancel }: {
+export function GuidePagePicker({ sources, disabled, onAccept, onCancel, onBulkScan }: {
   sources: GuideSource[]; disabled: boolean;
   onAccept: (selected: GuideSource[]) => void; onCancel: () => void;
+  onBulkScan?: (sources: GuideSource[]) => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [previews, setPreviews] = useState<Record<number, string>>({});
@@ -22,7 +24,7 @@ export function GuidePagePicker({ sources, disabled, onAccept, onCancel }: {
     <div>
       <h4 id="guide-pages-title" className="font-semibold">Elige las páginas con guías de despacho</h4>
       <p className="mt-1 break-words text-sm text-foreground-muted">{sources[0].file.name} · {sources.length} página(s)</p>
-      <p className="mt-2 text-xs leading-5 text-foreground-muted">Selecciona una guía por página. Omite los documentos Pedido / Control de operación: su lectura de servicios queda pendiente. Esta selección no consume OCR.</p>
+      <p className="mt-2 text-xs leading-5 text-foreground-muted">Selecciona las páginas con guías de despacho o pedidos de control de Mixto Listo o Panexus. Revisarás el tipo de cada documento antes de completar sus datos. Esta selección no consume OCR.</p>
     </div>
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p role="status" className="text-sm font-semibold">{selected.length} guía(s) seleccionada(s) de {sources.length} páginas</p>
@@ -40,5 +42,9 @@ export function GuidePagePicker({ sources, disabled, onAccept, onCancel }: {
     </div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <div className="flex flex-wrap gap-2"><Button disabled={disabled || selected.length === 0} onClick={() => onAccept(sources.filter((source) => selected.includes(source.id)))}>Continuar con {selected.length} guía(s)</Button><Button variant="secondary" disabled={disabled} onClick={onCancel}>Cancelar selección</Button></div>
+    {onBulkScan && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 p-3">
+      <div className="min-w-0"><p className="text-sm font-semibold">¿Prefieres procesar el PDF completo?</p><p className="mt-1 text-xs leading-5 text-foreground-muted">Escanea las {sources.length} páginas, confirma sus tipos y después revisa y guarda cada guía. Esta opción utiliza OCR, aunque no hayas seleccionado páginas arriba.</p></div>
+      <Button variant="secondary" disabled={disabled} onClick={() => onBulkScan(sources)}><ScanLine className="size-4" />Escaneo masivo</Button>
+    </div>}
   </div>;
 }
