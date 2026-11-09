@@ -1,5 +1,4 @@
 export type GuideReportFilters = {
-  period?: "day" | "week" | "month" | "custom";
   projectId?: string;
   supplierId?: string;
   userId?: string;
@@ -7,7 +6,7 @@ export type GuideReportFilters = {
   batchId?: string;
   dispatchStatus?: string;
   programmingStatus?: string;
-  orderStatus?: string;
+  castingElement?: string;
   reconciliationStatus?: string;
   withIncidents?: "yes" | "no";
   dateFrom: string;
@@ -54,6 +53,10 @@ export type GuideReportRow = {
   batchId: string | null;
   batchCode: string | null;
   guideCount: number;
+  castingElements: string[];
+  castingElementLabel: string;
+  trucks: string[];
+  laboratoryLabel: string;
   documentedQuantity: number;
   unitCode: string;
   receivedQuantity: number;
@@ -76,6 +79,16 @@ export type GuideReportRow = {
   serviceInvoice: ReportInvoice | null;
 };
 
+export type DispatchReportSummary = Pick<GuideReportRow,
+  "dispatchId" | "dispatchCode" | "projectId" | "orderNumber" | "batchCode" |
+  "receivedQuantity" | "unitCode" | "guideCount" | "incidentCount" |
+  "castingElements" | "castingElementLabel" | "trucks" | "laboratoryLabel" |
+  "completedByName" | "dispatchStatus" | "reconciliationStatus" | "difference"
+> & {
+  productInvoice: Pick<ReportInvoice, "number" | "total" | "currency" | "extractionStatus"> | null;
+  serviceInvoice: Pick<ReportInvoice, "number" | "total" | "currency" | "extractionStatus"> | null;
+};
+
 export type ProgrammingReportItem = {
   id: string;
   code: string;
@@ -93,6 +106,7 @@ export type ProgrammingReportItem = {
   unitCode: string;
   status: string;
   createdById: string;
+  castingElementLabel: string;
   createdByName: string;
   dispatches: GuideReportRow[];
 };

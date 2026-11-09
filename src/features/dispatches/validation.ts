@@ -62,12 +62,12 @@ export function validateDispatchGuideLines(lines: DispatchGuideLineInput[]) {
       (line) =>
         !Number.isFinite(line.quantity) ||
         line.quantity <= 0 ||
-        !(line.catalog_type === "SERVICE" ? SERVICE_UNIT_CODES as readonly string[] : DISPATCH_GUIDE_UNIT_CODES as readonly string[]).includes(
+        (line.unit_code !== "" && !(line.catalog_type === "SERVICE" ? SERVICE_UNIT_CODES as readonly string[] : DISPATCH_GUIDE_UNIT_CODES as readonly string[]).includes(
           line.unit_code,
-        ),
+        )),
     )
   ) {
-    return "Cada línea necesita una cantidad mayor que cero y una UM válida.";
+    return "Cada línea necesita una cantidad mayor que cero. La UM es opcional; si la indicas, usa una UM válida.";
   }
 
   if (
@@ -85,7 +85,7 @@ export function validateDispatchGuideLines(lines: DispatchGuideLineInput[]) {
       return !line.catalog_item_id && !line.line_id;
     })
   ) {
-    return "Selecciona un producto o servicio del catálogo en cada línea nueva.";
+    return "Selecciona un producto o servicio de la cotización en cada línea nueva.";
   }
 
   return null;

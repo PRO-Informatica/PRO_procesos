@@ -1,3 +1,4 @@
+import * as castingElements from '../src/features/dispatches/casting-elements.ts';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -38,6 +39,7 @@ test('la vista previa permite un día pasado y mantiene los campos obligatorios'
 function fixture({permission=true,permissions=['programming.create'],activeProjectId=projectId,rows=[row],parserError=null,m3=true,rpcError=null}={}) {
   const calls=[],extracts=[],paths=[];
   const actions=load(actionSource,{
+    '@/features/dispatches/casting-elements':castingElements,
     'next/cache':{revalidatePath:p=>paths.push(p)},
     '@/features/auth/queries':{requireActiveProfile:async()=>({id:projectId})},
     '@/features/projects/queries':{getProjectContext:async()=>({status:'ready',activeProject:{id:activeProjectId,code:'QA',name:'QA',timezone:'America/Guatemala',billingLegalName:'QA, S.A.',address:'QA Address'},projects:[],permissions:permission?permissions:[]})},
@@ -52,7 +54,7 @@ function form(patches={}) {
   const form=new FormData();
   form.set('projectId',projectId);
   form.set('workbook',new File(['original Excel'],'approved.xlsx'));
-  form.set('rows',JSON.stringify([{...row,scheduledAt:'2030-01-01T12:00',quantity:999,orderNumber:'FORGED',...patches}]));
+  form.set('rows',JSON.stringify([{...row,scheduledAt:'2030-01-01T12:00',quantity:999,orderNumber:'FORGED',placementElement:'Columnas',casting_element:'COLUMNS',...patches}]));
   return form;
 }
 test('preview y guardado admiten fechas históricas y releen fecha/pedido/concreto/volumen del original',async()=>{
@@ -66,7 +68,7 @@ test('preview y guardado admiten fechas históricas y releen fecha/pedido/concre
   assert.equal(f.calls.length,1);assert.equal(f.calls[0].name,'create_programming_batch');
   const item=f.calls[0].args.p_items[0];
   assert.equal(item.scheduled_at,'2026-10-24T13:00:00.000Z');
-  assert.equal(item.order_number,'106');assert.equal(item.lines[0].quantity,24);
+  assert.equal(item.casting_element,'PILES');assert.equal(item.order_number,'106');assert.equal(item.lines[0].quantity,24);
   assert.equal(item.lines[0].concrete_type,'CONF4001');assert.equal(item.lines[0].unit_code,'M3');
   assert.deepEqual(Array.from(item.delivery_modes),['PUMP','PLACEMENT']);assert.ok(f.paths.includes('/programming'));
 });

@@ -1,3 +1,4 @@
+import * as guideDetailsModel from "../src/features/dispatches/guide-details.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -23,7 +24,7 @@ const compiled = ts.transpileModule(source, {
 
 // Execute the actual Server Actions with only the auth/database boundaries
 // stubbed, so forged form values exercise the production validation path.
-function actions({ registration = savedRegistration, authorized = true, rpcError = null, catalogData = {} } = {}) {
+function actions({ registration = savedRegistration, authorized = true, permissions = ["dispatch.view", "dispatch.create", "dispatch.modify", "dispatch.complete", "dispatch.register_incident"], rpcError = null, catalogData = {} } = {}) {
   const calls = [];
   const queries = [];
   const supabase = {
@@ -60,7 +61,7 @@ function actions({ registration = savedRegistration, authorized = true, rpcError
       getProjectContext: async () => ({
         status: "ready",
         activeProject: { id: projectId, timezone: "America/Guatemala" },
-        permissions: authorized ? ["dispatch.view", "dispatch.create", "dispatch.modify", "dispatch.register_incident"] : [],
+        permissions: authorized ? permissions : [],
       }),
     },
     "@/lib/supabase/admin": {},
@@ -72,6 +73,7 @@ function actions({ registration = savedRegistration, authorized = true, rpcError
   runInNewContext(compiled, {
     exports,
     require(path) {
+    if (['./guide-details','../guide-details'].includes(path)) return guideDetailsModel;
       assert.ok(Object.hasOwn(imports, path), `Unexpected import: ${path}`);
       return imports[path];
     },
@@ -169,6 +171,29 @@ test("las acciones siguen exigiendo permisos y rechazan identificadores fuera de
       programmingId: dispatchId, dispatchId: programmingId,
     }))).status, "error");
     assert.equal(missing.calls.length, 0);
+  }
+});
+
+test("Supervisor puede guardar el despacho, pero no finalizar por ninguna Server Action", async () => {
+  const permissions = ["dispatch.view", "dispatch.create", "dispatch.modify", "dispatch.register_incident"];
+  const supervisor = actions({ permissions });
+  assert.equal((await supervisor.exports.saveDispatchAction({}, form())).status, "success");
+  assert.equal(supervisor.calls[0].name, "update_dispatch");
+  for (const action of ["completeDispatchAction", "finalizeDispatchAction"]) {
+    const denied = actions({ permissions });
+    const result = await denied.exports[action]({}, form());
+    assert.equal(result.status, "error");
+    assert.match(result.message, /No tienes permiso para finalizar/u);
+    assert.equal(denied.calls.length, 0);
+    assert.equal(denied.queries.length, 0);
+  }
+});
+
+test("Residente con dispatch.complete conserva ambas rutas de finalización", async () => {
+  for (const [action, rpc] of [["completeDispatchAction", "complete_dispatch"], ["finalizeDispatchAction", "finalize_dispatch"]]) {
+    const resident = actions();
+    assert.equal((await resident.exports[action]({}, form())).status, "success");
+    assert.equal(resident.calls[0].name, rpc);
   }
 });
 

@@ -9,10 +9,10 @@ import {
   selectOperationalViewPermissions,
 } from "../src/features/projects/access-policy.ts";
 
-test("PLATFORM_ADMIN hereda las vistas de Compras, Recepción y Residentes", () => {
+test("PLATFORM_ADMIN hereda las vistas de Compras, Supervisores y Residentes", () => {
   assert.deepEqual(PLATFORM_ADMIN_VIEW_SOURCE_ROLES, [
     "PURCHASING",
-    "RECEPTION",
+    "SUPERVISOR",
     "RESIDENT",
   ]);
   assert.deepEqual(
@@ -41,7 +41,7 @@ test("PLATFORM_ADMIN participa en vistas universales de solo lectura", () => {
   assert.equal(hasUniversalOperationalViewRole(["PLATFORM_ADMIN"]), true);
   assert.equal(hasUniversalOperationalViewRole(["PURCHASING"]), true);
   assert.equal(hasUniversalOperationalViewRole(["COMPANY_ADMIN"]), true);
-  assert.equal(hasUniversalOperationalViewRole(["RECEPTION"]), false);
+  assert.equal(hasUniversalOperationalViewRole(["SUPERVISOR"]), false);
 });
 
 test("PLATFORM_ADMIN conserva los permisos explícitos de su rol en el proyecto", () => {

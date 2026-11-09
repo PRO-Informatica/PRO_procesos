@@ -14,7 +14,21 @@ const harness=await mkdtemp(path.join(tmpdir(),'pro-dispatch-entry-harness-'));
 const product={id:'00000000-0000-4000-8000-000000000001',type:'PRODUCT',code:'86131064',reference:'CONF4001',description:null,observations:null,unitCode:null,price:1224.16,currency:'GTQ'};
 const service={id:'00000000-0000-4000-8000-000000000002',type:'SERVICE',code:'86180185',reference:null,description:'Dosis extra de retardante',observations:'Una dosis por metro cúbico',unitCode:'M3',price:10.92,currency:'GTQ'};
 const variant={...service,id:'00000000-0000-4000-8000-000000000003',observations:'Doble dosis por metro cúbico, aplicar según especificación de obra',price:21.84};
-await writeFile(path.join(harness,'actions.js'),`export async function searchDispatchCatalogAction(project,type,query){await new Promise(r=>setTimeout(r,80));return {status:'success',items:${JSON.stringify([product,service,variant])}.filter(i=>(type==='ALL'||i.type===type)&&[i.code,i.reference,i.description,i.observations].some(v=>(v||'').toLowerCase().includes(query.toLowerCase())))};} export async function saveDispatchGuideAction(_state,data){window.savedGuide=[...data.entries()];window.guideCalls=(window.guideCalls||[]).concat([window.savedGuide]);if(window.failGuideSave)return{status:'error',message:'Prueba de conservación del formulario'};const version=Number(data.get('expectedVersion'));if(version!==(window.serverVersion||1))return{status:'error',message:'Conflicto de versión'};window.serverVersion=version+1;window.successfulGuides=(window.successfulGuides||[]).concat([window.savedGuide]);return{status:'success',newVersion:window.serverVersion,guideId:'saved-guide-'+window.serverVersion};}`);
+await writeFile(path.join(harness,'actions.js'),`
+export async function searchDispatchCatalogAction(project,type,query){await new Promise(r=>setTimeout(r,80));return {status:'success',items:${JSON.stringify([product,service,variant])}.filter(i=>(type==='ALL'||i.type===type)&&[i.code,i.reference,i.description,i.observations].some(v=>(v||'').toLowerCase().includes(query.toLowerCase())))};}
+export async function saveDispatchGuideAction(_state,data){
+ window.savedGuide=[...data.entries()];window.guideCalls=(window.guideCalls||[]).concat([window.savedGuide]);
+ if(window.failGuideSave)return{status:'error',message:'Prueba de conservación del formulario'};
+ const version=Number(data.get('expectedVersion'));if(version!==(window.serverVersion||1))return{status:'error',message:'Conflicto de versión'};
+ if(data.get('guideId')){
+  const previous=window.savedGuideRecord;
+  window.savedGuideRecord={...previous,guideNumber:data.get('guideNumber'),details:JSON.parse(data.get('guideDetails')),
+   lines:data.getAll('lineId').map((id,index)=>({...previous.lines.find(line=>line.id===id),quantity:Number(data.getAll('lineQuantity')[index])}))};
+ }
+ window.serverVersion=version+1;window.successfulGuides=(window.successfulGuides||[]).concat([window.savedGuide]);
+ return{status:'success',newVersion:window.serverVersion,guideId:'saved-guide-'+window.serverVersion};
+}`);
+await writeFile(path.join(harness,'env.js'),`export const getPublicEnvironment=()=>({appEnvironment:'PROD'});`);
 await writeFile(path.join(harness,'navigation.js'),`export const useRouter=()=>({refresh(){window.dispatchEvent(new Event('qa-refresh'));}});`);
 await writeFile(path.join(harness,'notification.js'),`export function useActionNotification(){}`);
 await writeFile(path.join(harness,'loader.cjs'),`const ts=require(${JSON.stringify(require.resolve('typescript'))});module.exports=function(source){return ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText}`);
@@ -23,15 +37,16 @@ import React,{useEffect,useState} from 'react';import{createRoot}from'react-dom/
 import{DispatchGuideDialog}from'${root}/src/features/dispatches/components/dispatch-guide-dialog';
 const product=${JSON.stringify(product)};
 const editing=new URLSearchParams(location.search).has('edit');
-const guide=editing?{id:'existing-guide',guideNumber:'EDIT-1',guideDate:'2026-10-24',truckArrivalAt:'2026-10-24T13:00:00Z',truckDepartureAt:'2026-10-24T13:45:00Z',lines:[{id:'existing-line',quantity:7,unitCode:'M3',catalogType:'PRODUCT',catalogItemId:product.id,productCode:product.code,catalogReference:product.reference,productDescription:product.reference,unitPrice:product.price,currency:product.currency}]}:undefined;
-function Harness(){const[version,setVersion]=useState(1);useEffect(()=>{const update=()=>setVersion(window.serverVersion||1);window.addEventListener('qa-refresh',update);return()=>window.removeEventListener('qa-refresh',update);},[]);return <DispatchGuideDialog
- projectId="project" dispatchId="dispatch" programmingId="programming" expectedVersion={version} guide={guide}
+const guide=editing?{id:'existing-guide',guideNumber:'EDIT-1',guideDate:'2026-10-24',truckArrivalAt:'2026-10-24T13:00:00Z',truckDepartureAt:'2026-10-24T13:45:00Z',castingElement:'COLUMNS',laboratoryApplied:false,details:{loadingTime:'18:27'},lines:[{id:'existing-line',quantity:7,unitCode:'M3',catalogType:'PRODUCT',catalogItemId:product.id,productCode:product.code,catalogReference:product.reference,productDescription:product.reference,unitPrice:product.price,currency:product.currency},{id:'unpriced-service',quantity:1,unitCode:'',catalogType:'SERVICE',catalogItemId:null,productCode:'60090002',productDescription:'Servicio de bomba estacionaria',unitPrice:null,currency:null}]}:undefined;
+window.savedGuideRecord=guide;
+function Harness(){const[version,setVersion]=useState(1);const[open,setOpen]=useState(true);const[currentGuide,setCurrentGuide]=useState(guide);useEffect(()=>{const update=()=>setVersion(window.serverVersion||1);window.addEventListener('qa-refresh',update);return()=>window.removeEventListener('qa-refresh',update);},[]);return open?<DispatchGuideDialog
+ projectId="project" dispatchId="dispatch" programmingId="programming" expectedVersion={version} guide={currentGuide}
  programmedUnitCode="M3" operationDate="2026-10-24"
- defaultCatalogProduct={product} units={[{code:'M3',name:'Metro cúbico'}]} onClose={()=>{window.guideClosed=true;}}/>;}
+ defaultCatalogProduct={product} units={[{code:'M3',name:'Metro cúbico'}]} onClose={()=>{window.guideClosed=true;setOpen(false);}}/>:<button onClick={()=>{setCurrentGuide(window.savedGuideRecord);window.guideClosed=false;setOpen(true);}}>Reabrir guía</button>;}
 createRoot(document.getElementById('app')!).render(<Harness/>);`);
 await new Promise((resolve,reject)=>webpack({mode:'development',target:'web',devtool:false,
  entry:path.join(harness,'entry.tsx'),output:{path:harness,filename:'bundle.js'},
- resolve:{extensions:['.tsx','.ts','.js','.json'],modules:[path.join(root,'node_modules'),'node_modules'],alias:{'@/components/feedback/use-action-notification':path.join(harness,'notification.js'),'@':path.join(root,'src'),'next/navigation':path.join(harness,'navigation.js')}},
+ resolve:{extensions:['.tsx','.ts','.js','.json'],modules:[path.join(root,'node_modules'),'node_modules'],alias:{'@/lib/env':path.join(harness,'env.js'),'@/components/feedback/use-action-notification':path.join(harness,'notification.js'),'@':path.join(root,'src'),'next/navigation':path.join(harness,'navigation.js')}},
  module:{rules:[{test:/\.tsx?$/,exclude:/node_modules/,use:[{loader:path.join(harness,'loader.cjs')}]}]},
  plugins:[new webpack.NormalModuleReplacementPlugin(/^\.\.\/actions$/,path.join(harness,'actions.js'))],
 },(error,stats)=>{if(error||stats.hasErrors())reject(error||Error(stats.toString({all:false,errors:true})));else resolve();}));
@@ -48,12 +63,36 @@ await writeFile(path.join(harness,'browser-check.js'),String.raw`(async()=>{
  const panel=document.querySelector('[role="dialog"]');
  const dateDefault=document.getElementById('guide-date').value==='2026-10-24';
  if(new URLSearchParams(location.search).has('edit')){
+   const lineIds=()=>[...document.querySelectorAll('[name="lineId"]')].map(el=>el.value);
+   document.querySelector('[aria-label="Eliminar línea 2"]').click();await pause(50);
+   const removalPending=lineIds().length===1&&panel.textContent.includes('Una línea se eliminará al guardar la guía');
+   panel.querySelector('[aria-label="Cerrar"]').click();await wait(()=>button('Seguir editando'));
+   const closeWarns=panel.querySelector('h2').textContent==='¿Descartar los cambios?'&&!window.guideCalls;
+   button('Descartar cambios').focus();await key(document.activeElement,'Tab');
+   const forwardFocusTrapped=document.activeElement===panel.querySelector('[aria-label="Cerrar"]');
+   document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true}));await pause(50);
+   const promptFocusTrapped=forwardFocusTrapped&&document.activeElement===button('Descartar cambios');
+   await key(document.activeElement,'Escape');await wait(()=>!button('Seguir editando'));
+   const escapeKeepsDraft=lineIds().length===1&&!window.guideClosed&&getComputedStyle(panel).opacity==='1';
+   button('Cancelar').click();await wait(()=>button('Seguir editando'));button('Seguir editando').click();await pause(50);
+   const cancelKeepsDraft=lineIds().length===1&&!window.guideClosed;
+   panel.querySelector('[aria-label="Cerrar"]').click();await wait(()=>button('Descartar cambios'));button('Descartar cambios').click();await wait(()=>button('Reabrir guía'));
+   button('Reabrir guía').click();await wait(()=>document.querySelector('[aria-label="Eliminar línea 2"]'));
+   const discardDoesNotSave=lineIds().length===2&&!window.guideCalls;
+   document.querySelector('[aria-label="Eliminar línea 2"]').click();await pause(50);
    await set(document.getElementById('guide-number'),'EDIT-2');
-   window.failGuideSave=true;panel.querySelector('button[type="submit"]').click();
-   await wait(()=>panel.querySelector('[role="alert"]')&&!panel.querySelector('button[type="submit"]').disabled);
-   const editErrorRetained=!window.guideClosed&&document.getElementById('guide-number').value==='EDIT-2'&&document.querySelector('[name="lineQuantity"]').value==='7';
-   window.failGuideSave=false;panel.querySelector('button[type="submit"]').click();await wait(()=>window.guideClosed&&window.successfulGuides?.length===1);
-   return{editing:true,editErrorRetained,editCloses:window.guideClosed&&document.getElementById('guide-number').value==='EDIT-2'&&window.savedGuide.some(([key,value])=>key==='guideId'&&value==='existing-guide')};
+   window.failGuideSave=true;document.querySelector('button[type="submit"]').click();
+   await wait(()=>document.querySelector('[role="alert"]')&&!document.querySelector('button[type="submit"]').disabled);
+   const editErrorRetained=!window.guideClosed&&document.getElementById('guide-number').value==='EDIT-2'&&document.querySelector('[name="lineQuantity"]').value==='7'&&lineIds().length===1;
+   window.failGuideSave=false;document.querySelector('button[type="submit"]').click();await wait(()=>window.guideClosed&&window.successfulGuides?.length===1);
+   const editCloses=window.guideClosed&&window.savedGuide.some(([key,value])=>key==='guideId'&&value==='existing-guide');
+   const removedLineNotSent=window.savedGuide.filter(([key])=>key==='lineId').length===1&&!window.savedGuide.some(([key,value])=>key==='lineId'&&value==='unpriced-service');
+   button('Reabrir guía').click();await wait(()=>document.getElementById('guide-number'));
+   const reopenedWithoutService=lineIds().length===1&&!document.querySelector('[value="60090002"]')&&document.getElementById('guide-number').value==='EDIT-2';
+   document.querySelector('[aria-label="Cerrar"]').click();await wait(()=>button('Reabrir guía'));
+   const unchangedCloses=!button('Seguir editando')&&window.guideCalls.length===2;
+   button('Reabrir guía').click();await wait(()=>document.getElementById('guide-number'));
+   return{editing:true,removalPending,closeWarns,promptFocusTrapped,escapeKeepsDraft,cancelKeepsDraft,discardDoesNotSave,editErrorRetained,editCloses,removedLineNotSent,reopenedWithoutService,unchangedCloses};
  }
  await set(document.getElementById('guide-date'),'2026-10-30');
  await set(document.getElementById('guide-number'),'1234');
@@ -136,7 +175,8 @@ await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 await mkdir("tmp", { recursive: true });
 const directory = await mkdtemp(path.join(root, "tmp/dispatch-guide-entry-ui-"));
 try {
-  for (const [width, height, theme, horizontal] of [[320, 700, "light", "left"], [390, 844, "light", "left"], [820, 1100, "light", "left"], [1440, 1000, "light", "left"], [390, 844, "dark", "left"], [390, 844, "light", "edit"], [1440, 1000, "light", "edit"]]) {
+  const scenarios=process.argv.includes('--edit-only')?[[320,700,'light','edit'],[390,844,'dark','edit'],[820,1100,'light','edit'],[1440,1000,'light','edit']]:[[320, 700, "light", "left"], [390, 844, "light", "left"], [820, 1100, "light", "left"], [1440, 1000, "light", "left"], [390, 844, "dark", "left"], [390, 844, "light", "edit"], [1440, 1000, "light", "edit"]];
+  for (const [width, height, theme, horizontal] of scenarios) {
     const screenshot = path.join(directory, `${width}-${theme}-${horizontal}.png`);
     const profile = await mkdtemp(path.join(directory, "chrome-profile-"));
     const child = spawn("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", ["--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--disable-extensions", "--disable-sync", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"]);
@@ -187,8 +227,8 @@ try {
       socket?.close();
       child.kill();
     }
-    for (const key of (data.editing ? ["editErrorRetained", "editCloses"] : ["pageFits", "panelFits", "contentsFit", "cardsSeparated", "searchFits", "keyboardSelect", "variantSelected", "observationsNotCopied", "lineIsolation", "touchSelect", "dateDefault", "errorDraftRetained", "noNestedDialog", "payloadCorrect", "serviceOnly", "independentArrival", "newGuideReady", "secondErrorRetained", "sequentialCreates", "refreshKeepsDraft"])) assert.equal(data[key], true, `${width}/${theme}: ${key} ${JSON.stringify(data.headerHits)}`);
+    for (const key of (data.editing ? Object.keys(data).filter(key=>key!=='editing') : ["pageFits", "panelFits", "contentsFit", "cardsSeparated", "searchFits", "keyboardSelect", "variantSelected", "observationsNotCopied", "lineIsolation", "touchSelect", "dateDefault", "errorDraftRetained", "noNestedDialog", "payloadCorrect", "serviceOnly", "independentArrival", "newGuideReady", "secondErrorRetained", "sequentialCreates", "refreshKeepsDraft"])) assert.equal(data[key], true, `${width}/${theme}: ${key} ${JSON.stringify(data.headerHits)}`);
     delete data.headerHits;
     console.log(JSON.stringify({ status: "PASS", ...data, theme, horizontal, screenshot }));
   }
-} finally { await new Promise(resolve => server.close(resolve)); }
+} finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }

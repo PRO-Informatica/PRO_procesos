@@ -126,10 +126,10 @@ for (const code of ["42501", "42703", "PGRST204"]) {
 
 test("un PGRST103 en página 1 o un fallo de última actualización no se reintenta", async () => {
   const first = catalogQueries({ rowsError: "PGRST103" });
-  await assert.rejects(() => first.get("company-a", "project-a", { ...filters, servicePage: 1 }), /catálogo de servicios/u);
+  await assert.rejects(() => first.get("company-a", "project-a", { ...filters, servicePage: 1 }), /cotización de servicios/u);
   assert.equal(first.calls.filter(call => call.table === "project_service_prices" && call.range).length, 1);
   const latest = catalogQueries({ latestError: "42501" });
-  await assert.rejects(() => latest.get("company-a", "project-a", filters), /catálogo de servicios/u);
+  await assert.rejects(() => latest.get("company-a", "project-a", filters), /cotización de servicios/u);
   assert.equal(latest.calls.filter(call => call.table === "project_service_prices" && call.range).length, 1);
 });
 

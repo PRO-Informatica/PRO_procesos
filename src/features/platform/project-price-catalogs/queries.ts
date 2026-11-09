@@ -85,7 +85,7 @@ async function getProductCatalog(
     return getProductCatalog(projectId, query, 1);
   }
   if (rowsResult.error || latestResult.error) {
-    throw new Error("No fue posible cargar el catálogo de productos.", {
+    throw new Error("No fue posible cargar la cotización de productos.", {
       cause: rowsResult.error ?? latestResult.error,
     });
   }
@@ -147,7 +147,7 @@ async function getServiceCatalog(
     return getServiceCatalog(projectId, query, 1);
   }
   if (rowsResult.error || latestResult.error) {
-    throw new Error("No fue posible cargar el catálogo de servicios.", {
+    throw new Error("No fue posible cargar la cotización de servicios.", {
       cause: rowsResult.error ?? latestResult.error,
     });
   }

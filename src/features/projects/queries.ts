@@ -8,7 +8,8 @@ import { createClient } from "@/lib/supabase/server";
 import {
   hasUniversalOperationalViewRole,
   mergePlatformAdminProjectAccess,
-  PLATFORM_ADMIN_VIEW_SOURCE_ROLES,
+  PLATFORM_ADMIN_VIEW_ROLE_CODES,
+  selectPlatformAdminViewRoles,
   selectOperationalViewPermissions,
 } from "./access-policy";
 import type {
@@ -72,16 +73,22 @@ async function getPlatformAdminOperationalViewAccess(
   const { data: roles, error: rolesError } = await supabase
     .from("roles")
     .select("id, code")
-    .in("code", [...PLATFORM_ADMIN_VIEW_SOURCE_ROLES])
+    .in("code", [...PLATFORM_ADMIN_VIEW_ROLE_CODES])
     .eq("active", true);
-  if (rolesError || roles.length !== PLATFORM_ADMIN_VIEW_SOURCE_ROLES.length) {
+  const viewRoles = selectPlatformAdminViewRoles(roles ?? []);
+  if (rolesError || !viewRoles) {
+    console.error("[project-access] Operational view roles unavailable", {
+      code: rolesError?.code,
+      message: rolesError?.message,
+      found: roles?.map((role) => role.code),
+    });
     throw new Error("No fue posible resolver las vistas operativas de plataforma.");
   }
 
   const { data: assignments, error: assignmentsError } = await supabase
     .from("role_permissions")
     .select("permission_id")
-    .in("role_id", roles.map((role) => role.id as string));
+    .in("role_id", viewRoles.map((role) => role.id));
   if (assignmentsError) {
     throw new Error("No fue posible resolver los permisos operativos de plataforma.");
   }

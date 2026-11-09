@@ -228,7 +228,7 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
                           className="secondary-button"
                         >
                           <FileSpreadsheet aria-hidden="true" className="size-4" />
-                          Catálogos
+                          Cotizaciones
                         </Link>
                         <EditProjectDialog
                           companyId={company.id}
