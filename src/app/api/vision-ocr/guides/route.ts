@@ -8,7 +8,7 @@ export const maxDuration = 60;
 const headers = { "Cache-Control": "private, no-store" };
 function json(value: unknown, status = 200) { return Response.json(value, { status, headers }); }
 async function handle(work: () => Promise<unknown>) {
-  if (getPublicEnvironment().appEnvironment !== "DEV") return json({ error: "Herramienta no disponible." }, 404);
+  if (!["DEV", "PROD"].includes(getPublicEnvironment().appEnvironment)) return json({ error: "Herramienta no disponible." }, 404);
   try { return json(await work()); }
   catch (error) {
     if (error instanceof CaptureError) return json({ error: error.message, guideId: error.guideId }, error.status);

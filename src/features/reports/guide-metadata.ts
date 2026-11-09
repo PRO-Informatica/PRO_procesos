@@ -11,10 +11,14 @@ export function guideReportMetadata(guides: GuideMetadata[], programmingElement?
     return typeof details.truck === "string" && details.truck.trim() ? [details.truck.trim()] : [];
   }))];
   const laboratoryCount = guides.filter((guide) => guide.laboratory_applied === true).length;
+  const unknownLaboratoryCount = guides.filter((guide) => typeof guide.laboratory_applied !== "boolean").length;
+  const laboratoryLabel = !guides.length ? "Sin guías" : unknownLaboratoryCount === guides.length ? "Sin registrar"
+    : laboratoryCount ? `Sí (${laboratoryCount} de ${guides.length} guías${unknownLaboratoryCount ? `; ${unknownLaboratoryCount} sin registrar` : ""})`
+    : unknownLaboratoryCount ? `No en ${guides.length - unknownLaboratoryCount} guía(s); ${unknownLaboratoryCount} sin registrar` : "No";
   return {
     castingElements,
     castingElementLabel: castingElements.map((element) => CASTING_ELEMENTS[element]).join(", ") || "Sin registrar",
     trucks,
-    laboratoryLabel: !guides.length ? "Sin guías" : laboratoryCount ? `Sí (${laboratoryCount} de ${guides.length} guías)` : "No",
+    laboratoryLabel,
   };
 }

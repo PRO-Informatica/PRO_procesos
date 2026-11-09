@@ -56,7 +56,7 @@ type DispatchRow = {
 type GuideRow = {
   details: DispatchGuide["details"];
   casting_element: CastingElement | null;
-  laboratory_applied: boolean;
+  laboratory_applied: boolean | null;
   id: string;
   dispatch_id: string;
   guide_number: string;

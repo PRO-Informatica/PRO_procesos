@@ -86,14 +86,14 @@ export function buildRadarWorkbook(dispatches: RadarDispatch[]) {
         row.getCell("concrete").value = guide.concrete;
         row.getCell("temperature").value = guide.temperature;
         row.getCell("slump").value = guide.slump || null;
-        row.getCell("laboratory").value = guide.laboratoryNotes || (guide.laboratory ? "Sí" : null);
+        row.getCell("laboratory").value = guide.laboratoryNotes || (guide.laboratory === null ? "Sin registrar" : guide.laboratory ? "Sí" : null);
         clockCell(row.getCell("loading"), guide.loadingTime, guide, dispatch.timezone);
         clockCell(row.getCell("arrival"), guide.arrivalAt, guide, dispatch.timezone);
         clockCell(row.getCell("departure"), guide.departureAt, guide, dispatch.timezone);
       }
       for (let col = 1; col <= COLUMNS.length; col++) {
         const cell = row.getCell(col);
-        cell.font = { name: "Arial", size: 10, bold: col === 10 && guide?.laboratory };
+        cell.font = { name: "Arial", size: 10, bold: col === 10 && guide?.laboratory === true };
         cell.alignment = { horizontal: [3, 5].includes(col) ? "right" : "center", vertical: "middle", wrapText: true };
         cell.border = { top: border, bottom: border, left: border, right: border };
         if (guide?.laboratory) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFE066" } };

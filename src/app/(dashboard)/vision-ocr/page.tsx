@@ -4,6 +4,6 @@ import { VisionOcrWorkspace } from "@/features/vision-ocr/components/vision-ocr-
 import { getPublicEnvironment } from "@/lib/env";
 
 export default function VisionOcrPage() {
-  if (getPublicEnvironment().appEnvironment !== "DEV") notFound();
+  if (!["DEV", "PROD"].includes(getPublicEnvironment().appEnvironment)) notFound();
   return <VisionOcrWorkspace />;
 }

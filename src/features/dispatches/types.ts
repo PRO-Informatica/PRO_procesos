@@ -46,9 +46,9 @@ export type DispatchGuideLine = {
 };
 
 export type DispatchGuide = {
-  details?: Partial<GuideDetails>;
+  details?: Partial<GuideDetails> | null;
   castingElement?: CastingElement | null;
-  laboratoryApplied?: boolean;
+  laboratoryApplied?: boolean | null;
   id: string;
   guideNumber: string;
   guideDate: string;

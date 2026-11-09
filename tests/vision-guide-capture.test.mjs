@@ -144,9 +144,9 @@ test('recorte rechaza esquinas cruzadas, fuera de imagen y un documento demasiad
 test('calidad advierte foto pequeña, sin contraste y desenfocada; no inventa texto',()=>{
  const quality=imageQuality(new Uint8ClampedArray(100*100*4).fill(250),100,100);assert.equal(quality.warnings.length,3);
 });
-test('límites DEV y contrato de guardado aíslan PROD y no debilitan captura manual',async()=>{
+test('los ambientes y el contrato de guardado mantienen aislamiento de proyecto y captura manual',async()=>{
  const server=await readFile('src/features/vision-ocr/capture-server.ts','utf8');const sql=await readFile('supabase/migrations/131_vision_ocr_guide_capture.sql','utf8');
- assert.match(server,/appEnvironment !== "DEV"/);assert.match(server,/projectRef !== "gholwtklihaphoevosyb"/);assert.doesNotMatch(server,/jeyjblxfqqlypxiaznad/);
+ assert.match(server,/projectRef !== SUPABASE_PROJECT_REFS\[environment.appEnvironment\]/);assert.match(server,/"vision-ocr-prod" : "vision-ocr-dev"/);
  assert.match(server,/hasValidSameOrigin/);assert.match(server,/getClaims/);assert.match(server,/context.activeProject\?\.id !== projectId/);assert.doesNotMatch(server,/guideIdentity/);
  assert.match(sql,/capture\.guide_id is not null/);assert.match(sql,/OCR_CATALOG_VARIANT_REQUIRED/);assert.match(sql,/grant select on public\.guide_ocr_captures to authenticated/);
  assert.doesNotMatch(sql,/grant (?:all|update|insert).* to authenticated/);

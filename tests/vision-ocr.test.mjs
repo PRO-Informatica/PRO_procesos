@@ -55,14 +55,15 @@ test("la integración mantiene la clave exclusivamente en header del servidor", 
   assert.equal(VISION_OCR_ENDPOINT, "https://vision.googleapis.com/v1/images:annotate");
   assert.equal(VISION_OCR_MAX_BYTES, 7 * 1024 * 1024);
   assert.match(service, /process\.env\.GOOGLE_VISION_API_DEV_KEY/u);
+  assert.match(service, /process\.env\.GOOGLE_VISION_API_PROD_KEY/u);
   assert.match(service, /"x-goog-api-key": apiKey/u);
   assert.doesNotMatch(service, /\?key=/u);
   assert.doesNotMatch(workspace, /GOOGLE_VISION_API_DEV_KEY|x-goog-api-key|NEXT_PUBLIC_/u);
 });
 
 test("el endpoint exige sesión activa, mismo origen y evita cache", () => {
-  assert.match(route, /appEnvironment !== "DEV"/u);
-  assert.match(page, /appEnvironment !== "DEV"/u);
+  assert.match(route, /\["DEV", "PROD"\]\.includes/u);
+  assert.match(page, /\["DEV", "PROD"\]\.includes/u);
   assert.match(route, /hasValidSameOrigin/u);
   assert.match(route, /auth\.getClaims/u);
   assert.match(route, /\.from\("profiles"\)/u);

@@ -138,11 +138,12 @@ export function DispatchGuideDialog({
   const [savedVersion, setSavedVersion] = useState(expectedVersion);
   const [guideNumber, setGuideNumber] = useState(guide?.guideNumber ?? "");
   const [castingElement, setCastingElement] = useState<string>(guide ? guide.castingElement ?? "" : normalizeCastingElement(defaultCastingElement) ?? "");
-  const [laboratoryApplied, setLaboratoryApplied] = useState(guide?.laboratoryApplied ?? false);
+  const [laboratoryApplied, setLaboratoryApplied] = useState<boolean | null>(guide ? guide.laboratoryApplied ?? null : false);
   const [guideDate, setGuideDate] = useState(guide?.guideDate ?? operationDate ?? today());
   const [truckArrivalTime, setTruckArrivalTime] = useState(truckTime(guide?.truckArrivalAt, timezone));
   const [truckDepartureTime, setTruckDepartureTime] = useState(truckTime(guide?.truckDepartureAt, timezone));
-  const ocrEnabled = getPublicEnvironment().appEnvironment === "DEV";
+  const appEnvironment = getPublicEnvironment().appEnvironment;
+  const ocrEnabled = appEnvironment === "DEV" || appEnvironment === "PROD";
   const [capture, setCapture] = useState<GuidePhotoResult | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoSelected, setPhotoSelected] = useState(false);
@@ -185,7 +186,7 @@ export function DispatchGuideDialog({
     let result: DispatchMutationState;
     if (capture && details && !guide && ocrEnabled) {
       const draft: GuideOcrDraft = { ...capture.draft, guideNumber, arrivalTime: truckArrivalTime, departureTime: truckDepartureTime,
-        resident: { castingElement, laboratoryApplied }, details: { ...details, guideDate }, lines: lines.map((line) => ({ quantity: line.quantity, unit: line.unitCode, productCode: line.productCode,
+        resident: { castingElement, laboratoryApplied: laboratoryApplied === true }, details: { ...details, guideDate }, lines: lines.map((line) => ({ quantity: line.quantity, unit: line.unitCode, productCode: line.productCode,
           description: line.productDescription, type: line.catalogType, catalogItemId: line.catalogItemId, candidates: [], warning: null })) };
       try {
         const response = await fetch(guideCaptureUrl(projectId, dispatchId), { method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -367,7 +368,7 @@ export function DispatchGuideDialog({
         <input type="hidden" name="guideDetails" value={JSON.stringify({ ...details, guideDate })} />
         <div className="space-y-5 p-4 sm:p-6">
           {!guide && state.status === "success" && <p role="status" className="text-sm text-success">Guía guardada. Puedes ingresar la siguiente o cerrar esta ventana.</p>}
-          {ocrEnabled && !guide && !readOnly && <GuidePhotoCapture ref={photoCaptureRef} projectId={projectId} dispatchId={dispatchId} disabled={pending || Boolean(photoRetryGuide)} onRead={applyCapture} onReset={(usingPhoto) => {
+          {ocrEnabled && !guide && !readOnly && <GuidePhotoCapture ref={photoCaptureRef} environment={appEnvironment} projectId={projectId} dispatchId={dispatchId} disabled={pending || Boolean(photoRetryGuide)} onRead={applyCapture} onReset={(usingPhoto) => {
             setPhotoSelected(usingPhoto); setCapture(null); setDetails(emptyGuideDetails()); setOcrReviewed(false); setCastingElement(normalizeCastingElement(defaultCastingElement) ?? ""); setLaboratoryApplied(false);
             if (!usingPhoto) { setGuideNumber(""); setTruckArrivalTime(""); setTruckDepartureTime(""); setLines([initialLine(programmedUnitCode, defaultProductDescription ?? "", defaultCatalogProduct)]); }
           }} onBusy={setPhotoBusy} />}

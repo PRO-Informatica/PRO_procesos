@@ -34,7 +34,7 @@ async function authorizeRequest() {
 }
 
 export async function POST(request: Request) {
-  if (getPublicEnvironment().appEnvironment !== "DEV") {
+  if (!["DEV", "PROD"].includes(getPublicEnvironment().appEnvironment)) {
     return json({ success: false, error: "Herramienta no disponible." }, 404);
   }
   if (!hasValidSameOrigin(request)) return json({ success: false, error: "Solicitud no válida." }, 403);

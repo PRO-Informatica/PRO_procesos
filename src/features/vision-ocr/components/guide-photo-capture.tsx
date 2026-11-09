@@ -28,9 +28,10 @@ async function readResponse(response: Response) {
 
 export type GuidePhotoCaptureHandle = { saved: () => void; focusPending: () => boolean };
 export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
+  environment?: "DEV" | "PROD";
   projectId: string; dispatchId: string; disabled: boolean;
   onRead: (result: GuidePhotoResult) => void; onReset: (usingPhoto: boolean) => void; onBusy: (busy: boolean) => void;
-}>(function GuidePhotoCapture({ projectId, dispatchId, disabled, onRead, onReset, onBusy }, ref) {
+}>(function GuidePhotoCapture({ projectId, dispatchId, disabled, onRead, onReset, onBusy, environment = "DEV" }, ref) {
   const fileInput = useRef<HTMLInputElement>(null), cameraInput = useRef<HTMLInputElement>(null), pdfInput = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null), captureRef = useRef<string | null>(null);
   const automaticTurns = useRef(0);
@@ -209,7 +210,7 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
   };
   return <section className="min-w-0 space-y-3 rounded-xl border border-border bg-muted/20 p-3 sm:p-4" aria-labelledby="guide-photo-heading">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h3 ref={headingRef} tabIndex={-1} id="guide-photo-heading" className="font-semibold">Cargar guías con OCR · DEV</h3><p className="mt-1 text-xs text-foreground-muted">Revisa y guarda una guía por vez, con todos sus productos y servicios.</p></div>
+      <div><h3 ref={headingRef} tabIndex={-1} id="guide-photo-heading" className="font-semibold">Cargar guías con OCR{environment === "DEV" ? " · DEV" : ""}</h3><p className="mt-1 text-xs text-foreground-muted">Revisa y guarda una guía por vez, con todos sus productos y servicios.</p></div>
       <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={working || bulkSources.length > 0 || pageChoices.length > 0 || Boolean(current)} onClick={() => cameraInput.current?.click()}><Camera className="size-4" />Tomar foto</Button><Button variant="secondary" disabled={working || bulkSources.length > 0 || pageChoices.length > 0 || Boolean(current)} onClick={() => fileInput.current?.click()}><FileImage className="size-4" />Subir fotos</Button><Button variant="secondary" disabled={working || bulkSources.length > 0 || pageChoices.length > 0 || Boolean(current)} onClick={() => pdfInput.current?.click()}><FileText className="size-4" />Subir PDF</Button></div>
     </div>
     <details className="text-xs text-foreground-muted"><summary className="cursor-pointer py-2">Formatos y límites</summary><p>Hasta 20 fotos o páginas pendientes. Fotos JPG, PNG o WEBP de hasta 10 MiB; PDF de hasta 20 MiB y 20 páginas, con un documento por página. Puedes incluir guías de despacho y pedidos de control de Mixto Listo o Panexus. Se conserva la foto original o cada página completa como evidencia al guardar.</p></details>

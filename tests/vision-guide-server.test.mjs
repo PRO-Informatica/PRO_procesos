@@ -9,11 +9,11 @@ import * as imageModel from '../src/features/vision-ocr/vision-ocr.ts';
 const source=await readFile('src/features/vision-ocr/capture-server.ts','utf8');
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const id='00000000-0000-4000-8000-000000000001',actor='00000000-0000-4000-8000-000000000002',projectId='00000000-0000-4000-8000-000000000003',dispatchId='00000000-0000-4000-8000-000000000004';
-function fixture({copyFails=false,alreadyUploaded=false,environment='DEV',permission=true,deferredOperation=false,visionResult=null}={}){
+function fixture({copyFails=false,alreadyUploaded=false,environment='DEV',wrongProject=false,permission=true,deferredOperation=false,visionResult=null}={}){
  const bytes=new Uint8Array([255,216,255,4]),sha=crypto.createHash('sha256').update(bytes).digest('hex');
  const project={id:projectId,name:'Proyecto QA',code:'QA',address:'1 calle 3-45 zona 1 Guatemala',additionalAddresses:[]};
  const capture={id,project_id:projectId,dispatch_id:dispatchId,created_by:actor,status:'EXTRACTED',guide_id:null,original_path:'original',original_name:'qa.jpg',original_mime:'image/jpeg',original_size:bytes.length,original_sha256:sha,expires_at:'2099-01-01T00:00:00Z',evidence_attached_at:null};
- const calls={commits:0,inserts:0,finalizes:0,copies:0,removes:0,updates:[],adminCreated:0,extracts:0};
+ const calls={commits:0,inserts:0,finalizes:0,copies:0,removes:0,updates:[],adminCreated:0,extracts:0,buckets:[]};
  const query=(value)=>{const q={select(){return q},eq(){return q},is(){return q},order(){return q},maybeSingle:async()=>({data:value,error:null}),single:async()=>({data:value,error:null}),range:async()=>({data:value,error:null}),then(resolve){return Promise.resolve({data:value,error:null}).then(resolve)}};return q};
  const db={from(table){return query(table==='profiles'?{active:true}:table==='dispatches'?{id:dispatchId,project_id:projectId,status:'IN_EXECUTION',programming_id:'program',version:1}:table==='programming'?{unit_code:'M3'}:table==='document_versions'?{upload_status:alreadyUploaded?'UPLOADED':'PENDING',upload_expires_at:'2099-01-01T00:00:00Z'}:[])},auth:{getClaims:async()=>({data:{claims:{sub:actor}}})},rpc:async(name)=>{
   if(name==='commit_vision_ocr_guide'){calls.commits++;if(!capture.guide_id){calls.inserts++;capture.guide_id='saved-guide';capture.status='SAVED'}return{data:{guide_id:capture.guide_id,dispatch_version:2,upload:{documentId:'doc',versionId:'version',bucket:'documents',path:'photo'}},error:null}}
@@ -28,19 +28,24 @@ function fixture({copyFails=false,alreadyUploaded=false,environment='DEV',permis
     return{...q,then(resolve){resolve({data:[{id}],error:null})}};
    }};
   },
-  storage:{from:()=>({
+  storage:{from:(bucket)=>{calls.buckets.push(bucket);return({
    copy:async()=>{calls.copies++;return{error:copyFails?{message:'copy failed'}:null}},
    download:async()=>copyFails?{error:{message:'missing'}}:{data:new Blob([bytes]),error:null},
    remove:async()=>{calls.removes++;return{error:null}},
-  })},
+  })}},
  };
  const exports={};class VisionError extends Error{}
- const imports={'server-only':{},'node:crypto':crypto,'@/features/projects/queries':{getProjectContext:async()=>({status:'ready',activeProject:project,permissions:permission?['dispatch.modify','dispatch.view']:[]})},'@/lib/env':{getPublicEnvironment:()=>({appEnvironment:environment,projectRef:'gholwtklihaphoevosyb'})},'@/lib/supabase/admin':{createAdminClient:()=>{calls.adminCreated++;return admin}},'@/lib/supabase/server':{createClient:async()=>db},'@/lib/http/same-origin':{hasValidSameOrigin:()=>true},'./guide-draft':draftModel,'./service':{VisionOcrError:VisionError,extractDocumentText:async()=>{calls.extracts++;if(visionResult)return visionResult;if(deferredOperation)return{text:'PEDIDO / CONTROL OPERACIÓN',guideDraft:null};throw Error('Unexpected Google call')}},'./vision-ocr':imageModel};
+ const imports={'server-only':{},'node:crypto':crypto,'@/features/projects/queries':{getProjectContext:async()=>({status:'ready',activeProject:project,permissions:permission?['dispatch.modify','dispatch.view']:[]})},'@/lib/env':{SUPABASE_PROJECT_REFS:{DEV:'gholwtklihaphoevosyb',PROD:'jeyjblxfqqlypxiaznad'},getPublicEnvironment:()=>({appEnvironment:environment,projectRef:wrongProject?'other':environment==='PROD'?'jeyjblxfqqlypxiaznad':'gholwtklihaphoevosyb'})},'@/lib/supabase/admin':{createAdminClient:()=>{calls.adminCreated++;return admin}},'@/lib/supabase/server':{createClient:async()=>db},'@/lib/http/same-origin':{hasValidSameOrigin:()=>true},'./guide-draft':draftModel,'./service':{VisionOcrError:VisionError,extractDocumentText:async()=>{calls.extracts++;if(visionResult)return visionResult;if(deferredOperation)return{text:'PEDIDO / CONTROL OPERACIÓN',guideDraft:null};throw Error('Unexpected Google call')}},'./vision-ocr':imageModel};
  runInNewContext(compiled,{exports,Blob,File,AbortSignal,Date,console,Uint8Array,require(name){assert.ok(name in imports,name);return imports[name]}});
- return{server:exports,capture,calls,context:{db,admin,actor,project,dispatch:{id:dispatchId,status:'IN_EXECUTION'},unit:'M3'},draft:{resident:{castingElement:'PILES',laboratoryApplied:true},guideNumber:'QA-1',arrivalTime:'23:22',departureTime:'03:20',details:{...draftModel.emptyGuideDetails(),projectName:project.name,workAddress:project.address,guideDate:'2026-10-29',orderNumber:'999'},lines:[{quantity:'1',unit:'UN',type:'SERVICE',productCode:'UNKNOWN',description:'Sin catálogo',catalogItemId:'',unitPrice:999}]}};
+ return{server:exports,capture,calls,context:{db,admin,actor,project,dispatch:{id:dispatchId,status:'IN_EXECUTION'},unit:'M3',bucket:environment==='PROD'?'vision-ocr-prod':'vision-ocr-dev'},draft:{resident:{castingElement:'PILES',laboratoryApplied:true},guideNumber:'QA-1',arrivalTime:'23:22',departureTime:'03:20',details:{...draftModel.emptyGuideDetails(),projectName:project.name,workAddress:project.address,guideDate:'2026-10-29',orderNumber:'999'},lines:[{quantity:'1',unit:'UN',type:'SERVICE',productCode:'UNKNOWN',description:'Sin catálogo',catalogItemId:'',unitPrice:999}]}};
 }
-test('el servidor rechaza PROD antes de crear un cliente privilegiado',async()=>{
- const f=fixture({environment:'PROD'});await assert.rejects(f.server.captureContext(new Request('http://localhost'),projectId,dispatchId),/DEV/);assert.equal(f.calls.adminCreated,0);assert.equal(f.calls.inserts,0);
+test('el servidor rechaza una mezcla de ambiente y proyecto antes de crear un cliente privilegiado',async()=>{
+ const f=fixture({environment:'PROD',wrongProject:true});await assert.rejects(f.server.captureContext(new Request('http://localhost'),projectId,dispatchId),/Ambiente/);assert.equal(f.calls.adminCreated,0);assert.equal(f.calls.inserts,0);
+});
+test('PROD conserva permisos y usa exclusivamente su bucket de captura',async()=>{
+ const f=fixture({environment:'PROD'});const context=await f.server.captureContext(new Request('http://localhost'),projectId,dispatchId);
+ assert.equal(context.bucket,'vision-ocr-prod');await f.server.saveCapture(context,id,f.draft,1);
+ assert.ok(f.calls.buckets.length>0);assert.ok(f.calls.buckets.every(bucket=>bucket==='vision-ocr-prod'));
 });
 test('capturar requiere permiso en el proyecto activo',async()=>{
  const f=fixture({permission:false});await assert.rejects(f.server.captureContext(new Request('http://localhost'),projectId,dispatchId),/permiso/);assert.equal(f.calls.adminCreated,0);

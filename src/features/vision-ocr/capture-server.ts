@@ -3,7 +3,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { getProjectContext } from "@/features/projects/queries";
 import type { DispatchCatalogOption } from "@/features/dispatches/types";
-import { getPublicEnvironment } from "@/lib/env";
+import { getPublicEnvironment, SUPABASE_PROJECT_REFS } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { hasValidSameOrigin } from "@/lib/http/same-origin";
@@ -12,7 +12,6 @@ import { extractDocumentText, VisionOcrError } from "./service";
 import { hasValidImageSignature, isAllowedVisionImageType } from "./vision-ocr";
 import type { VisionTemplateType } from "./template-classifier";
 
-const BUCKET = "vision-ocr-dev";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const hash = (value: Uint8Array | string) => createHash("sha256").update(value).digest("hex");
 export class CaptureError extends Error {
@@ -29,7 +28,8 @@ type Capture = {
 };
 export async function captureContext(request: Request, projectId: string, dispatchId: string, readOnly = false) {
   const environment = getPublicEnvironment();
-  if (environment.appEnvironment !== "DEV" || environment.projectRef !== "gholwtklihaphoevosyb") throw new CaptureError("Herramienta disponible únicamente en DEV.", 404);
+  if (!Object.hasOwn(SUPABASE_PROJECT_REFS, environment.appEnvironment) || environment.projectRef !== SUPABASE_PROJECT_REFS[environment.appEnvironment]) throw new CaptureError("Ambiente de captura no válido.", 404);
+  const bucket = environment.appEnvironment === "PROD" ? "vision-ocr-prod" : "vision-ocr-dev";
   if (!readOnly && !hasValidSameOrigin(request)) throw new CaptureError("Solicitud no válida.", 403);
   if (!UUID.test(projectId) || !UUID.test(dispatchId)) throw new CaptureError("Selecciona un despacho válido.");
   const db = await createClient();
@@ -45,7 +45,7 @@ export async function captureContext(request: Request, projectId: string, dispat
   // Evidence retries for already saved captures remain possible after completion.
   const programming = await db.from("programming").select("unit_code").eq("id", dispatch.data.programming_id).eq("project_id", projectId).single();
   if (programming.error) throw new CaptureError("No se pudo consultar la programación.", 503);
-  return { db, admin: createAdminClient(), actor, project: context.activeProject, dispatch: dispatch.data, unit: String(programming.data.unit_code) };
+  return { db, admin: createAdminClient(), actor, project: context.activeProject, dispatch: dispatch.data, unit: String(programming.data.unit_code), bucket };
 }
 type Context = Awaited<ReturnType<typeof captureContext>>;
 async function ownedCapture(context: Context, id: string) {
@@ -93,19 +93,19 @@ export async function prepareCapture(context: Context, input: { fileName: string
   // are managed by the existing document lifecycle, never by this cleanup.
   const expired = await context.admin.from("guide_ocr_captures").select("id,original_path").eq("created_by", context.actor).is("guide_id", null).lt("expires_at", new Date().toISOString()).limit(10);
   for (const row of expired.data ?? []) {
-    const removal = await context.admin.storage.from(BUCKET).remove([row.original_path]);
+    const removal = await context.admin.storage.from(context.bucket).remove([row.original_path]);
     if (!removal.error) await context.admin.from("guide_ocr_captures").delete().eq("id", row.id).is("guide_id", null);
   }
   const id = randomUUID(), path = `${context.project.id}/${context.actor}/${id}/original`;
   const insert = await context.admin.from("guide_ocr_captures").insert({ id, project_id: context.project.id, dispatch_id: context.dispatch.id, created_by: context.actor,
     original_path: path, original_name: name, original_mime: input.mimeType, original_size: input.size });
   if (insert.error) throw new CaptureError("No se pudo preparar la captura.", 503);
-  const signed = await context.admin.storage.from(BUCKET).createSignedUploadUrl(path, { upsert: false });
+  const signed = await context.admin.storage.from(context.bucket).createSignedUploadUrl(path, { upsert: false });
   if (signed.error || !signed.data) {
     await context.admin.from("guide_ocr_captures").delete().eq("id", id);
     throw new CaptureError("No se pudo preparar la carga segura.", 503);
   }
-  return { captureId: id, bucket: BUCKET, path, token: signed.data.token };
+  return { captureId: id, bucket: context.bucket, path, token: signed.data.token };
 }
 
 export async function extractCapture(context: Context, id: string, image: File, adjustments: unknown, manual = false) {
@@ -116,7 +116,7 @@ export async function extractCapture(context: Context, id: string, image: File, 
   const lock = await context.admin.from("guide_ocr_captures").update({ status: "PROCESSING" }).eq("id", id).eq("status", "PREPARED").select("id");
   if (lock.error || !lock.data?.length) throw new CaptureError("La captura está procesándose.", 409);
   try {
-    const original = await context.admin.storage.from(BUCKET).download(capture.original_path);
+    const original = await context.admin.storage.from(context.bucket).download(capture.original_path);
     if (original.error || !original.data) throw new CaptureError("No se recibió la foto original. Vuelve a cargarla.");
     const bytes = new Uint8Array(await original.data.arrayBuffer());
     if (bytes.length !== capture.original_size || !hasValidImageSignature(bytes, capture.original_mime)) throw new CaptureError("La foto original no es válida.");
@@ -186,7 +186,7 @@ export async function saveCapture(context: Context, id: string, input: unknown, 
         if (updated.error) throw Error("RETRY_TARGET_FAILED");
         uploaded = false;
       }
-      const copied = uploaded ? { error: true } : await context.admin.storage.from(BUCKET).copy(capture.original_path, result.upload.path, { destinationBucket: result.upload.bucket });
+      const copied = uploaded ? { error: true } : await context.admin.storage.from(context.bucket).copy(capture.original_path, result.upload.path, { destinationBucket: result.upload.bucket });
       if (copied.error) {
         // A previous request may have copied the original before losing its
         // response. Verify its hash rather than accepting arbitrary contents.
@@ -199,7 +199,7 @@ export async function saveCapture(context: Context, id: string, input: unknown, 
       }
       const attached = await context.admin.from("guide_ocr_captures").update({ evidence_attached_at: new Date().toISOString() }).eq("id", id);
       if (attached.error) throw Error("ATTACH_FAILED");
-      await context.admin.storage.from(BUCKET).remove([capture.original_path]);
+      await context.admin.storage.from(context.bucket).remove([capture.original_path]);
     }
   } catch {
     throw new CaptureError("La guía se guardó, pero falta adjuntar su foto. Pulsa Reintentar foto; no se creará otra guía.", 503, result.guide_id);
@@ -210,7 +210,7 @@ export async function saveCapture(context: Context, id: string, input: unknown, 
 export async function discardCapture(context: Context, id: string) {
   const capture = await ownedCapture(context, id);
   if (capture.guide_id || capture.status === "PROCESSING") return;
-  const removed = await context.admin.storage.from(BUCKET).remove([capture.original_path]);
+  const removed = await context.admin.storage.from(context.bucket).remove([capture.original_path]);
   if (!removed.error) await context.admin.from("guide_ocr_captures").delete().eq("id", id).is("guide_id", null);
 }
 
@@ -221,6 +221,6 @@ export async function savedGuideCapture(context: Context, guideId: string) {
   if (!result.data) return null;
   const capture = result.data as unknown as Capture;
   const upload = capture.prepared_upload;
-  const preview = await context.admin.storage.from(capture.evidence_attached_at && upload ? upload.bucket : BUCKET).createSignedUrl(capture.evidence_attached_at && upload ? upload.path : capture.original_path, 300);
+  const preview = await context.admin.storage.from(capture.evidence_attached_at && upload ? upload.bucket : context.bucket).createSignedUrl(capture.evidence_attached_at && upload ? upload.path : capture.original_path, 300);
   return { captureId: capture.id, canRetry: capture.created_by === context.actor && !capture.evidence_attached_at, details: capture.review_payload?.details, extraction: capture.extraction, rawText: capture.raw_text, originalUrl: preview.data?.signedUrl ?? null };
 }

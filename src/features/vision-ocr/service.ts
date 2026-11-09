@@ -54,7 +54,7 @@ export async function extractDocumentText(
   requestedTemplate: VisionTemplateType,
   curedByMixto: boolean | null,
 ) {
-  const apiKey = process.env.GOOGLE_VISION_API_DEV_KEY;
+  const apiKey = process.env.NEXT_PUBLIC_APP_ENV === "PROD" ? process.env.GOOGLE_VISION_API_PROD_KEY : process.env.GOOGLE_VISION_API_DEV_KEY;
   if (!apiKey) {
     throw new VisionOcrError(
       "Google Vision OCR no está configurado en este ambiente.",

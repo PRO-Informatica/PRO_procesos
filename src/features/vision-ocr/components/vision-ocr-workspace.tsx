@@ -253,8 +253,8 @@ export function VisionOcrWorkspace() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5 pb-10">
       <header>
-        <p className="text-xs font-semibold uppercase tracking-[.16em] text-brand-strong">Herramienta interna · DEV</p>
-        <h1 className="mt-2 text-2xl font-semibold text-foreground sm:text-3xl">Prueba Google Vision OCR</h1>
+        <p className="text-xs font-semibold uppercase tracking-[.16em] text-brand-strong">Lectura de documentos</p>
+        <h1 className="mt-2 text-2xl font-semibold text-foreground sm:text-3xl">Google Vision OCR</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-foreground-muted">
           Selecciona una guía o control de operación. La plantilla se identifica localmente antes de ejecutar DOCUMENT_TEXT_DETECTION; el resultado es una ayuda de revisión y no se guarda.
         </p>

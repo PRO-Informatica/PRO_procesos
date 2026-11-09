@@ -10,7 +10,7 @@ const filters = { dateFrom: "2026-11-01", dateTo: "2026-11-30" };
 const product = { position: 1, catalog_type: "PRODUCT", product_code: "86131064", catalog_reference: "CONF4001", product_description: "Concreto fluido", quantity: "6.5", unit_code: "M3" };
 const service = { position: 2, catalog_type: "SERVICE", product_code: "SERV1014", product_description: "Tubo adicional", quantity: "13", unit_code: "UN" };
 function guide(id, changes = {}, lines = [product, service]) {
-  return makeRadarGuide({ id, guide_number: `6015-${id}`, guide_date: "2026-11-03", truck_arrival_at: "2026-11-04T05:00:00Z", truck_departure_at: "2026-11-04T09:20:00Z", details: { truck: "183", loadingTime: "18:27", documentType: "DISPATCH_GUIDE", observations: "Revisar descarga", customerName: "Cliente", projectName: "Obra leída", workAddress: "Dirección de obra" }, ...changes }, lines, "COLUMNS");
+  return makeRadarGuide({ id, laboratory_applied: false, guide_number: `6015-${id}`, guide_date: "2026-11-03", truck_arrival_at: "2026-11-04T05:00:00Z", truck_departure_at: "2026-11-04T09:20:00Z", details: { truck: "183", loadingTime: "18:27", documentType: "DISPATCH_GUIDE", observations: "Revisar descarga", customerName: "Cliente", projectName: "Obra leída", workAddress: "Dirección de obra" }, ...changes }, lines, "COLUMNS");
 }
 function dispatch(id, guides, changes = {}) {
   return { id, code: `DSP-${id}`, programmingCode: `PRG-${id}`, orderNumber: "88", projectId: "acoat", projectName: "ACOAT", supplierName: "MEZCLADORA, S.A.", scheduledAt: "2026-11-03T13:00:00Z", timezone: "America/Guatemala", summary: { castingElements: ["COLUMNS"], castingElementLabel: "Columnas" }, guides, ...changes };
@@ -40,7 +40,7 @@ test("la reportería resume elementos, camiones únicos y laboratorio por guía"
   const result = guideReportMetadata([
     { casting_element: "PILES", details: { truck: " 183 " }, laboratory_applied: true },
     { details: { truck: "183" }, laboratory_applied: false },
-    { casting_element: "COLUMNS", details: ["no es un objeto de campos"] },
+    { casting_element: "COLUMNS", laboratory_applied: false, details: ["no es un objeto de campos"] },
   ], "COLUMNS");
   assert.deepEqual(result.castingElements, ["PILES", "COLUMNS"]);
   assert.deepEqual(result.trucks, ["183"]);
@@ -48,7 +48,7 @@ test("la reportería resume elementos, camiones únicos y laboratorio por guía"
   assert.equal(result.laboratoryLabel, "Sí (1 de 3 guías)");
   assert.equal(guideReportMetadata([], "PILES").castingElementLabel, "Pilotes");
   assert.equal(guideReportMetadata([]).laboratoryLabel, "Sin guías");
-  assert.equal(guideReportMetadata([{}]).laboratoryLabel, "No");
+  assert.equal(guideReportMetadata([{}]).laboratoryLabel, "Sin registrar");
 });
 
 test("el radar combina criterios por despacho y conserva todas sus guías", () => {

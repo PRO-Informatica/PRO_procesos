@@ -37,7 +37,7 @@ export type RadarGuide = {
   loadingTime: string;
   arrivalAt: string | null;
   departureAt: string | null;
-  laboratory: boolean;
+  laboratory: boolean | null;
   castingElement: string;
   pilot: string;
   operator: string;
@@ -121,7 +121,7 @@ export function filterRadarDispatches(dispatches: RadarDispatch[], filters: Rada
     if (filters.concrete && !dispatch.guides.some((guide) => radarGuideMatches(guide, { dateFrom: filters.dateFrom, dateTo: filters.dateTo, concrete: filters.concrete }))) return false;
     const hasLaboratory = dispatch.guides.some((guide) => guide.laboratory);
     if (filters.laboratory === "yes" && !hasLaboratory) return false;
-    if (filters.laboratory === "no" && (!dispatch.guides.length || hasLaboratory)) return false;
+    if (filters.laboratory === "no" && (!dispatch.guides.length || dispatch.guides.some((guide) => guide.laboratory !== false))) return false;
     return true;
   });
 }
@@ -157,7 +157,7 @@ export function makeRadarGuide(row: Row, lineRows: Row[], programmingCasting?: u
     customerName: text(details.customerName), projectName: text(details.projectName), workAddress: text(details.workAddress),
     truck: text(details.truck), plant: text(details.plant), loadingTime: text(details.loadingTime),
     arrivalAt: text(row.truck_arrival_at) || null, departureAt: text(row.truck_departure_at) || null,
-    laboratory: row.laboratory_applied === true, castingElement: element ? CASTING_ELEMENTS[element] : "Sin registrar",
+    laboratory: typeof row.laboratory_applied === "boolean" ? row.laboratory_applied : null, castingElement: element ? CASTING_ELEMENTS[element] : "Sin registrar",
     pilot: text(details.pilot), operator: text(details.operator), observations: text(details.observations),
     temperature: details.temperature !== null && details.temperature !== undefined && String(details.temperature).trim() !== "" && Number.isFinite(Number(details.temperature)) ? Number(details.temperature) : null,
     slump: text(details.slump), laboratoryNotes: text(details.laboratoryNotes),
