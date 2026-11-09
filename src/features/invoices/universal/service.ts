@@ -330,7 +330,7 @@ async function classifyInternal(
       message: status === "DISPATCH_NOT_FOUND" ? "No se encontró un despacho completado para el pedido detectado."
         : status === "DISPATCH_AMBIGUOUS" ? "Más de un despacho coincide con el pedido y su identidad de producto. Selecciona uno."
         : status === "PRODUCT_MISMATCH" ? `El pedido se repite, pero el código o la referencia del concreto no corresponde al despacho. Productos esperados: ${expected}.`
-        : status === "DISPATCH_IDENTITY_UNVERIFIED" ? "No hay un código y referencia de concreto verificables en las guías o en el catálogo de la programación. Revisa el despacho; no se asignó automáticamente."
+        : status === "DISPATCH_IDENTITY_UNVERIFIED" ? "No hay un código y referencia de concreto verificables en las guías o en la cotización de la programación. Revisa el despacho; no se asignó automáticamente."
         : status === "REQUIRES_PRODUCT_VALIDATION" ? "No se encontró un Producto válido del mismo pedido y PCA en esta carga ni en el despacho. Revisa que los PDFs correspondan a la misma operación."
         : "El PCA completo del Servicio no coincide con el de la factura de Producto validada del despacho, o el despacho seleccionado no corresponde. No se asignó la factura.",
     });

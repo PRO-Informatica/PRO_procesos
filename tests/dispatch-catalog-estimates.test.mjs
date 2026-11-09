@@ -1,3 +1,4 @@
+import * as guideDetailsModel from "../src/features/dispatches/guide-details.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";

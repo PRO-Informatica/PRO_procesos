@@ -1,3 +1,4 @@
+import * as guideDetailsModel from "../src/features/dispatches/guide-details.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -18,6 +19,7 @@ function load(source, imports) {
   }).outputText;
   const exports = {};
   runInNewContext(compiled, { exports, require(path) {
+    if (['./guide-details','../guide-details'].includes(path)) return guideDetailsModel;
     assert.ok(Object.hasOwn(imports, path), `Unexpected import: ${path}`);
     return imports[path];
   } });

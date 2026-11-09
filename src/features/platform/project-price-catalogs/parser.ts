@@ -284,7 +284,7 @@ function parseRows(
   }
 
   if (rows.length > MAX_CATALOG_ROWS) {
-    throw new Error(`El catálogo no puede exceder ${MAX_CATALOG_ROWS.toLocaleString("es-GT")} registros.`);
+    throw new Error(`La cotización no puede exceder ${MAX_CATALOG_ROWS.toLocaleString("es-GT")} registros.`);
   }
   addDuplicateErrors(rows, kind);
   return rows;

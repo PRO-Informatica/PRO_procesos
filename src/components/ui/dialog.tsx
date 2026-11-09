@@ -70,7 +70,8 @@ export function useDialogAccessibility<T extends HTMLElement = HTMLDivElement>({
         return;
       }
       if (event.key !== "Tab" || !panel) return;
-      const focusable = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      const focusable = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)]
+        .filter((element) => element.getClientRects().length > 0);
       if (!focusable.length) {
         event.preventDefault();
         panel.focus();
@@ -103,6 +104,7 @@ export function Dialog({
   description,
   icon: Icon,
   onClose,
+  onBeforeClose,
   pending = false,
   children,
   size = "md",
@@ -113,6 +115,7 @@ export function Dialog({
   description?: string;
   icon?: LucideIcon | React.ReactNode;
   onClose: () => void;
+  onBeforeClose?: () => boolean;
   pending?: boolean;
   children: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl" | "full";
@@ -126,13 +129,14 @@ export function Dialog({
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestClose = useCallback(() => {
     if (pending || closing) return;
+    if (onBeforeClose && !onBeforeClose()) return;
     if (reduceMotion) {
       onClose();
       return;
     }
     setClosing(true);
     closeTimerRef.current = setTimeout(onClose, motionTokens.duration.hover * 1000);
-  }, [closing, onClose, pending, reduceMotion]);
+  }, [closing, onBeforeClose, onClose, pending, reduceMotion]);
   const panelRef = useDialogAccessibility({ open: true, onClose: requestClose, pending: pending || closing });
 
   useEffect(() => () => {

@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CheckCircle2,
   ClipboardCheck,
+  Eye,
   History,
   PackageOpen,
   Pencil,
@@ -367,6 +368,16 @@ export function ProgrammingDetailView({
                       <div><span className="form-label">Estado del proceso</span><span className="font-medium text-foreground">{formatStatusLabel(dispatch.status)}</span><span className="form-label mt-2">Resultado físico</span><span className="font-medium text-foreground">{formatStatusLabel(dispatch.result, "Sin resultado")}</span></div>
                       <div><span className="form-label">Cantidad</span><span className="font-medium text-foreground">{dispatch.quantity === null ? "—" : `${formatProgrammingQuantity(dispatch.quantity)} ${dispatch.unitCode}`}</span></div>
                       </Link>
+                      <div className="flex justify-end px-4 pb-4 sm:px-6">
+                        <Link
+                          href={`/dispatches/${dispatch.id}`}
+                          aria-label={`Ver despacho ${dispatch.id.slice(0, 8).toUpperCase()}`}
+                          className="secondary-button w-full gap-2 sm:w-auto"
+                        >
+                          <Eye aria-hidden="true" className="size-4 shrink-0" />
+                          Ver despacho
+                        </Link>
+                      </div>
                     </li>
                   ))}
                 </ul>

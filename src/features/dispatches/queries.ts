@@ -1,4 +1,5 @@
 import "server-only";
+import type { CastingElement } from "./casting-elements";
 import { serviceReconciliationSummary } from "@/features/invoices/service-reconciliation";
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -23,6 +24,7 @@ import type {
 } from "./types";
 
 type ProgrammingRow = {
+  casting_element: CastingElement | null;
   id: string;
   supplier_id: string;
   order_number: string | null;
@@ -52,6 +54,9 @@ type DispatchRow = {
   updated_at: string;
 };
 type GuideRow = {
+  details: DispatchGuide["details"];
+  casting_element: CastingElement | null;
+  laboratory_applied: boolean | null;
   id: string;
   dispatch_id: string;
   guide_number: string;
@@ -68,7 +73,7 @@ type LineRow = {
   product_code: string | null;
   product_description: string | null;
   quantity: number | string;
-  unit_code: string;
+  unit_code: string | null;
   catalog_type: "PRODUCT" | "SERVICE" | null;
   product_price_id: string | null;
   service_price_id: string | null;
@@ -137,7 +142,7 @@ function buildGuides(guides: GuideRow[], lines: LineRow[]) {
       productCode: line.product_code,
       productDescription: line.product_description,
       quantity: numberValue(line.quantity),
-      unitCode: line.unit_code,
+      unitCode: line.unit_code ?? "",
       catalogType: line.catalog_type,
       catalogItemId:
         line.catalog_type === "PRODUCT"
@@ -165,6 +170,8 @@ function buildGuides(guides: GuideRow[], lines: LineRow[]) {
       guideDate: guide.guide_date,
       truckArrivalAt: guide.truck_arrival_at,
       truckDepartureAt: guide.truck_departure_at,
+      castingElement: guide.casting_element, laboratoryApplied: guide.laboratory_applied,
+      details: guide.details ?? {},
       quantity: numberValue(guide.quantity),
       unitCode: guide.unit_code,
       productCount: guideLines.filter((line) => line.catalogType !== "SERVICE").length,
@@ -220,7 +227,7 @@ export async function getDispatchPageData(
     supabase
       .from("programming")
       .select(
-        "id, supplier_id, order_number, status, scheduled_at, requested_quantity, confirmed_quantity, unit_code",
+        "id, supplier_id, order_number, status, scheduled_at, requested_quantity, confirmed_quantity, unit_code, casting_element",
       )
       .eq("project_id", projectId)
       .in("status", ["CONFIRMED", "IN_EXECUTION", "DISPATCH_COMPLETED"])
@@ -251,7 +258,7 @@ export async function getDispatchPageData(
     dispatchIds.length
       ? supabase
           .from("dispatch_guides")
-          .select("id, dispatch_id, guide_number, guide_date, truck_arrival_at, truck_departure_at, quantity, unit_code")
+          .select("id, dispatch_id, guide_number, guide_date, truck_arrival_at, truck_departure_at, casting_element, laboratory_applied, details, quantity, unit_code")
           .eq("project_id", projectId)
           .in("dispatch_id", dispatchIds)
           .order("guide_date")
@@ -290,7 +297,7 @@ export async function getDispatchPageData(
     : { data: [], error: null };
   assertNoError(
     catalogMatchesResult.error,
-    "No fue posible relacionar el tipo de concreto con el catálogo.",
+    "No fue posible relacionar el tipo de concreto con la cotización.",
   );
   const catalogProductsByReference = new Map<string, CatalogProductRow[]>();
   for (const row of (catalogMatchesResult.data ?? []) as CatalogProductRow[]) {
@@ -333,6 +340,7 @@ export async function getDispatchPageData(
     const guides = dispatch ? (guidesByDispatch.get(dispatch.id) ?? []) : [];
     return {
       programmingId: row.id,
+      programmingCastingElement: row.casting_element,
       programmingCode: formatIdentifier("PRG", row.id),
       programmingStatus: row.status,
       scheduledAt: row.scheduled_at,
@@ -404,7 +412,7 @@ export async function getDispatchDetail(
       supabase
         .from("programming")
         .select(
-          "id, supplier_id, order_number, status, scheduled_at, requested_quantity, confirmed_quantity, unit_code",
+          "id, supplier_id, order_number, status, scheduled_at, requested_quantity, confirmed_quantity, unit_code, casting_element",
         )
         .eq("project_id", projectId)
         .eq("id", dispatch.programming_id)
@@ -412,7 +420,7 @@ export async function getDispatchDetail(
       supabase.from("suppliers").select("id, name").eq("id", dispatch.supplier_id).maybeSingle(),
       supabase
         .from("dispatch_guides")
-        .select("id, dispatch_id, guide_number, guide_date, truck_arrival_at, truck_departure_at, quantity, unit_code")
+        .select("id, dispatch_id, guide_number, guide_date, truck_arrival_at, truck_departure_at, casting_element, laboratory_applied, details, quantity, unit_code")
         .eq("project_id", projectId)
         .eq("dispatch_id", dispatchId)
         .order("guide_date"),
@@ -455,7 +463,7 @@ export async function getDispatchDetail(
     : { data: [], error: null };
   assertNoError(
     defaultCatalogResult.error,
-    "No fue posible relacionar el tipo de concreto con el catálogo.",
+    "No fue posible relacionar el tipo de concreto con la cotización.",
   );
   const guideRows = (guidesResult.data ?? []) as GuideRow[];
   const guideIds = guideRows.map((row) => row.id);
@@ -717,6 +725,7 @@ export async function getDispatchDetail(
     id: dispatch.id,
     projectId,
     programmingId: programming.id,
+    programmingCastingElement: programming.casting_element,
     programmingCode: formatIdentifier("PRG", programming.id),
     programmingStatus: programming.status,
     programmingScheduledAt: programming.scheduled_at,

@@ -1,8 +1,22 @@
 export const PLATFORM_ADMIN_VIEW_SOURCE_ROLES = [
   "PURCHASING",
-  "RECEPTION",
+  "SUPERVISOR",
   "RESIDENT",
 ] as const;
+
+// During the role migration, the same role ID can still have its old code.
+export const PLATFORM_ADMIN_VIEW_ROLE_CODES = [
+  ...PLATFORM_ADMIN_VIEW_SOURCE_ROLES,
+  "RECEPTION",
+] as const;
+
+export function selectPlatformAdminViewRoles<T extends { id: string; code: string }>(roles: T[]) {
+  const selected = PLATFORM_ADMIN_VIEW_SOURCE_ROLES.map((code) =>
+    roles.find((role) => role.code === code) ??
+    (code === "SUPERVISOR" ? roles.find((role) => role.code === "RECEPTION") : undefined),
+  );
+  return selected.every((role) => role !== undefined) ? selected : null;
+}
 
 export type OperationalAccess = {
   roleCodes: string[];

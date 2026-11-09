@@ -73,14 +73,14 @@ export function ProjectPriceCatalogsView({ data }: { data: ProjectPriceCatalogsD
       </Link>
       <div className="mt-5">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand">Parámetros del proyecto</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Catálogos de precios</h1>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Cotizaciones</h1>
         <p className="mt-2 text-sm text-foreground-muted">
           {data.project.name} · {data.project.code}. Los precios son independientes para este proyecto.
         </p>
       </div>
 
       <CatalogSection
-        title="Catálogo de productos"
+        title="Cotización de productos"
         description="Productos identificados por la combinación de código y referencia."
         icon={Boxes}
         companyId={data.company.id}
@@ -92,7 +92,7 @@ export function ProjectPriceCatalogsView({ data }: { data: ProjectPriceCatalogsD
         data={data}
       />
       <CatalogSection
-        title="Catálogo de servicios"
+        title="Cotización de servicios"
         description="Servicios identificados por código y observaciones. Las observaciones no se incluyen en la guía."
         icon={Wrench}
         companyId={data.company.id}
@@ -176,7 +176,7 @@ function CatalogSection({
       {catalog.items.length === 0 ? (
         <div className="p-6 sm:p-8">
           <EmptyState
-            title={catalog.query ? "Sin coincidencias" : "Catálogo vacío"}
+            title={catalog.query ? "Sin coincidencias" : "Cotización vacía"}
             description={catalog.query ? "Prueba con otro término de búsqueda." : "Importa un archivo Excel para registrar los precios de este proyecto."}
           />
         </div>

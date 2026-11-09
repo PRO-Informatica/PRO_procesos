@@ -46,7 +46,7 @@ await writeFile(path.join(harness,'browser-check.js'),String.raw`(async()=>{
  const status=document.getElementById('programming-filter-status');const opts=[...status.options].map(o=>o.value);
  const noPending=!opts.includes('PENDING_CONFIRMATION')&&!opts.includes('DRAFT');const hasDispatchCompleted=opts.includes('DISPATCH_COMPLETED');
  const dark=new URLSearchParams(location.search).get('theme')==='dark';
- const expected=dark?{CONFIRMED:'rgb(32, 59, 75)',IN_EXECUTION:'rgb(255, 193, 7)',DISPATCH_COMPLETED:'rgb(29, 53, 87)',COMPLETED:'rgb(26, 26, 26)',CANCELLED:'rgb(69, 29, 35)',EXPIRED:'rgb(52, 56, 63)'}:{CONFIRMED:'rgb(234, 242, 246)',IN_EXECUTION:'rgb(255, 193, 7)',DISPATCH_COMPLETED:'rgb(29, 53, 87)',COMPLETED:'rgb(26, 26, 26)',CANCELLED:'rgb(253, 236, 239)',EXPIRED:'rgb(191, 196, 204)'};
+ const expected=dark?{CONFIRMED:'rgb(32, 59, 75)',IN_EXECUTION:'rgb(81, 68, 27)',DISPATCH_COMPLETED:'rgb(29, 53, 87)',COMPLETED:'rgb(26, 26, 26)',CANCELLED:'rgb(69, 29, 35)',EXPIRED:'rgb(52, 56, 63)'}:{CONFIRMED:'rgb(234, 242, 246)',IN_EXECUTION:'rgb(255, 240, 179)',DISPATCH_COMPLETED:'rgb(29, 53, 87)',COMPLETED:'rgb(26, 26, 26)',CANCELLED:'rgb(253, 236, 239)',EXPIRED:'rgb(191, 196, 204)'};
  const accentColors=['rgb(69, 123, 157)','rgb(255, 193, 7)','rgb(29, 53, 87)','rgb(26, 26, 26)','rgb(230, 57, 70)','rgb(107, 114, 128)'];
  const paletteMatches=!!legend&&[...legend.querySelectorAll('li span[aria-hidden]')].every((e,i)=>getComputedStyle(e).backgroundColor===accentColors[i]);
  const luminance=rgb=>(rgb.match(/[\d.]+/g)||[]).slice(0,3).map(v=>Number(v)/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);

@@ -1,3 +1,5 @@
+import * as castingElements from '../src/features/dispatches/casting-elements.ts';
+import * as guideDetailsModel from "../src/features/dispatches/guide-details.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -9,6 +11,7 @@ const jsx = (type, props, key) => ({ type, props, key });
 function nodes(node) {
   if (!node || typeof node !== "object") return [];
   if (Array.isArray(node)) return node.flatMap(nodes);
+  if(typeof node.type==='function')return nodes(node.type(node.props));
   return [node, ...nodes(node.props?.children)];
 }
 function hooks() {
@@ -18,7 +21,7 @@ function hooks() {
     reset() { index = 0; },
     useState(initial) {
       const position = index++;
-      if (!(position in state)) state[position] = initial;
+      if (!(position in state)) state[position] = typeof initial === 'function' ? initial() : initial;
       return [state[position], value => { state[position] = typeof value === "function" ? value(state[position]) : value; }];
     },
   };
@@ -39,6 +42,7 @@ const service = { id: "service-one", type: "SERVICE", code: "86180185", referenc
   description: "Dosis extra de retardante", observations: "Una dosis", unitCode: "M3", price: 10.92, currency: "GTQ" };
 const otherService = { ...service, id: "service-two", observations: "Doble dosis", price: 21.84 };
 const shared = {
+  "../casting-elements":castingElements,
   "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "Fragment" },
   "lucide-react": {}, "@/components/ui/button": { Button: "Button" },
   "@/components/ui/dialog": { Dialog: "Dialog", DialogFooter: "DialogFooter" },
@@ -55,8 +59,14 @@ test("seleccionar servicio deja descripción, UM, ID y precio en la guía, sin o
     "@/components/feedback/use-action-notification": { useActionNotification() {} },
     "@/components/ui/icon-button": { IconButton: "IconButton" },
     "@/lib/notification-messages": { notifications: {} },
-    "../actions": {}, "../catalog-selection": { catalogSelectionDefaults },
+    '@/lib/env': {getPublicEnvironment:()=>({appEnvironment:'PROD'})},
+    '@/features/vision-ocr/components/guide-photo-capture': {},
+    '@/features/vision-ocr/components/guide-ocr-details': {},
+    '@/features/vision-ocr/components/guide-ocr-review': { GuideOcrReview: props=>jsx('GuideReview',{children:[props.number,props.date,props.arrival,props.departure,props.lines]}) },
+    '@/features/vision-ocr/guide-draft': {},
+    "../guide-details":guideDetailsModel,"../actions": {}, "../catalog-selection": { catalogSelectionDefaults },
     "../../platform/project-price-catalogs/service-units": { SERVICE_UNIT_CODES: ["M3", "UN"] },
+    "./guide-resident-fields": {GuideResidentFields:"ResidentFields"}, "./guide-lines-list": {GuideLinesList:"LinesList"},
     "../types": {}, "./dispatch-catalog-combobox": { DispatchCatalogCombobox: "Combobox" },
   });
   let tree;

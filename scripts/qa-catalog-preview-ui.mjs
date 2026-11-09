@@ -68,7 +68,7 @@ const server = createServer(async (request, response) => {
       response.end(await readFile(file)); return;
     }
     response.setHeader("content-type", "text/html; charset=utf-8");
-    response.end(`<!doctype html><html class="${url.searchParams.get("theme") === "dark" ? "dark" : ""}" lang="es"><head><meta name="viewport" content="width=device-width, initial-scale=1">${links}<style>main{margin:20px auto;padding:24px;max-width:1200px;background:var(--surface);border:1px solid var(--border);border-radius:20px}h1{font-size:22px;margin-bottom:12px}p.intro{margin-bottom:20px;color:var(--foreground-muted)}@media(max-width:600px){main{margin:8px;padding:12px}}</style></head><body><main><h1>Importar catálogo de servicios</h1><p class="intro">Vista previa con observaciones largas y desplazamiento. Sin conexión a datos de DEV ni PROD.</p>${table}</main><script>${verification}</script></body></html>`);
+    response.end(`<!doctype html><html class="${url.searchParams.get("theme") === "dark" ? "dark" : ""}" lang="es"><head><meta name="viewport" content="width=device-width, initial-scale=1">${links}<style>main{margin:20px auto;padding:24px;max-width:1200px;background:var(--surface);border:1px solid var(--border);border-radius:20px}h1{font-size:22px;margin-bottom:12px}p.intro{margin-bottom:20px;color:var(--foreground-muted)}@media(max-width:600px){main{margin:8px;padding:12px}}</style></head><body><main><h1>Importar cotización de servicios</h1><p class="intro">Vista previa con observaciones largas y desplazamiento. Sin conexión a datos de DEV ni PROD.</p>${table}</main><script>${verification}</script></body></html>`);
   } catch { response.statusCode = 404; response.end(); }
 });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
