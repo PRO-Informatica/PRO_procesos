@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, FileImage, FileText, LoaderCircle, RotateCw, ScanLine } from "lucide-react";
+import { Camera, FileText, LoaderCircle, RotateCw, ScanLine } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { isVisionTemplateType, VISION_TEMPLATE_LABELS, type VisionTemplateType }
 import { GuideImagePreview } from "./guide-image-preview";
 import { GuidePagePicker } from "./guide-page-picker";
 import { GuideBulkScan } from "./guide-bulk-scan";
+import { GuidePhotoDropzone } from "./guide-photo-dropzone";
+import { GuidePhotoQueue } from "./guide-photo-queue";
 import { countGuidePdfPages, GUIDE_BATCH_MAX_BYTES, GUIDE_QUEUE_LIMIT, guideSourceLabel, renderGuidePdfPage, validateGuideSource, type GuideSource } from "../guide-sources";
 
 export type GuidePhotoResult = {
@@ -32,7 +34,8 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
   projectId: string; dispatchId: string; disabled: boolean;
   onRead: (result: GuidePhotoResult) => void; onReset: (usingPhoto: boolean) => void; onBusy: (busy: boolean) => void;
 }>(function GuidePhotoCapture({ projectId, dispatchId, disabled, onRead, onReset, onBusy, environment = "DEV" }, ref) {
-  const fileInput = useRef<HTMLInputElement>(null), cameraInput = useRef<HTMLInputElement>(null), pdfInput = useRef<HTMLInputElement>(null);
+  const cameraInput = useRef<HTMLInputElement>(null), pdfInput = useRef<HTMLInputElement>(null);
+  const intakePending = useRef(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null), captureRef = useRef<string | null>(null);
   const automaticTurns = useRef(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -133,7 +136,8 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
   }, [file, turns]);
 
   const addFiles = async (files: File[], pdf = false) => {
-    if (!files.length || working) return;
+    if (!files.length || working || intakePending.current || bulkSources.length || pageChoices.length) return;
+    intakePending.current = true;
     setBusy(true); onBusy(true); setError(""); setStage(pdf ? "Revisando páginas del PDF…" : "Revisando fotos…");
     const token = selection.current;
     try {
@@ -153,7 +157,7 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
       if (pdf) setPageChoices(added);
       else setSources((items) => [...items, ...added]);
     } catch (cause) { if (selection.current === token) setError(cause instanceof Error ? cause.message : "No se pudo agregar la carga."); }
-    finally { if (selection.current === token) { setBusy(false); onBusy(false); setStage(""); } }
+    finally { intakePending.current = false; if (selection.current === token) { setBusy(false); onBusy(false); setStage(""); } }
   };
   const skip = async (all = false) => {
     if (working) return;
@@ -211,10 +215,10 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
   return <section className="min-w-0 space-y-3 rounded-xl border border-border bg-muted/20 p-3 sm:p-4" aria-labelledby="guide-photo-heading">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h3 ref={headingRef} tabIndex={-1} id="guide-photo-heading" className="font-semibold">Cargar guías con OCR{environment === "DEV" ? " · DEV" : ""}</h3><p className="mt-1 text-xs text-foreground-muted">Revisa y guarda una guía por vez, con todos sus productos y servicios.</p></div>
-      <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={working || bulkSources.length > 0 || pageChoices.length > 0 || Boolean(current)} onClick={() => cameraInput.current?.click()}><Camera className="size-4" />Tomar foto</Button><Button variant="secondary" disabled={working || bulkSources.length > 0 || pageChoices.length > 0 || Boolean(current)} onClick={() => fileInput.current?.click()}><FileImage className="size-4" />Subir fotos</Button><Button variant="secondary" disabled={working || bulkSources.length > 0 || pageChoices.length > 0 || Boolean(current)} onClick={() => pdfInput.current?.click()}><FileText className="size-4" />Subir PDF</Button></div>
+      <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={working || bulkSources.length > 0 || pageChoices.length > 0 || Boolean(current)} onClick={() => cameraInput.current?.click()}><Camera className="size-4" />Tomar foto</Button><Button variant="secondary" disabled={working || bulkSources.length > 0 || pageChoices.length > 0 || Boolean(current)} onClick={() => pdfInput.current?.click()}><FileText className="size-4" />Subir PDF</Button></div>
     </div>
+    <GuidePhotoDropzone disabled={working || bulkSources.length > 0 || pageChoices.length > 0} onFiles={(files) => { void addFiles(files); }} />
     <details className="text-xs text-foreground-muted"><summary className="cursor-pointer py-2">Formatos y límites</summary><p>Hasta 20 fotos o páginas pendientes. Fotos JPG, PNG o WEBP de hasta 10 MiB; PDF de hasta 20 MiB y 20 páginas, con un documento por página. Puedes incluir guías de despacho y pedidos de control de Mixto Listo o Panexus. Se conserva la foto original o cada página completa como evidencia al guardar.</p></details>
-    <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" aria-label="Elegir foto de guía" disabled={working} onChange={(event) => { void addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
     <input ref={pdfInput} type="file" accept="application/pdf,.pdf" className="sr-only" aria-label="Elegir PDF de guías" disabled={working} onChange={(event) => { void addFiles(Array.from(event.target.files ?? []), true); event.target.value = ""; }} />
     <input ref={cameraInput} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="sr-only" aria-label="Tomar foto de guía" disabled={working} onChange={(event) => { void addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
     {(pageChoices.length > 0 || current) && <ol className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4" aria-label="Pasos de carga de guías">
@@ -233,7 +237,7 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
     {current && pageChoices.length === 0 && <div className="min-w-0 space-y-2 rounded-lg border border-border bg-surface p-3">
       <p className="break-words text-sm font-semibold" role="status">Revisando: {guideSourceLabel(current)}</p>
       <p className="text-xs leading-5 text-foreground-muted">{sources.length} guía(s) en cola. Acepta la imagen, revisa sus datos y guarda para pasar a la siguiente.</p>
-      {sources.length > 1 && <details><summary className="cursor-pointer text-sm">Ver cola ({sources.length})</summary><ol className="mt-2 max-h-40 list-inside list-decimal space-y-1 overflow-y-auto text-xs text-foreground-muted" aria-label="Cola de guías">{sources.map((source) => <li key={source.id} className="break-words">{guideSourceLabel(source)}</li>)}</ol></details>}
+      <GuidePhotoQueue sources={sources} />
       <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={working} onClick={() => void skip()}>Omitir esta {current.pageNumber ? "página" : "foto"}</Button><Button variant="ghost" disabled={working} onClick={() => void skip(true)}>Descartar cola y volver a formulario vacío</Button></div>
     </div>}
     {sourceUrl && !prepared && !read && !pageChoices.length && <>
