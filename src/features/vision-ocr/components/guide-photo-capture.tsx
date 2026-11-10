@@ -11,6 +11,7 @@ import { GuideImagePreview } from "./guide-image-preview";
 import { GuidePagePicker } from "./guide-page-picker";
 import { GuideBulkScan } from "./guide-bulk-scan";
 import { GuidePhotoDropzone } from "./guide-photo-dropzone";
+import { GuidePhotoQueue } from "./guide-photo-queue";
 import { countGuidePdfPages, GUIDE_BATCH_MAX_BYTES, GUIDE_QUEUE_LIMIT, guideSourceLabel, renderGuidePdfPage, validateGuideSource, type GuideSource } from "../guide-sources";
 
 export type GuidePhotoResult = {
@@ -236,7 +237,7 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
     {current && pageChoices.length === 0 && <div className="min-w-0 space-y-2 rounded-lg border border-border bg-surface p-3">
       <p className="break-words text-sm font-semibold" role="status">Revisando: {guideSourceLabel(current)}</p>
       <p className="text-xs leading-5 text-foreground-muted">{sources.length} guía(s) en cola. Acepta la imagen, revisa sus datos y guarda para pasar a la siguiente.</p>
-      {sources.length > 1 && <details><summary className="cursor-pointer text-sm">Ver cola ({sources.length})</summary><ol className="mt-2 max-h-40 list-inside list-decimal space-y-1 overflow-y-auto text-xs text-foreground-muted" aria-label="Cola de guías">{sources.map((source) => <li key={source.id} className="break-words">{guideSourceLabel(source)}</li>)}</ol></details>}
+      <GuidePhotoQueue sources={sources} />
       <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={working} onClick={() => void skip()}>Omitir esta {current.pageNumber ? "página" : "foto"}</Button><Button variant="ghost" disabled={working} onClick={() => void skip(true)}>Descartar cola y volver a formulario vacío</Button></div>
     </div>}
     {sourceUrl && !prepared && !read && !pageChoices.length && <>
