@@ -24,7 +24,7 @@ export function GuidePagePicker({ sources, disabled, onAccept, onCancel, onBulkS
     <div>
       <h4 id="guide-pages-title" className="font-semibold">Elige las páginas con guías de despacho</h4>
       <p className="mt-1 break-words text-sm text-foreground-muted">{sources[0].file.name} · {sources.length} página(s)</p>
-      <p className="mt-2 text-xs leading-5 text-foreground-muted">Selecciona las páginas con guías de despacho o pedidos de control de Mixto Listo o Panexus. Revisarás el tipo de cada documento antes de completar sus datos. Esta selección no consume OCR.</p>
+      <p className="mt-2 text-xs leading-5 text-foreground-muted">Selecciona las páginas con guías de despacho, controles de operación Mixto Listo o controles de operación de servicios varios. Revisarás el tipo de cada documento antes de completar sus datos. Esta selección no consume OCR.</p>
     </div>
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p role="status" className="text-sm font-semibold">{selected.length} guía(s) seleccionada(s) de {sources.length} páginas</p>
