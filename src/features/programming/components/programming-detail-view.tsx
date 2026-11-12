@@ -456,6 +456,7 @@ export function ProgrammingDetailView({
           programmedVolume: detail.confirmedQuantity ?? detail.requestedQuantity,
           unitCode: detail.unitCode,
           dispatchId: null,
+          dispatchBillingComplete: false,
           dispatchStatus: null,
           result: null,
           realVolume: null,

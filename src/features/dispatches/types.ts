@@ -62,6 +62,7 @@ export type DispatchGuide = {
 };
 
 export type ProgrammingDispatchItem = {
+  dispatchBillingComplete: boolean;
   programmingCastingElement?: CastingElement | null;
   programmingId: string;
   programmingCode: string;
@@ -149,6 +150,7 @@ export type DispatchInvoiceSummary = {
 };
 
 export type DispatchDetail = {
+  billingComplete: boolean;
   programmingCastingElement?: CastingElement | null;
   id: string;
   projectId: string;

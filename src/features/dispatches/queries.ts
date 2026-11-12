@@ -1,3 +1,4 @@
+import { getDispatchBillingCompletion } from "./billing-completion-queries";
 import "server-only";
 import type { CastingElement } from "./casting-elements";
 import { serviceReconciliationSummary } from "@/features/invoices/service-reconciliation";
@@ -223,7 +224,7 @@ export async function getDispatchPageData(
   projectId: string,
 ): Promise<DispatchPageData> {
   const supabase = await createClient();
-  const [programmingResult, dispatchResult, unitsResult] = await Promise.all([
+  const [programmingResult, dispatchResult, unitsResult, billingCompletion] = await Promise.all([
     supabase
       .from("programming")
       .select(
@@ -244,6 +245,7 @@ export async function getDispatchPageData(
       .eq("active", true)
       .in("code", ["KM", "M3", "UN"])
       .order("code"),
+    getDispatchBillingCompletion([projectId]),
   ]);
   assertNoError(programmingResult.error, "No fue posible cargar las programaciones.");
   assertNoError(dispatchResult.error, "No fue posible cargar los despachos.");
@@ -354,6 +356,7 @@ export async function getDispatchPageData(
           : numberValue(row.confirmed_quantity),
       unitCode: row.unit_code,
       dispatchId: dispatch?.id ?? null,
+      dispatchBillingComplete: dispatch ? billingCompletion[dispatch.id] === true : false,
       dispatchStatus: dispatch?.status ?? null,
       result: dispatch?.result ?? null,
       realVolume:
@@ -470,7 +473,7 @@ export async function getDispatchDetail(
   const rawIncidents = incidentsResult.data ?? [];
   const incidentIds = rawIncidents.map((row) => row.id);
 
-  const [linesResult, dispatchDocsResult, guideDocsResult, incidentDocsResult, batchLinksResult, reconciliationResult, invoicesResult] =
+  const [linesResult, dispatchDocsResult, guideDocsResult, incidentDocsResult, batchLinksResult, reconciliationResult, invoicesResult, billingCompletion] =
     await Promise.all([
       guideIds.length
         ? supabase
@@ -517,6 +520,7 @@ export async function getDispatchDetail(
         .eq("project_id", projectId)
         .eq("dispatch_id", dispatchId)
         .order("created_at", { ascending: false }),
+      getDispatchBillingCompletion([projectId]),
     ]);
   const relationError = [
     linesResult.error,
@@ -723,6 +727,7 @@ export async function getDispatchDetail(
 
   return {
     id: dispatch.id,
+    billingComplete: billingCompletion[dispatch.id] === true,
     projectId,
     programmingId: programming.id,
     programmingCastingElement: programming.casting_element,
