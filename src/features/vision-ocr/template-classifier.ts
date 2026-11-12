@@ -13,8 +13,8 @@ export type LocalTemplateAnalysis = {
 
 export const VISION_TEMPLATE_LABELS: Record<VisionTemplateType, string> = {
   DISPATCH_GUIDE: "Guía de despacho",
-  MIXTO_OPERATION: "Pedido / control operación · Mixto Listo",
-  PANEXUS_OPERATION: "Pedido / control operación · Panexus",
+  MIXTO_OPERATION: "Control operación Mixto Listo",
+  PANEXUS_OPERATION: "Control operación servicios varios",
 };
 
 export function isVisionTemplateType(value: unknown): value is VisionTemplateType {

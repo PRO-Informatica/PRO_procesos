@@ -100,7 +100,7 @@ function OperationResult({ document }: { document: Exclude<ParsedVisionDocument,
   if (document.templateType === "MIXTO_OPERATION") {
     return (
       <section aria-labelledby="mixto-operation-data">
-        <h3 id="mixto-operation-data" className="text-xs font-semibold uppercase tracking-[.12em] text-foreground-muted">Pedido / control operación</h3>
+        <h3 id="mixto-operation-data" className="text-xs font-semibold uppercase tracking-[.12em] text-foreground-muted">{VISION_TEMPLATE_LABELS.MIXTO_OPERATION}</h3>
         <FieldsGrid fields={[
           { label: "Fecha", value: document.date }, { label: "Pedido por", value: document.orderedBy },
           { label: "Pedido No.", value: document.orderNumber }, { label: "No.", value: document.equipmentNumber },
@@ -113,7 +113,7 @@ function OperationResult({ document }: { document: Exclude<ParsedVisionDocument,
   }
   return (
     <section aria-labelledby="panexus-operation-data">
-      <h3 id="panexus-operation-data" className="text-xs font-semibold uppercase tracking-[.12em] text-foreground-muted">Pedido / control operación Panexus</h3>
+      <h3 id="panexus-operation-data" className="text-xs font-semibold uppercase tracking-[.12em] text-foreground-muted">{VISION_TEMPLATE_LABELS.PANEXUS_OPERATION}</h3>
       <FieldsGrid fields={[
         { label: "Fecha", value: document.date }, { label: "Código", value: document.code },
         { label: "Hora inicio bombeo", value: document.pumpingStartTime },
