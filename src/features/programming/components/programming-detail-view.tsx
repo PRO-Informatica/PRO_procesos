@@ -78,6 +78,7 @@ const revisionLabels: Record<string, string> = {
   PROGRAMMING_AUTO_CONFIRMED: "Confirmación automática",
   PROGRAMMING_DISPATCH_COMPLETED: "Despacho completo",
   PROGRAMMING_COMPLETED: "Programación completada",
+  PROGRAMMING_BILLING_REOPENED: "Programación pendiente de conciliación",
 };
 
 const actionNotification = {

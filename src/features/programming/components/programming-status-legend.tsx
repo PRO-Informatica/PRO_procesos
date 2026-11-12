@@ -14,7 +14,7 @@ export function ProgrammingStatusLegend() {
         ))}
       </ul>
       <p className="mt-3 text-xs leading-relaxed text-foreground-muted">
-        <strong className="font-medium">Despacho completo:</strong> terminó la operación. <strong className="font-medium">Completado:</strong> la programación ya está cerrada. Vencido es una alerta y permite iniciar el despacho.
+        <strong className="font-medium">Pendiente de conciliación:</strong> terminó la operación y faltan conciliaciones. <strong className="font-medium">Completado:</strong> Producto y Servicio requeridos están conciliados; Concreto directo conserva su excepción de Servicio. Vencido es una alerta y permite iniciar el despacho.
       </p>
     </section>
   );
