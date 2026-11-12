@@ -1,4 +1,5 @@
 import "server-only";
+import { getDispatchBillingCompletion } from "@/features/dispatches/billing-completion-queries";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -63,13 +64,14 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
   const dispatches = (dispatchesResult.data ?? []) as Row[];
   const dispatchIds = dispatches.map((dispatch) => String(dispatch.id));
 
-  const [guidesResult, incidentsResult, relationsResult, reconciliationsResult, invoicesResult, attemptsResult] = await Promise.all([
+  const [guidesResult, incidentsResult, relationsResult, reconciliationsResult, invoicesResult, attemptsResult, billingCompletion] = await Promise.all([
     dispatchIds.length ? supabase.from("dispatch_guides").select("id, dispatch_id, quantity, unit_code, details, casting_element, laboratory_applied").in("dispatch_id", dispatchIds) : empty<Row>(),
     dispatchIds.length ? supabase.from("dispatch_incidents").select("id, dispatch_id").in("dispatch_id", dispatchIds) : empty<{ id: string; dispatch_id: string }>(),
     dispatchIds.length ? supabase.from("batch_dispatches").select("dispatch_id, batch_id").in("dispatch_id", dispatchIds).is("removed_at", null) : empty<{ dispatch_id: string; batch_id: string }>(),
     dispatchIds.length ? supabase.from("dispatch_reconciliations").select("dispatch_id, status, current_product_invoice_id, current_service_invoice_id").in("dispatch_id", dispatchIds) : empty<{ dispatch_id: string; status: string; current_product_invoice_id: string | null; current_service_invoice_id: string | null }>(),
     dispatchIds.length ? supabase.from("invoices").select("id, dispatch_id, invoice_type, invoice_number, invoice_date, status, subtotal, total, currency, order_number, pca_original, invoiced_quantity, invoiced_unit_code, created_at").in("dispatch_id", dispatchIds) : empty<Row>(),
     dispatchIds.length ? supabase.from("dispatch_reconciliation_attempts").select("dispatch_id, difference, executed_at").in("dispatch_id", dispatchIds).order("executed_at", { ascending: false }) : empty<Row>(),
+    getDispatchBillingCompletion(projectIds),
   ]);
   const relatedError = guidesResult.error ?? incidentsResult.error ?? relationsResult.error ?? reconciliationsResult.error ?? invoicesResult.error ?? attemptsResult.error;
   if (relatedError) throw new Error(`No fue posible completar la reportería. ${relatedError.message}`);
@@ -167,6 +169,7 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
         documentedQuantity: dispatchGuides.reduce((sum, guide) => sum + numeric(guide.quantity), 0), unitCode: String(dispatch.real_unit_code ?? program.unit_code ?? ""), receivedQuantity: numeric(dispatch.real_volume),
         physicalResult: String(dispatch.result ?? "PENDING"), dispatchStatus: String(dispatch.status), registeredById: String(dispatch.created_by), registeredByName: profileMap.get(String(dispatch.created_by)) ?? "Usuario no disponible", createdAt: String(dispatch.created_at),
         completedById, completedByName: completedById ? profileMap.get(completedById) ?? "Usuario no disponible" : null,
+        billingComplete: billingCompletion[id] === true,
         incidentCount: incidentList.length, documentCount: dispatchGuides.reduce((sum, guide) => sum + (guideDocCount.get(String(guide.id)) ?? 0), 0) + incidentList.reduce((sum, incidentId) => sum + (incidentDocCount.get(incidentId) ?? 0), 0),
         orderStatus: reconciliation?.status ?? "NOT_STARTED", reinvoicingRequired: reconciliation?.status === "PENDING_REINVOICING", reconciliationStatus: reconciliation?.status ?? "NOT_STARTED",
         productInvoicedQuantity: productInvoice?.invoicedQuantity ?? 0, difference: numeric(latestAttemptByDispatch.get(id)?.difference), invoiceCount: [productInvoice, serviceInvoice].filter(Boolean).length, productInvoice, serviceInvoice,

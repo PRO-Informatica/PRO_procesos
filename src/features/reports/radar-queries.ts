@@ -1,4 +1,5 @@
 import "server-only";
+import { getDispatchBillingCompletion } from "@/features/dispatches/billing-completion-queries";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -59,12 +60,13 @@ export async function getCastingRadar(projects: ReportProjectInput[], filters: R
     ]);
     guides.push(...results[0]); incidents.push(...results[1]); relations.push(...results[2]); reconciliations.push(...results[3]); attempts.push(...results[4]);
   }
-  const [suppliers, batches, lines, invoiceRows, actors] = await Promise.all([
+  const [suppliers, batches, lines, invoiceRows, actors, billingCompletion] = await Promise.all([
     Promise.all(chunks(ids(dispatches, "supplier_id")).map((batch) => readRows((from, to) => supabase.from("suppliers").select("id, name").in("id", batch).order("id").range(from, to)))).then((rows) => rows.flat()),
     Promise.all(chunks(ids(relations, "batch_id")).map((batch) => readRows((from, to) => supabase.from("batches").select("id, code").in("id", batch).in("project_id", projectIds).order("id").range(from, to)))).then((rows) => rows.flat()),
     Promise.all(chunks(ids(guides, "id")).map((batch) => readRows((from, to) => supabase.from("dispatch_guide_lines").select("id, guide_id, position, product_code, product_description, quantity, unit_code, catalog_type, catalog_reference").in("guide_id", batch).in("project_id", projectIds).order("id").range(from, to)))).then((rows) => rows.flat()),
     Promise.all(chunks([...new Set([...ids(reconciliations, "current_product_invoice_id"), ...ids(reconciliations, "current_service_invoice_id")])]).map((batch) => readRows((from, to) => supabase.from("invoices").select("id, invoice_number, total, currency").in("id", batch).in("project_id", projectIds).order("id").range(from, to)))).then((rows) => rows.flat()),
     ids(dispatches, "completed_by").length ? supabase.rpc("get_report_actor_labels", { p_project_ids: projectIds }) : Promise.resolve({ data: [], error: null }),
+    getDispatchBillingCompletion(projectIds),
   ]);
   if (actors.error) throw new Error("No fue posible resolver los responsables de los despachos.");
   // Restrict privileged extraction reads to invoices from authorized dispatches.
@@ -103,6 +105,7 @@ export async function getCastingRadar(projects: ReportProjectInput[], filters: R
         guideCount: dispatchGuides.length, incidentCount: incidentsByDispatch.get(id)?.length ?? 0,
         ...guideReportMetadata(dispatchGuides, program.casting_element), dispatchStatus: String(dispatch.status),
         completedByName: completed ? actorsMap.get(String(dispatch.completed_by)) ?? "Usuario no disponible" : null,
+        billingComplete: billingCompletion[id] === true,
         reconciliationStatus: String(reconciliation?.status ?? "NOT_STARTED"), difference: numeric(attemptsByDispatch.get(id)?.[0]?.difference),
         productInvoice: invoice(reconciliation?.current_product_invoice_id), serviceInvoice: invoice(reconciliation?.current_service_invoice_id),
       },

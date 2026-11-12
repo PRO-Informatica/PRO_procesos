@@ -62,6 +62,7 @@ export type GuideReportRow = {
   receivedQuantity: number;
   physicalResult: string;
   dispatchStatus: string;
+  billingComplete: boolean;
   registeredById: string;
   registeredByName: string;
   completedById: string | null;
@@ -83,7 +84,7 @@ export type DispatchReportSummary = Pick<GuideReportRow,
   "dispatchId" | "dispatchCode" | "projectId" | "orderNumber" | "batchCode" |
   "receivedQuantity" | "unitCode" | "guideCount" | "incidentCount" |
   "castingElements" | "castingElementLabel" | "trucks" | "laboratoryLabel" |
-  "completedByName" | "dispatchStatus" | "reconciliationStatus" | "difference"
+  "completedByName" | "dispatchStatus" | "billingComplete" | "reconciliationStatus" | "difference"
 > & {
   productInvoice: Pick<ReportInvoice, "number" | "total" | "currency" | "extractionStatus"> | null;
   serviceInvoice: Pick<ReportInvoice, "number" | "total" | "currency" | "extractionStatus"> | null;
