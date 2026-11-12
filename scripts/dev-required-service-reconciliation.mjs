@@ -41,7 +41,7 @@ const assertTables=(expected,excluded=[])=>`do $$declare actual jsonb;k text;beg
 let operation;
 if(repair){
  operation="select set_config('app.required_service_repair_dev_guard','gholwtklihaphoevosyb',true);\n"+await readFile('scripts/lib/repair-dev-required-service-batch.sql','utf8');
-}else if(mode==='--qa')operation=qaBody();
+}else if(mode==='--qa')operation=`savepoint fixtures;${qaBody()}\nrollback to savepoint fixtures;`;
 else operation=`${body(source)}\ninsert into supabase_migrations.schema_migrations(version,name,statements)values('143','required_service_reconciliation_completion',array[${q(source)}]);${mode==='--dry-run'?`savepoint fixtures;${qaBody()}\nrollback to savepoint fixtures;`:''}`;
 const excluded=repair?['public.programming','public.programming_revisions','public.programming_revision_lines','public.batch_dispatches','public.audit_events']:[];
 const transaction=`${lock}\n${assertTables(before.tables)}\n${operation}\n${assertTables(before.tables,excluded)}\n${apply?'commit':'rollback'};`;
