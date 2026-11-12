@@ -1,4 +1,5 @@
 -- DEV only: real invoice preparation, processing, reconciliation and replacement.
+-- Current completion policy (143): required Service differences must roll over.
 -- PDF upload metadata is synthetic; no files are written. Everything rolls back.
 begin;
 create function pg_temp.qa_invoice(p_batch uuid,p_dispatch uuid,p_type public.invoice_type,p_total numeric,p_previous uuid default null,p_currency text default 'GTQ')returns uuid
@@ -94,7 +95,7 @@ begin
   execute 'reset role';
   if v_status<>'WITH_DIFFERENCES'or not exists(select 1 from public.dispatch_reconciliations where dispatch_id=v_dispatch and status='RECONCILED'and service_status='WITH_DIFFERENCES'and(service_comparison->>'estimated_total')::numeric=50.25 and(service_comparison->>'invoice_total')::numeric=50.26 and(service_comparison->>'difference')::numeric=0.01)then raise exception 'QA_CENT_DIFFERENCE_OR_SNAPSHOT_FAILED';end if;
   if not exists(select 1 from public.programming where id=v_program and status::text=v_program_status and version=v_program_version)then raise exception 'QA_SERVICE_CHANGED_PROGRAMMING';end if;
-  if not exists(select 1 from public.preview_weekly_batch_rollover(v_batch)where dispatch_id=v_dispatch and rollover_action='STAY')then raise exception 'QA_SERVICE_CHANGED_ROLLOVER';end if;
+  if not exists(select 1 from public.preview_weekly_batch_rollover(v_batch)where dispatch_id=v_dispatch and rollover_action='MOVE')then raise exception 'QA_REQUIRED_SERVICE_NOT_MOVED';end if;
   execute 'set local role authenticated';
   begin
     perform pg_temp.qa_invoice(v_batch,v_dispatch,'SERVICE',50.25,v_invoice);
@@ -143,7 +144,7 @@ begin
     perform public.reconcile_dispatch_service(v_dispatch);raise exception 'QA_PERMISSION_BYPASSED';
   exception when raise_exception then if sqlerrm<>'PERMISSION_DENIED'then raise;end if;end;
   execute 'reset role';
-  raise notice 'PASS: existing service snapshot total, cents, price history, product independence, advisory closing/rollover, request/replacement/history, currency, signed difference, closed batch and authorization; rollback';
+  raise notice 'PASS: existing service snapshot total, cents, price history, product independence, required closing/rollover, request/replacement/history, currency, signed difference, closed batch and authorization; rollback';
 end;
 $$;
 rollback;

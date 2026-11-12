@@ -59,6 +59,7 @@ export type ReconciliationAttempt = {
 };
 
 export type BatchDispatchRelation = {
+  billingComplete: boolean;
   relationId: string; active: boolean; assignmentSource: BatchSource;
   addedAt: string; removedAt: string | null; removedByName: string | null;
   removalReason: string | null; removalSource: string | null;

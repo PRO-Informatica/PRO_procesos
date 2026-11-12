@@ -56,7 +56,7 @@ function fixture({ guideCount = 2, errorTable } = {}) {
     };
   }
   const exports = {};
-  const imports = { "server-only": {}, "@/lib/supabase/server": { createClient: async () => client() }, "@/lib/supabase/admin": { createAdminClient: () => client(true) }, "./guide-metadata": { guideReportMetadata }, "./radar": radar };
+  const imports = { "server-only": {}, "@/features/dispatches/billing-completion-queries": { getDispatchBillingCompletion: async () => ({ full: false, empty: false }) }, "@/lib/supabase/server": { createClient: async () => client() }, "@/lib/supabase/admin": { createAdminClient: () => client(true) }, "./guide-metadata": { guideReportMetadata }, "./radar": radar };
   runInNewContext(compiled, { exports, Date, Intl, require(name) { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; } });
   return { calls, run: (input = filters) => exports.getCastingRadar(projects, input) };
 }
@@ -67,6 +67,7 @@ test("consulta por despachos, conserva los vacíos y carga sus resúmenes y guí
   const full = data.dispatches[1];
   assert.equal(full.guides.length, 2);
   assert.equal(full.summary.receivedQuantity, 7);
+  assert.equal(full.summary.billingComplete, false);
   assert.equal(full.summary.batchCode, "LOT-1");
   assert.equal(full.summary.incidentCount, 1);
   assert.equal(full.summary.completedByName, "Residente QA");

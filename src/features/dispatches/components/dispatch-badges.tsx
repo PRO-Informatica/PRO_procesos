@@ -3,7 +3,10 @@ import { StatusBadge } from "@/components/ui/badge";
 import { formatDispatchResult, formatDispatchStatus } from "../formatters";
 import type { DispatchResult, DispatchStatus } from "../types";
 
-export function DispatchStatusBadge({ status }: { status: DispatchStatus }) {
+export function DispatchStatusBadge({ status, billingComplete }: { status: DispatchStatus; billingComplete?: boolean }) {
+  if (status === "COMPLETED" && billingComplete === false) {
+    return <StatusBadge label="Pendiente de conciliación" tone="warning" dot />;
+  }
   return <StatusBadge label={formatDispatchStatus(status)} tone={status === "COMPLETED" ? "success" : "info"} dot />;
 }
 

@@ -46,7 +46,7 @@ test("el editor de guía adapta productos y acciones a pantallas pequeñas", () 
 test("Programación ofrece acciones completas y despachos legibles en móvil", () => {
   assert.match(programmingDetail, /min-\[420px\]:grid-cols-2 sm:flex/u);
   assert.match(programmingDetail, /grid grid-cols-2 gap-3 px-4 py-4/u);
-  assert.match(programmingDetail, /Estado del proceso/u);
+  assert.match(programmingDetail, /Estado operativo/u);
   assert.match(programmingDetail, /Resultado físico/u);
   assert.match(programmingDetail, /Cantidad/u);
 });

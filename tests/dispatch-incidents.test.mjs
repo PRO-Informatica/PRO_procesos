@@ -55,6 +55,7 @@ function detailQuery({ missingProject = false } = {}) {
     },
   };
   const imports = {
+    "./billing-completion-queries": { getDispatchBillingCompletion: async () => ({ "dispatch-a": false }) },
     "server-only": {},
     "@/lib/supabase/admin": { createAdminClient: () => supabase },
     "@/lib/supabase/server": { createClient: async () => supabase },

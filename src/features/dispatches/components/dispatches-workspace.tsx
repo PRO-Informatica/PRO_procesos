@@ -157,8 +157,8 @@ export function DispatchesWorkspace({
       <MotionSection className="dispatches-filters rounded-xl border border-border bg-surface p-4 shadow-[0_1px_2px_rgba(16,24,40,0.02)]">
         <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">Filtros</p>{hasFilters && <button type="button" onClick={clearFilters} className="secondary-button min-h-9 gap-1.5 px-3 text-xs"><X className="size-3.5" /> Limpiar</button>}</div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_0.8fr_1fr_1.2fr]">
-          <select aria-label="Estado programación" value={programmingStatus} onChange={(event) => setProgrammingStatus(event.target.value as ProgrammingDispatchStatus | "")} className="form-input"><option value="">Estado programación</option><option value="CONFIRMED">Confirmada</option><option value="IN_EXECUTION">En ejecución</option><option value="DISPATCH_COMPLETED">Despacho completo</option></select>
-          <select aria-label="Estado despacho" value={dispatchStatus} onChange={(event) => setDispatchStatus(event.target.value as DispatchFilter)} className="form-input"><option value="">Estado despacho</option><option value="NOT_STARTED">Sin iniciar</option><option value="IN_EXECUTION">En ejecución</option><option value="COMPLETED">Completado</option></select>
+          <select aria-label="Estado programación" value={programmingStatus} onChange={(event) => setProgrammingStatus(event.target.value as ProgrammingDispatchStatus | "")} className="form-input"><option value="">Estado programación</option><option value="CONFIRMED">Confirmada</option><option value="IN_EXECUTION">En ejecución</option><option value="DISPATCH_COMPLETED">Pendiente de conciliación</option></select>
+          <select aria-label="Estado despacho" value={dispatchStatus} onChange={(event) => setDispatchStatus(event.target.value as DispatchFilter)} className="form-input"><option value="">Estado despacho</option><option value="NOT_STARTED">Sin iniciar</option><option value="IN_EXECUTION">En ejecución</option><option value="COMPLETED">Operación finalizada</option></select>
           <select aria-label="Periodo de fecha" value={dateMode} onChange={(event) => setDateMode(event.target.value as DateMode)} className="form-input"><option value="day">Día</option><option value="week">Semana</option><option value="month">Mes</option></select>
           <div className="relative"><CalendarDays className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" /><input aria-label="Fecha" type="date" value={date} onChange={(event) => setDate(event.target.value)} className="form-input pl-10" /></div>
           <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" /><input aria-label="Código programación" value={code} onChange={(event) => setCode(event.target.value)} placeholder="Código programación" className="form-input pl-10" /></div>
@@ -207,7 +207,7 @@ export function DispatchesWorkspace({
                       <td className="px-5 py-4 text-foreground-muted"><DispatchSchedule value={item.scheduledAt} timezone={project.timezone || "America/Guatemala"} /></td>
                       <td className="px-5 py-4"><EstimateValue estimate={item.productEstimate} /></td>
                       <td className="px-5 py-4"><EstimateValue estimate={item.serviceEstimate} /></td>
-                      <td className="dispatches-dispatch-status px-5 py-4">{item.dispatchStatus ? <DispatchStatusBadge status={item.dispatchStatus} /> : <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted">Sin iniciar</span>}</td>
+                      <td className="dispatches-dispatch-status px-5 py-4">{item.dispatchStatus ? <DispatchStatusBadge status={item.dispatchStatus} billingComplete={item.dispatchBillingComplete} /> : <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted">Sin iniciar</span>}</td>
                       <td className="px-5 py-4" onClick={(event) => event.stopPropagation()}><DispatchActions item={item} canCreate={canCreate} canModify={canModify} onStart={() => setStartItem(item)} onAddGuide={() => setGuideItem(item)} /></td>
                     </tr>
                   ))}
@@ -226,7 +226,7 @@ export function DispatchesWorkspace({
                       <p className="font-mono text-xs font-semibold text-brand-strong">{item.programmingCode}</p>
                       <p className="mt-1 break-words font-semibold">{item.supplierName}</p>
                     </div>
-                    {item.dispatchStatus ? <DispatchStatusBadge status={item.dispatchStatus} /> : <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold">Sin iniciar</span>}
+                    {item.dispatchStatus ? <DispatchStatusBadge status={item.dispatchStatus} billingComplete={item.dispatchBillingComplete} /> : <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold">Sin iniciar</span>}
                   </div>
                   <dl className="mt-3 grid grid-cols-2 gap-3 rounded-lg bg-muted/35 p-3 text-xs">
                     <div className="col-span-2 min-[420px]:col-span-1"><dt className="font-medium text-foreground-muted">Fecha programada</dt><dd className="mt-1 font-semibold text-foreground">{formatDispatchDateTime(item.scheduledAt, project.timezone)}</dd></div>

@@ -13,11 +13,11 @@ const [querySource,routeSource,cardSource]=await Promise.all(['src/features/repo
 function load(source,imports){const exports={};const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;runInNewContext(compiled,{exports,require(name){assert.ok(Object.hasOwn(imports,name),name);return imports[name];},Date,Intl,Response});return exports;}
 const projects=[{id:'project-a',name:'ADO',code:'ADO-PRO',companyName:'Empresa',timezone:'America/Guatemala',billingLegalName:'Cliente'}];
 const base={project_id:'project-a',supplier_id:'supplier',programming_id:'program-a',status:'COMPLETED',result:'DISPATCHED',created_by:'registrar',created_at:'2026-10-27T13:00:00Z',order_number:'47',real_volume:7,real_unit_code:'M3',completed_by:'validator'};
-function fixture({labelsMissing=false}={}){
+function fixture({labelsMissing=false,billingComplete=false}={}){
  const calls=[];
  const tables={programming:[{id:'program-a',project_id:'project-a',supplier_id:'supplier',created_by:'program-creator',status:'CONFIRMED',scheduled_at:'2026-10-27T13:00:00Z',requested_quantity:7,confirmed_quantity:7,unit_code:'M3'}],dispatches:[{...base,id:'completed'},{...base,id:'open',status:'IN_EXECUTION'},{...base,id:'legacy',completed_by:null},{...base,id:'foreign',programming_id:'program-b',project_id:'project-b'}],suppliers:[{id:'supplier',name:'Mixto Listo'}]};
  const client={from(table){calls.push({table});const checks=[];const q={select(value){calls.push({table,select:value});return q;},in(key,values){checks.push(row=>values.includes(row[key]));return q;},eq(key,value){checks.push(row=>row[key]===value);return q;},gte(){return q;},lte(){return q;},order(){return q;},is(){return q;},then(resolve,reject){return Promise.resolve({data:(tables[table]??[]).filter(row=>checks.every(check=>check(row))),error:null}).then(resolve,reject);}};return q;},async rpc(name,args){calls.push({rpc:name,args});return {data:[{profile_id:'program-creator',display_label:'Creador de programación'},{profile_id:'registrar',display_label:'Registró Uno'},...(!labelsMissing?[{profile_id:'validator',display_label:'Validó Dos'}]:[]),{profile_id:'unrelated',display_label:'Otro proyecto'}],error:null};}};
- const {getGuideReport}=load(querySource,{'server-only':{},'@/lib/supabase/admin':{createAdminClient:()=>client},'@/lib/supabase/server':{createClient:async()=>client},'@/features/projects/queries':{},'@/features/projects/access-policy':{},'./guide-metadata':{guideReportMetadata}});
+ const {getGuideReport}=load(querySource,{'server-only':{},'@/features/dispatches/billing-completion-queries':{getDispatchBillingCompletion:async()=>({completed:billingComplete,legacy:false,open:false})},'@/lib/supabase/admin':{createAdminClient:()=>client},'@/lib/supabase/server':{createClient:async()=>client},'@/features/projects/queries':{},'@/features/projects/access-policy':{},'./guide-metadata':{guideReportMetadata}});
  return {calls,report:()=>getGuideReport(projects,{dateFrom:'2026-10-01',dateTo:'2026-10-31'})};
 }
 test('Reportería usa completed_by, distinto al registrador, sin atribuir validación a despachos abiertos',async()=>{
@@ -34,7 +34,7 @@ test('una identidad no disponible no se sustituye por el nombre del registrador'
  const report=await fixture({labelsMissing:true}).report();assert.equal(report.rows[0].completedByName,'Usuario no disponible');
 });
 const {testBuildWorkbook}=load(routeSource+'\nexport {buildWorkbook as testBuildWorkbook};',{
- 'exceljs':ExcelJS,'@/features/auth/queries':{},'@/features/projects/queries':{},'@/features/reports/export-utils':{},'@/features/reports/archive-queries':{},'@/features/reports/zip-archive':{},'@/features/reports/zip-response':{},'@/features/reports/filters':{},'@/features/reports/queries':{},'@/features/reports/workbook-header':{REPORT_TABLE_HEADER_ROW,setupReportSheet:(sheet,columns,header)=>setupReportSheet(sheet,Array.from(columns),header)},'@/lib/status-labels':{formatStatusLabel:value=>value??''},'@/lib/supabase/admin':{},'@/lib/supabase/server':{},
+ '@/features/reports/presentation':{reportDispatchProcessStatus},'exceljs':ExcelJS,'@/features/auth/queries':{},'@/features/projects/queries':{},'@/features/reports/export-utils':{},'@/features/reports/archive-queries':{},'@/features/reports/zip-archive':{},'@/features/reports/zip-response':{},'@/features/reports/filters':{},'@/features/reports/queries':{},'@/features/reports/workbook-header':{REPORT_TABLE_HEADER_ROW,setupReportSheet:(sheet,columns,header)=>setupReportSheet(sheet,Array.from(columns),header)},'@/lib/status-labels':{formatStatusLabel:value=>value??''},'@/lib/supabase/admin':{},'@/lib/supabase/server':{},
 });
 test('el Excel conserva la columna Validado por y su fondo verde al guardar y reabrir',async()=>{
  const report=await fixture().report();
@@ -64,4 +64,24 @@ test('la casilla de Reportería muestra el validador con fondo verde y conserva 
   const cell=nodes(tree).find(node=>node.props?.className?.includes('bg-success-soft')&&text(node).startsWith('Validado por'));
   assert.ok(cell);assert.equal(text(cell),'Validado por'+label);
  }
+});
+
+test('Reportería conserva Producto conciliado sin mostrar cierre global cuando Servicio sigue pendiente',async()=>{
+ for(const complete of [false,true]){
+  const report=await fixture({billingComplete:complete}).report(),row=report.rows.find(row=>row.dispatchId==='completed');
+  assert.equal(row.billingComplete,complete);row.reconciliationStatus='RECONCILED';
+  const tree=testDispatchBlock({dispatch:row});
+  assert.ok(nodes(tree).some(node=>node.props?.label===(complete?'COMPLETED':'PENDING_RECONCILIATION')));
+ }
+});
+
+test('el Excel usa el cierre financiero y conserva Producto conciliado con Servicio pendiente',async()=>{
+ const report=await fixture().report();report.rows[0].reconciliationStatus='RECONCILED';
+ const workbook=await testBuildWorkbook(report,'Empresa',{projectTitle:'ADO',billingLegalName:'Cliente',billingTaxId:'123',period:'Octubre 2026'});
+ const dispatchColumn=workbook.getWorksheet('Reporte').getColumn('dispatchStatus').number;
+ const productColumn=workbook.getWorksheet('Reporte').getColumn('reconciliationStatus').number;
+ const reopened=new ExcelJS.Workbook();await reopened.xlsx.load(await workbook.xlsx.writeBuffer());
+ const sheet=reopened.getWorksheet('Reporte');
+ assert.equal(sheet.getCell(REPORT_TABLE_HEADER_ROW+1,dispatchColumn).value,'PENDING_RECONCILIATION');
+ assert.equal(sheet.getCell(REPORT_TABLE_HEADER_ROW+1,productColumn).value,'RECONCILED');
 });

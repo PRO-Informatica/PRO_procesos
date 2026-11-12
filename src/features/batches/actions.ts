@@ -40,6 +40,7 @@ function refresh(batchId?: string, dispatchId?: string) {
   revalidatePath("/batches");
   revalidatePath("/invoices");
   revalidatePath("/reconciliation");
+  revalidatePath("/dispatches");
   revalidatePath("/programming", "layout");
   if (batchId) revalidatePath(`/batches/${batchId}`);
   if (dispatchId) revalidatePath(`/dispatches/${dispatchId}`);

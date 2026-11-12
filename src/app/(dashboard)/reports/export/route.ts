@@ -9,6 +9,7 @@ import { createReportZip, ReportArchiveTooLargeError } from "@/features/reports/
 import { reportZipResponse } from "@/features/reports/zip-response";
 import { parseGuideReportFilters } from "@/features/reports/filters";
 import { getGuideReport, getUniversalReportScopes } from "@/features/reports/queries";
+import { reportDispatchProcessStatus } from "@/features/reports/presentation";
 import type { GuideReportData, ProgrammingReportItem, ReportInvoice } from "@/features/reports/types";
 import {
   REPORT_TABLE_HEADER_ROW,
@@ -53,7 +54,7 @@ const REPORT_COLUMNS: Column[] = [
   { header: "Despacho registrado por", key: "dispatchCreatedBy", width: 25 },
   { header: "Fecha registro despacho", key: "dispatchCreatedAt", width: 21, kind: "datetime" },
   { header: "Validado por", key: "dispatchValidatedBy", width: 27 },
-  { header: "Estado conciliación", key: "reconciliationStatus", width: 23 },
+  { header: "Conciliación de Producto", key: "reconciliationStatus", width: 25 },
   { header: "Diferencia", key: "difference", width: 15, kind: "quantity" },
   { header: "Facturas vigentes", key: "invoiceCount", width: 16, kind: "integer" },
   { header: "Requirió refacturación", key: "reinvoicing", width: 21 },
@@ -190,7 +191,7 @@ async function buildWorkbook(
         programmedUnit: programming.unitCode,
         programmingCreatedBy: programming.createdByName,
         dispatchCode: dispatch?.dispatchCode ?? "Sin despacho",
-        dispatchStatus: dispatch ? formatStatusLabel(dispatch.dispatchStatus) : "Sin despacho",
+        dispatchStatus: dispatch ? formatStatusLabel(reportDispatchProcessStatus(dispatch.dispatchStatus, dispatch.reconciliationStatus, dispatch.billingComplete)) : "Sin despacho",
         dispatchResult: dispatch ? formatStatusLabel(dispatch.physicalResult) : "",
         orderNumber: dispatch?.orderNumber ?? "",
         batchCode: dispatch?.batchCode ?? "",

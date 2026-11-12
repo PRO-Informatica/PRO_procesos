@@ -15,6 +15,7 @@ function load(source, imports) {
   const exports = {};
   const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   runInNewContext(js, { exports, require(name) {
+    if (name === './billing-completion-queries') return { getDispatchBillingCompletion: async () => ({ [dispatchId]: false }) };
     if(name==='../casting-elements')return castingElements;
     if (['./guide-details','../guide-details'].includes(name)) return guideDetailsModel; assert.ok(Object.hasOwn(imports, name), `Unexpected import ${name}`); return imports[name]; }, Intl, Date });
   return exports;

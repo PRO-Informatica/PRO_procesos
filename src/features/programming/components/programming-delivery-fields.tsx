@@ -39,7 +39,7 @@ export function ProgrammingDeliveryFields({
       </div>
       <p className="text-xs leading-5 text-foreground-muted" aria-live="polite">
         {requiresServiceInvoice(modes)
-          ? "El cierre requiere producto conciliado y factura de servicio. Sin modalidad se conserva este requisito."
+          ? "El cierre requiere Producto y Servicio conciliados. Sin modalidad se conserva este requisito."
           : "El cierre requiere producto conciliado. La factura de servicio es opcional y puede cargarse mientras el lote esté abierto."}
       </p>
     </fieldset>
