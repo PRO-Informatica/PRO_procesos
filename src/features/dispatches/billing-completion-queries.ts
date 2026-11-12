@@ -6,7 +6,10 @@ export async function getDispatchBillingCompletion(projectIds: string[]): Promis
   const { data, error } = await (await createClient()).rpc("get_dispatch_billing_completion", {
     p_project_ids: [...new Set(projectIds)],
   });
-  if (error || !data || typeof data !== "object" || Array.isArray(data) ||
+  if (error) {
+    throw new Error(`No fue posible verificar la conciliación de Producto y Servicio de los despachos (${error.code ?? "RPC_ERROR"}).`, { cause: error });
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data) ||
       Object.values(data).some((value) => typeof value !== "boolean")) {
     throw new Error("No fue posible verificar la conciliación de Producto y Servicio de los despachos.");
   }
