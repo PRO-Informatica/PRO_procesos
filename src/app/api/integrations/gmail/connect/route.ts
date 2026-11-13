@@ -15,9 +15,7 @@ export async function GET() {
   const environment = getGmailServerEnvironment();
   const user = await getAuthorizedGmailRequestUser();
   if (!user) {
-    const loginUrl = buildTrustedUrl(environment.appUrl, "/login");
-    loginUrl.searchParams.set("next", "/integrations/gmail");
-    return NextResponse.redirect(loginUrl);
+    return NextResponse.redirect(buildTrustedUrl(environment.appUrl, "/integrations/gmail"));
   }
 
   try {

@@ -1,6 +1,7 @@
 import { EmptyState } from "@/components/feedback/empty-state";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { getProjectContext } from "@/features/projects/queries";
+import { canAccessOperationalSection } from "@/features/projects/access-policy";
 import { GuideReport } from "@/features/reports/components/guide-report";
 import { parseGuideReportFilters } from "@/features/reports/filters";
 import { getGuideReport } from "@/features/reports/queries";
@@ -9,6 +10,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const profile = await requireActiveProfile();
   const context = await getProjectContext(profile.id);
   if (context.status === "error") throw new Error(context.message);
+  if (!canAccessOperationalSection(context.roleCodes, "/reports")) return <EmptyState title="Sin acceso a Reportería" description="Esta sección no está disponible para tu rol." />;
   if (!context.activeProject) return <EmptyState title="Sin proyecto operacional" description="Selecciona un proyecto para consultar Reportería." />;
   if (!context.permissions.includes("dispatch.view")) return <EmptyState title="Sin acceso a Reportería" description="Tu rol necesita acceso de consulta a Despachos y Guías." />;
   const filters = parseGuideReportFilters(await searchParams);

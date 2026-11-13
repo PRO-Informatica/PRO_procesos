@@ -25,8 +25,8 @@ export function Badge({
 }) {
   return (
     <span className={cn("status-feedback inline-flex max-w-full w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold leading-4", toneClasses[tone], className)}>
-      {dot && <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />}
-      {children}
+      {dot && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" />}
+      <span className="min-w-0 whitespace-normal break-words">{children}</span>
     </span>
   );
 }

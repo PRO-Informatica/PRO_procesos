@@ -7,6 +7,7 @@ import ExcelJS from 'exceljs';
 import {REPORT_TABLE_HEADER_ROW,setupReportSheet} from '../src/features/reports/workbook-header.ts';
 import {guideReportMetadata} from '../src/features/reports/guide-metadata.ts';
 import {reportDispatchProcessStatus} from '../src/features/reports/presentation.ts';
+import * as projectAccess from '../src/features/projects/access-policy.ts';
 
 const root=new URL('../',import.meta.url);
 const [querySource,routeSource,cardSource]=await Promise.all(['src/features/reports/queries.ts','src/app/(dashboard)/reports/export/route.ts','src/features/reports/components/dispatch-report-card.tsx'].map(f=>readFile(new URL(f,root),'utf8')));
@@ -34,7 +35,7 @@ test('una identidad no disponible no se sustituye por el nombre del registrador'
  const report=await fixture({labelsMissing:true}).report();assert.equal(report.rows[0].completedByName,'Usuario no disponible');
 });
 const {testBuildWorkbook}=load(routeSource+'\nexport {buildWorkbook as testBuildWorkbook};',{
- '@/features/reports/presentation':{reportDispatchProcessStatus},'exceljs':ExcelJS,'@/features/auth/queries':{},'@/features/projects/queries':{},'@/features/reports/export-utils':{},'@/features/reports/archive-queries':{},'@/features/reports/zip-archive':{},'@/features/reports/zip-response':{},'@/features/reports/filters':{},'@/features/reports/queries':{},'@/features/reports/workbook-header':{REPORT_TABLE_HEADER_ROW,setupReportSheet:(sheet,columns,header)=>setupReportSheet(sheet,Array.from(columns),header)},'@/lib/status-labels':{formatStatusLabel:value=>value??''},'@/lib/supabase/admin':{},'@/lib/supabase/server':{},
+ '@/features/reports/presentation':{reportDispatchProcessStatus},'exceljs':ExcelJS,'@/features/auth/queries':{},'@/features/projects/queries':{},'@/features/projects/access-policy':projectAccess,'@/features/reports/export-utils':{},'@/features/reports/archive-queries':{},'@/features/reports/zip-archive':{},'@/features/reports/zip-response':{},'@/features/reports/filters':{},'@/features/reports/queries':{},'@/features/reports/workbook-header':{REPORT_TABLE_HEADER_ROW,setupReportSheet:(sheet,columns,header)=>setupReportSheet(sheet,Array.from(columns),header)},'@/lib/status-labels':{formatStatusLabel:value=>value??''},'@/lib/supabase/admin':{},'@/lib/supabase/server':{},
 });
 test('el Excel conserva la columna Validado por y su fondo verde al guardar y reabrir',async()=>{
  const report=await fixture().report();

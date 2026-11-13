@@ -20,6 +20,7 @@ import {
 } from "../formatters";
 import type { ProgrammingItem, ProgrammingRange } from "../types";
 import { programmingColorVariables } from "../status-colors";
+import { getProgrammingDisplayStatus } from "../status-presentation";
 
 const calendarByStatus = {
   DRAFT: "draft",
@@ -32,16 +33,16 @@ const calendarByStatus = {
   EXPIRED: "expired",
 } as const;
 
-function toCalendarEvent(item: ProgrammingItem, timezone: string): CalendarEvent {
+function toCalendarEvent(item: ProgrammingItem, timezone: string, residentView: boolean): CalendarEvent {
   const point = Temporal.Instant.from(item.scheduledAt).toZonedDateTimeISO(timezone);
-  const compact = `${formatProgrammingTime(item.scheduledAt, timezone)} · ${formatProgrammingQuantity(item.requestedQuantity)} ${item.unitCode} · ${item.supplierName} · ${formatProgrammingStatus(item.effectiveStatus)}`;
+  const compact = `${formatProgrammingTime(item.scheduledAt, timezone)} · ${formatProgrammingQuantity(item.requestedQuantity)} ${item.unitCode} · ${item.supplierName}`;
   return {
     id: item.id,
     start: point as unknown as CalendarEvent["start"],
     end: point as unknown as CalendarEvent["end"],
     title: `${formatProgrammingQuantity(item.requestedQuantity)} ${item.unitCode} · ${item.supplierName}`,
-    description: formatProgrammingStatus(item.effectiveStatus),
-    calendarId: calendarByStatus[item.effectiveStatus],
+    description: formatProgrammingStatus(item.effectiveStatus, residentView),
+    calendarId: calendarByStatus[getProgrammingDisplayStatus(item.effectiveStatus, residentView)],
     _customContent: {
       timeGrid: compact,
       dateGrid: compact,
@@ -71,12 +72,14 @@ export function ProgrammingCalendar({
   onRangeChange,
   onSelect,
   onCreateAt,
+  residentView = false,
 }: {
   items: ProgrammingItem[];
   timezone: string;
   onRangeChange: (range: ProgrammingRange) => void;
   onSelect: (id: string) => void;
   onCreateAt?: (scheduledAt: string) => void;
+  residentView?: boolean;
 }) {
   const { resolvedTheme } = useTheme();
   const config = useMemo<CalendarConfig>(
@@ -124,8 +127,8 @@ export function ProgrammingCalendar({
         },
         dispatchCompleted: {
           colorName: "dispatchCompleted",
-          lightColors: programmingColorVariables("DISPATCH_COMPLETED"),
-          darkColors: programmingColorVariables("DISPATCH_COMPLETED"),
+          lightColors: programmingColorVariables("DISPATCH_COMPLETED", residentView),
+          darkColors: programmingColorVariables("DISPATCH_COMPLETED", residentView),
         },
         completed: {
           colorName: "completed",
@@ -171,16 +174,16 @@ export function ProgrammingCalendar({
           });
         },
       },
-      events: items.map((item) => toCalendarEvent(item, timezone)),
+      events: items.map((item) => toCalendarEvent(item, timezone, residentView)),
       };
     },
-    [items, onCreateAt, onRangeChange, onSelect, timezone],
+    [items, onCreateAt, onRangeChange, onSelect, residentView, timezone],
   );
   const calendarApp = useNextCalendarApp(config);
 
   useEffect(() => {
-    calendarApp?.events.set(items.map((item) => toCalendarEvent(item, timezone)));
-  }, [calendarApp, items, timezone]);
+    calendarApp?.events.set(items.map((item) => toCalendarEvent(item, timezone, residentView)));
+  }, [calendarApp, items, residentView, timezone]);
 
   useEffect(() => {
     calendarApp?.setTheme(resolvedTheme === "dark" ? "dark" : "light");

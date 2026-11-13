@@ -3,8 +3,9 @@ import { redirect } from "next/navigation";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { canUseGmailModule } from "@/features/integrations/gmail/access-policy";
 import { GmailMailboxWorkspace } from "@/features/integrations/gmail/components/gmail-mailbox-workspace";
+import { GmailAccessDenied } from "@/features/integrations/gmail/components/gmail-access-denied";
 import { getGmailServerEnvironment } from "@/features/integrations/gmail/server-environment";
-import { getGmailConnectionPublicStatus } from "@/features/integrations/gmail/service";
+import { getAuthorizedGmailRequestUser, getGmailConnectionPublicStatus } from "@/features/integrations/gmail/service";
 import { isPlatformAdmin } from "@/features/platform/queries";
 import { getProjectContext } from "@/features/projects/queries";
 
@@ -23,7 +24,7 @@ export default async function MailPage() {
     permissions: context.permissions,
     permission: "gmail.mailbox.view",
   });
-  if (!canView) redirect("/");
+  if (!canView || !(await getAuthorizedGmailRequestUser())) return <GmailAccessDenied />;
   const connection = await getGmailConnectionPublicStatus(profile.id);
   if (!connection.connected || !connection.email) redirect("/integrations/gmail");
   const gmailEnvironment = getGmailServerEnvironment();

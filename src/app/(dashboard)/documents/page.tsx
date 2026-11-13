@@ -4,10 +4,12 @@ import { DocumentsWorkspace } from "@/features/documents/components/documents-wo
 import { getGlobalDocuments } from "@/features/documents/queries";
 import type { DocumentFilters } from "@/features/documents/types";
 import { getProjectContext } from "@/features/projects/queries";
+import { canAccessOperationalSection } from "@/features/projects/access-policy";
 
 export default async function DocumentsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const profile = await requireActiveProfile(); const context = await getProjectContext(profile.id);
   if (context.status === "error") throw new Error(context.message);
+  if (!canAccessOperationalSection(context.roleCodes, "/documents")) return <EmptyState title="Sin acceso a Documentos" description="Esta sección no está disponible para tu rol." />;
   if (!context.activeProject) return <EmptyState title="Sin proyecto operacional" description="Selecciona un proyecto para consultar Documentos." />;
   if (!["document.view", "dispatch.view", "invoice.view"].some((permission) => context.permissions.includes(permission))) return <EmptyState title="Sin acceso a Documentos" description="Tu rol no tiene acceso documental en este proyecto." />;
   const raw = await searchParams; const get = (key: string) => { const value = raw[key]; return (Array.isArray(value) ? value[0] : value) || undefined; };

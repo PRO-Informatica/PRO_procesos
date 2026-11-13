@@ -3,7 +3,8 @@ import { formatStatusLabel } from "@/lib/status-labels";
 
 export { formatDispatchMoney, normalizeCatalogReference } from "./catalog-estimates";
 
-export function formatDispatchStatus(status: DispatchStatus) {
+export function formatDispatchStatus(status: DispatchStatus, residentView = false) {
+  if (residentView && status === "COMPLETED") return "Despacho completo";
   return formatStatusLabel(status);
 }
 
@@ -46,6 +47,22 @@ export function formatDispatchDateTime(value: string | null, timezone: string) {
     .format(new Date(value))
     .replace(/\s+/gu, " ")
     .trim();
+}
+
+export function formatDispatchSchedule(value: string, timezone: string) {
+  // Read numeric parts only: ICU versions can use different invisible spaces
+  // and day-period labels when formatting the same date on server and browser.
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric", month: "numeric", day: "numeric",
+    hour: "numeric", minute: "2-digit", hourCycle: "h23",
+    calendar: "gregory", numberingSystem: "latn", timeZone: timezone,
+  }).formatToParts(new Date(value));
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((entry) => entry.type === type)?.value ?? "";
+  const hour = Number(part("hour"));
+  return {
+    date: `${Number(part("day"))}/${Number(part("month"))}/${part("year")}`,
+    time: `${hour % 12 || 12}:${part("minute").padStart(2, "0")} ${hour < 12 ? "a. m." : "p. m."}`,
+  };
 }
 
 export function formatIdentifier(prefix: string, id: string) {

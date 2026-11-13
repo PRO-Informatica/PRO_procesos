@@ -202,11 +202,13 @@ export function ProgrammingDetailView({
   project,
   permissions,
   receiverName,
+  residentView = false,
 }: {
   data: ProgrammingDetailPageData;
   project: ProjectSummary;
   permissions: ProgrammingDetailPermissions;
   receiverName: string;
+  residentView?: boolean;
 }) {
   const router = useRouter();
   const [intent, setIntent] = useState<ActionIntent | null>(null);
@@ -238,7 +240,9 @@ export function ProgrammingDetailView({
   }, availabilityNow);
   const canCancel = canCancelProgramming({ ...detail, operationStarted, hasGuides: detail.dispatches.some((dispatch) => Boolean(dispatch.guideNumber)), hasPermission: permissions.canCancel }, availabilityNow);
   const relevantRevisions = detail.revisions.filter(
-    (revision) => revision.action !== "PROGRAMMING_BASELINE",
+    (revision) => revision.action !== "PROGRAMMING_BASELINE" && (
+      !residentView || !["PROGRAMMING_COMPLETED", "PROGRAMMING_BILLING_REOPENED"].includes(revision.action)
+    ),
   );
   const revisionCountLabel = `${relevantRevisions.length} ${relevantRevisions.length === 1 ? "evento" : "eventos"}`;
   const actions = useMemo(() => {
@@ -263,8 +267,8 @@ export function ProgrammingDetailView({
             </Link>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Detalle de programación</h1>
-              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(effectiveStatus)}`}>
-                {formatProgrammingStatus(effectiveStatus)}
+              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(effectiveStatus, residentView)}`}>
+                {formatProgrammingStatus(effectiveStatus, residentView)}
               </span>
             </div>
             <p className="mt-2 font-mono text-xs text-foreground-muted">
@@ -320,7 +324,7 @@ export function ProgrammingDetailView({
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Fecha programada</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.scheduledAt, project.timezone)}</dd></div>
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Pedido No.</dt><dd className="text-sm text-foreground">{detail.orderNumber ?? "—"}</dd></div>
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Modalidad de entrega</dt><dd className="text-sm text-foreground">{deliveryModeLabel(detail.deliveryModes)}</dd></div>
-                <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Requisitos de cierre</dt><dd className="text-sm text-foreground">{requiresServiceInvoice(detail.deliveryModes) ? "Producto y Servicio conciliados" : "Producto conciliado; servicio opcional"}</dd></div>
+                {!residentView && <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Requisitos de cierre</dt><dd className="text-sm text-foreground">{requiresServiceInvoice(detail.deliveryModes) ? "Producto y Servicio conciliados" : "Producto conciliado; servicio opcional"}</dd></div>}
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Creada por</dt><dd className="break-words text-sm text-foreground">{detail.createdByName}</dd></div>
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Creada</dt><dd className="text-sm text-foreground">{formatProgrammingDateTime(detail.createdAt, project.timezone)}</dd></div>
                 <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0"><dt className="form-label">Persona que confirmó</dt><dd className="break-words text-sm text-foreground">{detail.confirmedByName ?? "Sin confirmar"}</dd></div>
@@ -408,10 +412,10 @@ export function ProgrammingDetailView({
                     <span className="rounded-full bg-muted px-2 py-1 font-mono text-[10px] text-foreground-muted">v{revision.version}</span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-foreground-muted">
-                    <span>{formatProgrammingStatus(revision.status)}</span><span>·</span><span>Solicitado {formatProgrammingQuantity(revision.requestedQuantity)} {revision.unitCode}</span>
+                    <span>{formatProgrammingStatus(revision.status, residentView)}</span><span>·</span><span>Solicitado {formatProgrammingQuantity(revision.requestedQuantity)} {revision.unitCode}</span>
                     <span>·</span><span>{deliveryModeLabel(revision.deliveryModes)}</span>
                   </div>
-                  {revision.changeReason && <p className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-xs leading-5 text-foreground">{revision.changeReason}</p>}
+                  {revision.changeReason && <p className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-xs leading-5 text-foreground">{residentView && revision.action === "PROGRAMMING_DISPATCH_COMPLETED" ? "Terminó la operación del despacho." : revision.changeReason}</p>}
                 </li>
               ))}
             </ol>

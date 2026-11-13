@@ -1,7 +1,8 @@
 import { CheckCircle2 } from "lucide-react";
-import { redirect } from "next/navigation";
 
 import { GoogleLogo } from "@/components/brand/google-logo";
+import { requireActiveProfile } from "@/features/auth/queries";
+import { GmailAccessDenied } from "@/features/integrations/gmail/components/gmail-access-denied";
 import { GmailOnboardingActions } from "@/features/integrations/gmail/components/gmail-onboarding-actions";
 import {
   getAuthorizedGmailRequestUser,
@@ -55,8 +56,9 @@ export default async function GmailOnboardingPage({
 }: {
   searchParams: Promise<{ result?: string }>;
 }) {
+  await requireActiveProfile();
   const user = await getAuthorizedGmailRequestUser();
-  if (!user) redirect("/auth/signout?reason=inactive");
+  if (!user) return <main className="grid min-h-dvh place-items-center bg-canvas px-4"><GmailAccessDenied /></main>;
   const [connection, params] = await Promise.all([
     getGmailConnectionPublicStatus(user.id),
     searchParams,

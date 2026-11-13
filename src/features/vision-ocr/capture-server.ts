@@ -39,7 +39,8 @@ export async function captureContext(request: Request, projectId: string, dispat
   const profile = await db.from("profiles").select("active").eq("id", actor).maybeSingle();
   if (!profile.data?.active || profile.error) throw new CaptureError("Usuario sin acceso.", 403);
   const context = await getProjectContext(actor);
-  if (context.status !== "ready" || context.activeProject?.id !== projectId || !context.permissions.includes(readOnly ? "dispatch.view" : "dispatch.modify")) throw new CaptureError("No tienes permiso en este proyecto.", 403);
+  const canCapture = context.permissions.includes("dispatch.manage_guides") || context.permissions.includes("dispatch.modify");
+  if (context.status !== "ready" || context.activeProject?.id !== projectId || !(readOnly ? context.permissions.includes("dispatch.view") : canCapture)) throw new CaptureError("No tienes permiso en este proyecto.", 403);
   const dispatch = await db.from("dispatches").select("id,project_id,status,programming_id,version").eq("id", dispatchId).eq("project_id", projectId).maybeSingle();
   if (dispatch.error || !dispatch.data) throw new CaptureError("Despacho no disponible.", 404);
   // Evidence retries for already saved captures remain possible after completion.

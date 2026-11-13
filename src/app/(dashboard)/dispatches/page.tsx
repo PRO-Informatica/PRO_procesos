@@ -2,6 +2,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { DispatchesWorkspace } from "@/features/dispatches/components/dispatches-workspace";
 import { getDispatchPageData } from "@/features/dispatches/queries";
+import { usesResidentProgrammingView } from "@/features/programming/status-presentation";
 import { getProjectContext } from "@/features/projects/queries";
 
 export default async function DispatchesPage() {
@@ -27,8 +28,9 @@ export default async function DispatchesPage() {
   const data = await getDispatchPageData(context.activeProject.id);
   return <DispatchesWorkspace
     project={context.activeProject}
+    residentView={usesResidentProgrammingView(context.roleCodes)}
     canCreate={context.permissions.includes("dispatch.create")}
-    canModify={context.permissions.includes("dispatch.modify")}
+    canModify={context.permissions.includes("dispatch.manage_guides") || context.permissions.includes("dispatch.modify")}
     receiverName={profile.fullName}
     data={data}
   />;

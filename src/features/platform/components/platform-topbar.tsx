@@ -5,6 +5,7 @@ import { ArrowLeftRight, ChevronDown, LogOut, Menu } from "lucide-react";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { ScopeSwitchLink } from "@/components/shared/scope-switch-link";
 import type { SessionProfile } from "@/features/auth/types";
+import { hasExactCorporateDomain } from "@/features/auth/security";
 import { GmailConnectionIndicator } from "@/features/integrations/gmail/components/gmail-connection-indicator";
 import { usePlatformContext } from "@/features/platform/platform-context";
 
@@ -53,7 +54,7 @@ export function PlatformTopbar({
             Ir a operación
           </ScopeSwitchLink>
         )}
-        <GmailConnectionIndicator />
+        {hasExactCorporateDomain(profile.email) && <GmailConnectionIndicator />}
         <ThemeToggle />
 
         <details className="group relative ml-1">

@@ -6,7 +6,7 @@ export const DISPATCH_RESULTS = ["DISPATCHED", "NOT_DISPATCHED"] as const;
 
 export type DispatchStatus = (typeof DISPATCH_STATUSES)[number];
 export type DispatchResult = (typeof DISPATCH_RESULTS)[number];
-export type ProgrammingDispatchStatus = "CONFIRMED" | "IN_EXECUTION" | "DISPATCH_COMPLETED";
+export type ProgrammingDispatchStatus = "CONFIRMED" | "IN_EXECUTION" | "DISPATCH_COMPLETED" | "COMPLETED";
 export type DispatchUnit = { code: string; name: string };
 export type IncidentTypeOption = { id: string; name: string };
 export type DispatchCatalogType = "PRODUCT" | "SERVICE";
@@ -199,6 +199,7 @@ export type DispatchDetail = {
 export type DispatchPermissions = {
   canCreate: boolean;
   canModify: boolean;
+  canManageGuides?: boolean;
   canComplete: boolean;
   canManageBatch: boolean;
   canRegisterIncident: boolean;

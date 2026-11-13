@@ -101,14 +101,17 @@ test("precarga el total actual y mantiene el campo editable", () => {
   assert.equal(f.input().props.step, "0.001");
 });
 
-test("Supervisor conserva guías y evidencias sin mostrar finalización ni su modal", () => {
-  const supervisor = fixture({}, { canModify: true, canComplete: false, canRegisterIncident: true });
-  assert.equal(supervisor.input().props.disabled, false);
+test("Supervisor carga y corrige guías sin editar datos generales ni finalizar", () => {
+  const supervisor = fixture({}, { canModify: false, canManageGuides: true, canComplete: false, canRegisterIncident: false });
+  assert.equal(supervisor.input().props.disabled, true);
   assert.ok(supervisor.find(node => node.type === "button" && node.props.children?.includes?.(" Agregar guía")));
-  assert.ok(supervisor.find(node => node.type === "DocumentUploader"));
-  assert.ok(supervisor.find(node => node.type === "LoadingButton" && node.props.children === "Guardar cambios"));
+  assert.equal(supervisor.find(node => node.type === "DocumentUploader"), undefined);
+  assert.equal(supervisor.find(node => node.type === "LoadingButton" && node.props.children === "Guardar cambios"), undefined);
   assert.equal(supervisor.find(node => node.type === "Button" && node.props.variant === "success"), undefined);
   assert.equal(supervisor.find(node => node.type === "Dialog" && node.props.title === "¿Finalizar despacho?"), undefined);
+  const edit = supervisor.find(node => node.type === "button" && node.props.children === "Ver / Editar");
+  assert.ok(edit); edit.props.onClick(); supervisor.render();
+  assert.equal(supervisor.find(node => node.type === "DispatchGuideDialog").props.readOnly, false);
   const resident = fixture();
   assert.ok(resident.find(node => node.type === "Button" && node.props.variant === "success"));
   const completed = fixture({ status: "COMPLETED" });

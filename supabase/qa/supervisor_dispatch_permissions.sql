@@ -11,23 +11,16 @@ begin
   select id into strict supervisor from public.roles where code = 'SUPERVISOR' and active;
   select id into strict resident from public.roles where code = 'RESIDENT' and active;
   if exists(select 1 from public.roles where code = 'RECEPTION') then raise exception 'QA_RECEPTION_STILL_EXISTS'; end if;
-  if exists(
-    (select permission_id from public.role_permissions where role_id = resident
-     except select id from public.permissions where code = 'dispatch.complete')
-    except select permission_id from public.role_permissions where role_id = supervisor
-  ) or exists(
-    select permission_id from public.role_permissions where role_id = supervisor
-    except (select permission_id from public.role_permissions where role_id = resident
-            except select id from public.permissions where code = 'dispatch.complete')
-  ) then raise exception 'QA_SUPERVISOR_PERMISSION_PARITY'; end if;
   if exists(select 1 from public.role_permissions rp join public.permissions p on p.id=rp.permission_id
-            where rp.role_id=supervisor and p.code='dispatch.complete') then raise exception 'QA_SUPERVISOR_CAN_COMPLETE'; end if;
+    where rp.role_id=supervisor and not (
+      p.code in ('programming.view','dispatch.view','document.view','dispatch.create','dispatch.manage_guides')
+    )) then raise exception 'QA_SUPERVISOR_WRITE_OR_GMAIL_LEAK'; end if;
   if not exists(select 1 from public.roles r join public.role_permissions rp on rp.role_id=r.id
                 join public.permissions p on p.id=rp.permission_id where r.code='COMPANY_ADMIN' and p.code='dispatch.complete') then
     raise exception 'QA_ADMIN_COMPLETION_LOST';
   end if;
 
-  -- Use an active project member without company-level completion access.
+  -- Use an active project member with no other company-level grants.
   select pm.user_id, pm.project_id, pm.id, ps.supplier_id
   into actor, project, member, supplier
   from public.project_members pm
@@ -40,25 +33,33 @@ begin
     and not exists(select 1 from public.company_member_roles cr
       join public.roles r on r.id=cr.role_id and r.active
       join public.role_permissions rp on rp.role_id=r.id
-      join public.permissions permission on permission.id=rp.permission_id and permission.code='dispatch.complete'
+      join public.permissions permission on permission.id=rp.permission_id
       where cr.company_member_id=cm.id and cr.revoked_at is null)
   order by pm.id limit 1;
   if actor is null then raise exception 'QA_NON_ADMIN_PROJECT_MEMBER_REQUIRED'; end if;
   perform set_config('request.jwt.claim.sub',actor::text,true);
   -- These assignments are restored by the outer rollback, never committed.
   delete from public.project_member_roles where project_member_id=member;
-  insert into public.project_member_roles(project_member_id,role_id,assigned_by) values(member,supervisor,actor);
-  foreach permission in array array['programming.create','programming.modify','programming.cancel','programming.close',
-    'dispatch.create','dispatch.modify','dispatch.view','dispatch.register_incident','document.upload','document.view','gmail.mailbox.view','gmail.mail.send'] loop
-    if not app_private.has_project_permission(project,permission) then raise exception 'QA_PERMISSION_MISSING: %',permission; end if;
-  end loop;
-  if app_private.has_project_permission(project,'dispatch.complete') then raise exception 'QA_COMPLETION_LEAK'; end if;
+  insert into public.project_member_roles(project_member_id,role_id,assigned_by) values(member,resident,actor);
   select price.id,price.reference into strict product,reference from public.project_product_prices price where price.project_id=project order by price.id limit 1;
   execute 'set local role authenticated';
   response:=public.create_programming_batch(project,jsonb_build_array(jsonb_build_object('supplier_id',supplier,
     'scheduled_at','2026-11-05T13:00:00Z','order_number','QA-SUPERVISOR-'||gen_random_uuid(),'delivery_modes',jsonb_build_array('DIRECT'),
     'lines',jsonb_build_array(jsonb_build_object('quantity',7,'unit_code','M3','concrete_type',reference)))));
   program:=(response->'programming_ids'->>0)::uuid;
+  execute 'reset role';
+  delete from public.project_member_roles where project_member_id=member;
+  insert into public.project_member_roles(project_member_id,role_id,assigned_by) values(member,supervisor,actor);
+  foreach permission in array array['programming.view','dispatch.view','dispatch.create','dispatch.manage_guides','document.view'] loop
+    if not app_private.has_project_permission(project,permission) then raise exception 'QA_PERMISSION_MISSING: %',permission; end if;
+  end loop;
+  foreach permission in array array['programming.create','programming.confirm','programming.modify','programming.cancel','programming.close',
+    'dispatch.modify','dispatch.complete','dispatch.register_incident','document.upload','batch.view','invoice.view','report.view','gmail.mailbox.view','gmail.mail.send'] loop
+    if app_private.has_project_permission(project,permission) then raise exception 'QA_PERMISSION_LEAK: %',permission; end if;
+  end loop;
+  execute 'set local role authenticated';
+  begin perform public.create_programming_batch(project,'[]'); raise exception 'QA_PROGRAMMING_CREATE_ALLOWED';
+  exception when raise_exception then if sqlerrm<>'PERMISSION_DENIED' then raise; end if; end;
   dispatch:=public.start_dispatch(program,'2026-11-05T13:00:00Z','QA Supervisor');
   lines:=jsonb_build_array(jsonb_build_object('catalog_type','PRODUCT','catalog_item_id',product,'quantity',7,'unit_code',null));
   response:=public.create_dispatch_guide_with_details(dispatch,1,'QA-SUPERVISOR',date '2026-11-05',lines,time '23:00',time '03:00','COLUMNS',false,'{}');
@@ -81,7 +82,9 @@ begin
   execute 'set local role authenticated';
   response:=public.commit_vision_ocr_guide(capture,version,'qa-approved');
   version:=(response->>'dispatch_version')::integer;
-  version:=public.update_dispatch(dispatch,version,'2026-11-05T13:00:00Z',null,'QA Supervisor','DISPATCHED','QA-SUPERVISOR',8,'M3');
+  begin perform public.update_dispatch(dispatch,version,'2026-11-05T13:00:00Z',null,'QA Supervisor','DISPATCHED','QA-SUPERVISOR',8,'M3');
+    raise exception 'QA_GENERAL_DISPATCH_UPDATE_ALLOWED';
+  exception when raise_exception then if sqlerrm<>'PERMISSION_DENIED' then raise; end if; end;
   execute 'reset role';
   insert into public.documents(project_id,category,created_by)values(project,'DISPATCH_EVIDENCE',actor)returning id into document;
   insert into public.dispatch_documents(project_id,dispatch_id,document_id,purpose)values(project,dispatch,document,'DISPATCH_EVIDENCE');
@@ -120,5 +123,5 @@ begin
   end if;
 end;
 $$;
-select 'SUPERVISOR_QA_PASS: manual and OCR guides, save, completion denied, Resident completion preserved';
+select 'SUPERVISOR_QA_PASS: start and manual/OCR guides allowed; planning, Gmail, general updates and completion denied; Resident preserved';
 rollback;

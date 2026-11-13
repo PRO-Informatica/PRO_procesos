@@ -29,6 +29,7 @@ import {
   validateGoogleIdTokenIdentity,
 } from "./policy";
 import { getGmailServerEnvironment } from "./server-environment";
+import { hasGmailModuleAccessForUser } from "./server-access";
 import {
   GMAIL_REQUIRED_SCOPES,
   type GmailConnectionPublicStatus,
@@ -96,7 +97,8 @@ export async function getAuthorizedGmailRequestUser(): Promise<GmailRequestUser 
   const email = normalizeEmail(user.email);
   if (!hasExactCorporateDomain(email)) return null;
   const access = await validateApplicationAccess(user.id);
-  return access.authorized ? { id: user.id, email } : null;
+  if (!access.authorized || !(await hasGmailModuleAccessForUser(user.id, "gmail.mailbox.view"))) return null;
+  return { id: user.id, email };
 }
 
 export function createGmailOAuthClient() {

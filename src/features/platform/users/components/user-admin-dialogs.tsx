@@ -87,11 +87,11 @@ function DialogButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+      className="inline-flex min-h-10 min-w-0 max-w-full items-center justify-center gap-2 whitespace-normal rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 [&>svg]:shrink-0"
       whileTap={disabled ? undefined : { scale: 0.98 }}
     >
       {icon}
-      {children}
+      <span className="min-w-0 break-words">{children}</span>
     </motion.button>
   );
 }

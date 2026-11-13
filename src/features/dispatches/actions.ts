@@ -36,7 +36,8 @@ async function authorize(projectId: string, permission: string) {
   if (
     context.status !== "ready" ||
     context.activeProject?.id !== projectId ||
-    !context.permissions.includes(permission)
+    !(context.permissions.includes(permission) ||
+      (permission === "dispatch.manage_guides" && context.permissions.includes("dispatch.modify")))
   ) {
     return null;
   }
@@ -382,7 +383,7 @@ export async function saveDispatchGuideAction(
   if (timesError) return { status: "error", message: timesError };
   const linesError = validateDispatchGuideLines(lines);
   if (linesError) return { status: "error", message: linesError };
-  if (!(await authorize(projectId, "dispatch.modify")))
+  if (!(await authorize(projectId, "dispatch.manage_guides")))
     return { status: "error", message: "No tienes permiso para guardar guías." };
   const supabase = await createClient();
   const params = {
@@ -566,7 +567,7 @@ type PrepareUploadInput = {
 export async function prepareDispatchUpload(
   input: PrepareUploadInput,
 ): Promise<UploadActionResult> {
-  const permission = input.context === "incident" ? "dispatch.register_incident" : "dispatch.modify";
+  const permission = input.context === "incident" ? "dispatch.register_incident" : input.context === "guide" ? "dispatch.manage_guides" : "dispatch.modify";
   if (
     !validId(input.projectId) ||
     !validId(input.contextId) ||

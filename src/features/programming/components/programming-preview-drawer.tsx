@@ -49,6 +49,7 @@ export function ProgrammingPreviewDrawer({
   units,
   onUpdated,
   onClose,
+  residentView = false,
 }: {
   item: ProgrammingItem | null;
   timezone: string;
@@ -59,6 +60,7 @@ export function ProgrammingPreviewDrawer({
   units: ProgrammingUnit[];
   onUpdated: () => void;
   onClose: () => void;
+  residentView?: boolean;
 }) {
   const [availabilityNow] = useState(() => Date.now());
   const [editOpen, setEditOpen] = useState(false);
@@ -145,8 +147,8 @@ export function ProgrammingPreviewDrawer({
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.effectiveStatus)}`}>
-                  {formatProgrammingStatus(item.effectiveStatus)}
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.effectiveStatus, residentView)}`}>
+                  {formatProgrammingStatus(item.effectiveStatus, residentView)}
                 </span>
                 <span className="text-xs text-foreground-muted">
                   {formatProgrammingDateTime(item.scheduledAt, timezone)}

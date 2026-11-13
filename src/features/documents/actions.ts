@@ -2,6 +2,7 @@
 
 import { requireActiveProfile } from "@/features/auth/queries";
 import { getProjectContext } from "@/features/projects/queries";
+import { canAccessOperationalSection } from "@/features/projects/access-policy";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -12,7 +13,7 @@ export async function getGlobalDocumentUrl(projectId: string, documentId: string
   const profile = await requireActiveProfile();
   const context = await getProjectContext(profile.id);
   const project = context.projects.find((item) => item.id === projectId);
-  const permitted = context.status === "ready" && project && (context.permissions.includes("document.view") || context.permissions.includes("dispatch.view") || context.permissions.includes("invoice.view"));
+  const permitted = context.status === "ready" && canAccessOperationalSection(context.roleCodes, "/documents") && project && (context.permissions.includes("document.view") || context.permissions.includes("dispatch.view") || context.permissions.includes("invoice.view"));
   if (!permitted) return { status: "error" as const, message: "No tienes acceso a este documento." };
   const { data, error } = await (await createClient()).from("document_versions").select("storage_bucket, storage_path").eq("document_id", documentId).eq("upload_status", "UPLOADED").eq("is_current", true).maybeSingle();
   if (error || !data) return { status: "error" as const, message: "No hay una versión disponible." };

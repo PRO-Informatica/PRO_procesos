@@ -1,9 +1,13 @@
-import { StatusBadge } from "@/components/ui/badge";
+import { Badge, StatusBadge } from "@/components/ui/badge";
+import { programmingStatusTone } from "@/features/programming/formatters";
 
 import { formatDispatchResult, formatDispatchStatus } from "../formatters";
 import type { DispatchResult, DispatchStatus } from "../types";
 
-export function DispatchStatusBadge({ status, billingComplete }: { status: DispatchStatus; billingComplete?: boolean }) {
+export function DispatchStatusBadge({ status, billingComplete, residentView = false }: { status: DispatchStatus; billingComplete?: boolean; residentView?: boolean }) {
+  if (residentView && status === "COMPLETED") {
+    return <Badge className={programmingStatusTone("DISPATCH_COMPLETED", true)} dot>Despacho completo</Badge>;
+  }
   if (status === "COMPLETED" && billingComplete === false) {
     return <StatusBadge label="Pendiente de conciliación" tone="warning" dot />;
   }

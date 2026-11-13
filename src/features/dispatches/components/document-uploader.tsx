@@ -7,6 +7,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { useDelayedPending } from "@/components/feedback/use-delayed-pending";
+import { EmptyState } from "@/components/feedback/empty-state";
 import { notifications } from "@/lib/notification-messages";
 import { notify } from "@/lib/notify";
 import { createClient } from "@/lib/supabase/client";
@@ -31,12 +32,13 @@ function fileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function DocumentUploader({ projectId, contextId, context, label, existingDocumentId }: {
+export function DocumentUploader({ projectId, contextId, context, label, existingDocumentId, emptyState }: {
   projectId: string;
   contextId: string;
   context: "dispatch" | "guide" | "incident";
   label: string;
   existingDocumentId?: string;
+  emptyState?: { title: string; description: string };
 }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -121,9 +123,11 @@ export function DocumentUploader({ projectId, contextId, context, label, existin
   };
 
   return (
-    <div className="space-y-3">
+    <div>
       <input ref={fileInput} type="file" accept={ACCEPT} multiple className="sr-only" onChange={(event) => selectFiles(event.target.files)} />
       <input ref={cameraInput} type="file" accept={IMAGE_ACCEPT} capture="environment" className="sr-only" onChange={(event) => selectFiles(event.target.files, true)} />
+      {emptyState && <div className="p-5"><EmptyState {...emptyState} disabled={busy} onClick={() => fileInput.current?.click()} /></div>}
+      <div className={emptyState ? "space-y-3 border-t border-border px-5 py-4 sm:px-6" : "space-y-3"}>
       <div className="grid gap-2 min-[420px]:grid-cols-2 sm:flex sm:flex-wrap">
         <Button variant="secondary" disabled={busy} onClick={() => fileInput.current?.click()} className="min-h-11 w-full px-3 text-xs sm:min-h-10 sm:w-auto">
           {showBusy ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /> : <FileUp className="size-4" />}{label}
@@ -146,6 +150,7 @@ export function DocumentUploader({ projectId, contextId, context, label, existin
           {item.status === "uploading" && <div className="h-0.5 overflow-hidden bg-muted">{showBusy && <div className="h-full w-1/2 animate-pulse bg-brand motion-reduce:w-full motion-reduce:animate-none" />}</div>}
         </li>)}
       </ul>}
+      </div>
     </div>
   );
 }

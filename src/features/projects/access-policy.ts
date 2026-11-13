@@ -56,3 +56,31 @@ export function hasUniversalOperationalViewRole(roleCodes: string[]) {
     ["PURCHASING", "COMPANY_ADMIN", "PLATFORM_ADMIN"].includes(role),
   );
 }
+
+export function isSupervisorOnly(roleCodes: readonly string[]) {
+  return roleCodes.some((role) => ["SUPERVISOR", "RECEPTION"].includes(role)) &&
+    !roleCodes.some((role) => ["RESIDENT", "PURCHASING", "COMPANY_ADMIN", "PLATFORM_ADMIN"].includes(role));
+}
+
+const SUPERVISOR_HIDDEN_SECTIONS = [
+  "/reports", "/batches", "/invoices", "/reconciliation", "/documents", "/notifications", "/mail",
+];
+
+export function canAccessOperationalSection(roleCodes: readonly string[] = [], pathname: string) {
+  return !isSupervisorOnly(roleCodes) || !SUPERVISOR_HIDDEN_SECTIONS.some(
+    (section) => pathname === section || pathname.startsWith(`${section}/`),
+  );
+}
+
+// Keep older permission assignments usable for guide intake while restricting
+// Supervisor to the two operational writes, even before the SQL migration.
+export function restrictSupervisorAccess<T extends OperationalAccess>(access: T): T {
+  if (!isSupervisorOnly(access.roleCodes)) return access;
+  const permissions = access.permissions.filter((permission) =>
+    ["programming.view", "dispatch.view", "document.view", "dispatch.create", "dispatch.manage_guides"].includes(permission),
+  );
+  if (access.permissions.includes("dispatch.modify") && !permissions.includes("dispatch.manage_guides")) {
+    permissions.push("dispatch.manage_guides");
+  }
+  return { ...access, permissions };
+}

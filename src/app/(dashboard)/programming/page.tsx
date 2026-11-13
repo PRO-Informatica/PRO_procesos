@@ -2,6 +2,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { ProgrammingWorkspace } from "@/features/programming/components/programming-workspace";
 import { getProgrammingPageData } from "@/features/programming/queries";
+import { usesResidentProgrammingView } from "@/features/programming/status-presentation";
 import { getProjectContext } from "@/features/projects/queries";
 
 export default async function ProgrammingPage() {
@@ -38,10 +39,12 @@ export default async function ProgrammingPage() {
   return (
     <ProgrammingWorkspace
       project={context.activeProject}
+      residentView={usesResidentProgrammingView(context.roleCodes)}
       canCreate={context.permissions.includes("programming.create")}
       canConfirm={context.permissions.includes("programming.confirm")}
       canModify={context.permissions.includes("programming.modify")}
       canCancel={context.permissions.includes("programming.cancel")}
+      canStartDispatch={context.permissions.includes("dispatch.create")}
       initialData={data}
     />
   );

@@ -43,7 +43,7 @@ function RoleTags({ roles }: { roles: UserRoleAssignment[] }) {
       {roles.map((role) => (
         <span
           key={role.assignmentId}
-          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+          className={`inline-flex max-w-full break-words rounded-full px-2.5 py-1 text-xs font-semibold ${
             role.active
               ? "bg-brand-soft text-brand-strong"
               : "bg-muted text-foreground-muted line-through"
@@ -66,7 +66,7 @@ function MembershipRoles({ roles }: { roles: UserRoleAssignment[] }) {
   const historical = roles.filter((role) => !role.active);
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 space-y-2">
       <RoleTags roles={active} />
       {historical.length > 0 && (
         <details className="text-xs text-foreground-muted">
@@ -81,7 +81,7 @@ function MembershipRoles({ roles }: { roles: UserRoleAssignment[] }) {
 function MembershipBadge({ active }: { active: boolean }) {
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+      className={`inline-flex max-w-full rounded-full px-2.5 py-1 text-xs font-semibold ${
         active
           ? "bg-success-soft text-success"
           : "bg-muted text-foreground-muted"
@@ -101,7 +101,7 @@ export function UserDetailView({ user }: { user: PlatformUserDetail }) {
   ).length;
 
   return (
-    <div className="mx-auto max-w-[1320px]">
+    <div className="mx-auto w-full min-w-0 max-w-[1320px]">
       <Link
         href="/platform/users"
         className="inline-flex items-center gap-2 text-sm font-semibold text-foreground-muted hover:text-foreground"
@@ -255,7 +255,7 @@ export function UserDetailView({ user }: { user: PlatformUserDetail }) {
                       {formatUserDate(membership.createdAt)}
                     </td>
                     <td className="px-6 py-4 sm:px-8">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex flex-wrap justify-end gap-2">
                         <ManageRolesDialog
                           scope="COMPANY"
                           userId={user.id}
@@ -341,7 +341,7 @@ export function UserDetailView({ user }: { user: PlatformUserDetail }) {
                       {formatUserDate(membership.createdAt)}
                     </td>
                     <td className="px-6 py-4 sm:px-8">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex flex-wrap justify-end gap-2">
                         <ManageRolesDialog
                           scope="PROJECT"
                           userId={user.id}
@@ -428,7 +428,7 @@ function OverviewItem({
 
 function DetailField({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <dt className="text-xs font-medium text-foreground-muted">{label}</dt>
       <dd className="mt-1.5 break-words text-sm font-semibold text-foreground">{value}</dd>
     </div>
@@ -446,11 +446,11 @@ function SectionHeading({
 }) {
   return (
     <div className="flex flex-col gap-4 border-b border-border p-6 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-      <div>
+      <div className="min-w-0">
         <h2 className="text-lg font-semibold text-foreground">{title}</h2>
         <p className="mt-1 text-sm text-foreground-muted">{description}</p>
       </div>
-      {action}
+      {action && <div className="min-w-0 shrink-0 sm:max-w-[45%]">{action}</div>}
     </div>
   );
 }

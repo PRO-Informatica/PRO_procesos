@@ -85,11 +85,12 @@ test('errores de horario y conflictos no se muestran como éxito ni refrescan da
 });
 
 function nodes(node) { if (!node || typeof node !== 'object') return []; if (Array.isArray(node)) return node.flatMap(nodes); if(typeof node.type==='function')return nodes(node.type(node.props));return [node,...nodes(node.props?.children)]; }
-function dialogFixture({readOnly=false,guide}={}) {
+function dialogFixture({readOnly=false,guide,manual=false}={}) {
   const jsx = (type, props) => ({type,props});
+  const state=[];let cursor=0;
   const dialog = load(dialogSource, {
     'react/jsx-runtime': {jsx,jsxs:jsx},
-    react: { useActionState: () => [{status:'idle'},()=>{},false], useState: value => [typeof value==='function'?value():value,()=>{}], useRef: value => ({current:value}), useEffect(){}, useMemo: fn=>fn() },
+    react: { useActionState: () => [{status:'idle'},()=>{},false], useState(value){const index=cursor++;if(!(index in state))state[index]=typeof value==='function'?value():value;return[state[index],next=>{state[index]=typeof next==='function'?next(state[index]):next;}];}, useRef: value => ({current:value}), useEffect(){}, useMemo: fn=>fn() },
     'next/navigation': {useRouter:()=>({refresh(){}})},
     'lucide-react': {PackageOpen:'Icon',Plus:'Icon',Search:'Icon',Trash2:'Icon'},
     '@/components/feedback/loading-button': {LoadingButton:'LoadingButton'},
@@ -107,10 +108,14 @@ function dialogFixture({readOnly=false,guide}={}) {
     './guide-resident-fields': {GuideResidentFields:'ResidentFields'}, './guide-lines-list': {GuideLinesList:'LinesList'},
     './dispatch-catalog-combobox': {DispatchCatalogCombobox:'Picker'},
   }).DispatchGuideDialog;
-  return nodes(dialog({projectId,dispatchId,programmingId:projectId,expectedVersion:2,programmedUnitCode:'M3',units:[{code:'M3'}],timezone:'America/Guatemala',guide,readOnly,onClose(){}}));
+  const render=()=>{cursor=0;return nodes(dialog({projectId,dispatchId,programmingId:projectId,expectedVersion:2,programmedUnitCode:'M3',units:[{code:'M3'}],timezone:'America/Guatemala',guide,readOnly,onClose(){}}));};
+  let tree=render();
+  if(manual){tree.find(n=>n.type==='Button'&&n.props.children==='Carga manual').props.onClick();tree=render();}
+  return tree;
 }
-test('formulario nuevo muestra ambas horas obligatorias sin inventar valores', () => {
-  const tree=dialogFixture();
+test('al elegir carga manual se muestran ambas horas obligatorias sin inventar valores', () => {
+  assert.ok(!dialogFixture().some(n=>n.type==='input'&&n.props.name==='truckArrivalTime'));
+  const tree=dialogFixture({manual:true});
   for (const name of ['truckArrivalTime','truckDepartureTime']) {
     const input=tree.find(n=>n.type==='input'&&n.props.name===name);
     assert.equal(input.props.type,'time'); assert.equal(input.props.required,true); assert.equal(input.props.value,''); assert.equal(input.props.disabled,false);

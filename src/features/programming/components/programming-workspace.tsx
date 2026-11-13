@@ -13,8 +13,8 @@ import type { ProjectSummary } from "@/features/projects/types";
 import { loadProgrammingRange } from "../actions";
 import { isActiveProgramming, isHistoricalProgramming } from "../availability";
 import { formatProgrammingStatus } from "../formatters";
+import { getProgrammingDisplayStatus, getProgrammingRequestFilters, getProgrammingVisibleStatuses } from "../status-presentation";
 import {
-  PROGRAMMING_VISIBLE_STATUSES,
   type ProgrammingEffectiveStatus,
   type ProgrammingFilters,
   type ProgrammingItem,
@@ -76,14 +76,18 @@ export function ProgrammingWorkspace({
   canConfirm,
   canModify,
   canCancel,
+  canStartDispatch = false,
   initialData,
+  residentView = false,
 }: {
   project: ProjectSummary;
   canCreate: boolean;
   canConfirm: boolean;
   canModify: boolean;
   canCancel: boolean;
+  canStartDispatch?: boolean;
   initialData: ProgrammingPageData;
+  residentView?: boolean;
 }) {
   const [view, setView] = useState<ViewMode>("calendar");
   const [scope, setScope] = useState<ProgrammingScope>("active");
@@ -109,7 +113,7 @@ export function ProgrammingWorkspace({
     (nextRange: ProgrammingRange, filters = filtersRef.current) => {
       const currentRequest = ++requestId.current;
       startTransition(async () => {
-        const result = await loadProgrammingRange(project.id, nextRange, filters);
+        const result = await loadProgrammingRange(project.id, nextRange, getProgrammingRequestFilters(filters, residentView));
         if (currentRequest !== requestId.current) return;
         if (result.status === "error") {
           setError(result.message);
@@ -119,7 +123,7 @@ export function ProgrammingWorkspace({
         setItems(result.items);
       });
     },
-    [project.id],
+    [project.id, residentView],
   );
 
   const handleRangeChange = useCallback(
@@ -174,12 +178,14 @@ export function ProgrammingWorkspace({
   );
   const scopedItems = useMemo(() => {
     return items.filter((item) => {
+      const displayStatus = getProgrammingDisplayStatus(item.effectiveStatus, residentView);
+      if (status && displayStatus !== getProgrammingDisplayStatus(status, residentView)) return false;
       const programming = { effectiveStatus: item.effectiveStatus };
       return scope === "active"
         ? isActiveProgramming(programming)
-        : isHistoricalProgramming(programming);
+        : residentView ? displayStatus === "DISPATCH_COMPLETED" : isHistoricalProgramming(programming);
     });
-  }, [items, scope]);
+  }, [items, residentView, scope, status]);
   const creationActions = canCreate && scope === "active" && (
     <div className="grid w-full gap-2 sm:flex sm:w-auto sm:items-center">
       <button
@@ -195,7 +201,7 @@ export function ProgrammingWorkspace({
   );
 
   return (
-    <MotionPage className="mx-auto max-w-[1600px]">
+    <MotionPage className="mx-auto w-full min-w-0 max-w-[1600px]">
       <MotionSection className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">
@@ -291,14 +297,14 @@ export function ProgrammingWorkspace({
             <label htmlFor="programming-filter-status" className="sr-only">Estado</label>
             <select
               id="programming-filter-status"
-              value={status}
+              value={status ? getProgrammingDisplayStatus(status, residentView) : ""}
               onChange={(event) => setStatus(event.target.value as ProgrammingEffectiveStatus | "")}
               className="form-input"
             >
               <option value="">Todos los estados</option>
-              {PROGRAMMING_VISIBLE_STATUSES.map((value) => (
+              {getProgrammingVisibleStatuses(residentView).map((value) => (
                 <option key={value} value={value}>
-                  {formatProgrammingStatus(value)}
+                  {formatProgrammingStatus(value, residentView)}
                 </option>
               ))}
             </select>
@@ -353,8 +359,10 @@ export function ProgrammingWorkspace({
                 </div>
               )}
             </div>
-            <ProgrammingStatusLegend />
+            <ProgrammingStatusLegend residentView={residentView} />
             <ProgrammingCalendar
+              key={residentView ? "resident" : "full"}
+              residentView={residentView}
               items={scopedItems}
               timezone={project.timezone}
               onRangeChange={handleRangeChange}
@@ -388,6 +396,10 @@ export function ProgrammingWorkspace({
               )}
             </div>
             <ProgrammingKanban
+              residentView={residentView}
+              canStart={residentView && scope === "active" && canStartDispatch}
+              canCancel={residentView && scope === "active" && canCancel}
+              onUpdated={() => reload(rangeRef.current)}
               items={scopedItems}
               timezone={project.timezone}
               onSelect={handleSelectItem}
@@ -398,6 +410,7 @@ export function ProgrammingWorkspace({
       </MotionSection>
 
       <ProgrammingPreviewDrawer
+        residentView={residentView}
         key={selected?.id ?? "none"}
         item={selected}
         timezone={project.timezone}

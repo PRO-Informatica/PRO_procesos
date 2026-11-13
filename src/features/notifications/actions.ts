@@ -3,8 +3,9 @@ import { revalidatePath } from "next/cache";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { getProjectContext } from "@/features/projects/queries";
 import { createClient } from "@/lib/supabase/server";
+import { canAccessOperationalSection } from "@/features/projects/access-policy";
 
-async function authorize(projectId: string) { const profile = await requireActiveProfile(); const context = await getProjectContext(profile.id); return { profile, allowed: context.status === "ready" && context.projects.some((p) => p.id === projectId) }; }
+async function authorize(projectId: string) { const profile = await requireActiveProfile(); const context = await getProjectContext(profile.id); return { profile, allowed: context.status === "ready" && canAccessOperationalSection(context.roleCodes, "/notifications") && context.projects.some((p) => p.id === projectId) }; }
 function refreshNotifications() { revalidatePath("/notifications"); revalidatePath("/(dashboard)", "layout"); }
 export async function markNotificationRead(formData: FormData) { const projectId = String(formData.get("projectId") ?? ""); const key = String(formData.get("key") ?? "").trim().slice(0, 240); const { profile, allowed } = await authorize(projectId); if (!allowed || !key || key === "__ALL__") return; await (await createClient()).from("notification_reads").upsert({ project_id: projectId, user_id: profile.id, notification_key: key, read_at: new Date().toISOString() }); refreshNotifications(); }
 export async function markAllNotificationsRead(formData: FormData) { const projectId = String(formData.get("projectId") ?? ""); const { profile, allowed } = await authorize(projectId); if (!allowed) return; await (await createClient()).from("notification_reads").upsert({ project_id: projectId, user_id: profile.id, notification_key: "__ALL__", read_at: new Date().toISOString() }); refreshNotifications(); }
