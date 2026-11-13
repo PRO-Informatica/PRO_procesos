@@ -11,6 +11,7 @@ import {
   PLATFORM_ADMIN_VIEW_ROLE_CODES,
   selectPlatformAdminViewRoles,
   selectOperationalViewPermissions,
+  restrictSupervisorAccess,
 } from "./access-policy";
 import type {
   ProjectContextState,
@@ -351,11 +352,11 @@ async function resolveRolesAndPermissionsForAccess(
     ...new Set(permissionsResult.data.map((permission) => permission.code as string)),
   ];
 
-  return mergePlatformAdminProjectAccess(platformAdminAccess, {
+  return restrictSupervisorAccess(mergePlatformAdminProjectAccess(platformAdminAccess, {
     roleCodes,
     permissions,
     isCompanyAdmin: roleCodes.includes("COMPANY_ADMIN"),
-  });
+  }));
 }
 
 export async function resolveRolesAndPermissions(

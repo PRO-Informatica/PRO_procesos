@@ -7,6 +7,7 @@ import { isPlatformAdmin } from "@/features/platform/queries";
 import { ProjectProvider } from "@/features/projects/project-context";
 import { getProjectContext } from "@/features/projects/queries";
 import { getUnreadNotificationCount } from "@/features/notifications/queries";
+import { canAccessOperationalSection } from "@/features/projects/access-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export default async function DashboardLayout({
     getProjectContext(profile.id),
   ]);
   const hasOperationalAccess = projectContext.status === "ready";
-  const unreadNotifications = projectContext.status === "ready" && projectContext.activeProject
+  const unreadNotifications = projectContext.status === "ready" && projectContext.activeProject && canAccessOperationalSection(projectContext.roleCodes, "/notifications")
     ? await getUnreadNotificationCount({ projectId: projectContext.activeProject.id, projectName: projectContext.activeProject.name, timezone: projectContext.activeProject.timezone, userId: profile.id, permissions: projectContext.permissions })
     : 0;
 

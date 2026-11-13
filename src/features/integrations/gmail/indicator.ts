@@ -3,6 +3,7 @@ import type { GmailConnectionPublicStatus } from "./types.ts";
 export type GmailIndicatorState =
   | { kind: "loading" }
   | { kind: "error" }
+  | { kind: "denied" }
   | { kind: "ready"; connection: GmailConnectionPublicStatus };
 
 export function getGmailIndicatorPresentation(state: GmailIndicatorState) {
@@ -11,6 +12,9 @@ export function getGmailIndicatorPresentation(state: GmailIndicatorState) {
   }
   if (state.kind === "error") {
     return { label: "Estado no disponible", tone: "error" } as const;
+  }
+  if (state.kind === "denied") {
+    return { label: "Sin acceso", tone: "denied" } as const;
   }
   if (state.connection.status === "CONNECTED") {
     return { label: "Conectado", tone: "connected" } as const;

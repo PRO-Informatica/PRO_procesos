@@ -347,7 +347,8 @@ test("sidebar, página, status y APIs comparten el bypass global sin romper aisl
   assert.match(sidebar, /platformContext\.isPlatformAdmin/u);
   assert.match(topbar, /canViewGmail \? <GmailConnectionIndicator/u);
   assert.match(page, /isPlatformAdmin\(profile\.id\)/u);
-  assert.match(page, /if \(!canView\) redirect\("\/"\)/u);
+  assert.match(page, /if \(!canView \|\| !\(await getAuthorizedGmailRequestUser\(\)\)\) return <GmailAccessDenied \/>/u);
+  assert.doesNotMatch(page, /\/auth\/signout/u);
   assert.doesNotMatch(page, /useEffect|router\.replace/u);
   assert.match(status, /hasGmailModuleAccessForUser/u);
   assert.match(serverAccess, /permission: GmailModulePermission/u);

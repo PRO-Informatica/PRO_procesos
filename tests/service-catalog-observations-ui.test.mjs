@@ -72,6 +72,8 @@ test("seleccionar servicio deja descripción, UM, ID y precio en la guía, sin o
   let tree;
   const render = () => { h.reset(); tree = DispatchGuideDialog({ projectId: "project", programmingId: "programming", dispatchId: "dispatch", expectedVersion: 1, programmedUnitCode: "M3", units: [{ code: "M3" }], onClose() {} }); };
   render();
+  nodes(tree).find(node => node.type === "Button" && node.props.children === "Carga manual").props.onClick();
+  render();
   nodes(tree).find(node => node.type === "Combobox").props.onSelect(otherService);
   render();
   assert.equal(nodes(tree).find(node => node.props?.name === "lineProductDescription").props.value, service.description);

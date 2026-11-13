@@ -44,6 +44,10 @@ export function GmailConnectionIndicator() {
           headers: { Accept: "application/json" },
           signal: controller.signal,
         });
+        if (response.status === 401 || response.status === 403) {
+          if (active) setState({ kind: "denied" });
+          return;
+        }
         if (!response.ok) throw new Error("GMAIL_STATUS_UNAVAILABLE");
         const connection: unknown = await response.json();
         if (!isPublicStatus(connection)) {
@@ -75,6 +79,8 @@ export function GmailConnectionIndicator() {
 
   const presentation = getGmailIndicatorPresentation(state);
   const label = <span className="hidden truncate md:inline">{presentation.label}</span>;
+
+  if (state.kind === "denied") return null;
 
   if (state.kind === "loading") {
     return (

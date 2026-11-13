@@ -1,11 +1,16 @@
 import type { ProgrammingEffectiveStatus } from "./types";
 import { formatStatusLabel } from "@/lib/status-labels";
+import { getProgrammingDisplayStatus } from "./status-presentation";
 
-export function formatProgrammingStatus(status: ProgrammingEffectiveStatus) {
+export function formatProgrammingStatus(status: ProgrammingEffectiveStatus, residentView = false) {
+  if (residentView && getProgrammingDisplayStatus(status, true) === "DISPATCH_COMPLETED") return "Despacho completo";
   return formatStatusLabel(status);
 }
 
-export function programmingStatusTone(status: ProgrammingEffectiveStatus) {
+export function programmingStatusTone(status: ProgrammingEffectiveStatus, residentView = false) {
+  if (residentView && getProgrammingDisplayStatus(status, true) === "DISPATCH_COMPLETED") {
+    return "programming-status-tone programming-tone-resident-dispatch-completed";
+  }
   const tones: Record<ProgrammingEffectiveStatus, string> = {
     DRAFT: "bg-muted text-foreground-muted",
     PENDING_CONFIRMATION: "bg-amber-100 text-amber-800 dark:bg-amber-950/55 dark:text-amber-300",

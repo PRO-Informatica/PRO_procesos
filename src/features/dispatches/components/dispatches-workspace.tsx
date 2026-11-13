@@ -1,8 +1,9 @@
 "use client";
 
-import { programmingStatusTone } from "@/features/programming/formatters";
+import { formatProgrammingStatus, programmingStatusTone } from "@/features/programming/formatters";
+import { getProgrammingDisplayStatus } from "@/features/programming/status-presentation";
 
-import { CalendarDays, ChevronRight, Plus, Search, Truck, X } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, Search, Truck, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -10,12 +11,13 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { MotionPage } from "@/components/motion/motion-page";
 import { MotionSection } from "@/components/motion/motion-section";
 import type { ProjectSummary } from "@/features/projects/types";
-import { formatStatusLabel } from "@/lib/status-labels";
 
 import {
   formatDispatchDateTime,
   formatDispatchMoney,
   formatDispatchQuantity,
+  formatDispatchSchedule,
+  formatDispatchStatus,
 } from "../formatters";
 import type {
   DispatchEstimate,
@@ -29,6 +31,7 @@ import { StartDispatchDialog } from "./register-dispatch-dialog";
 
 type DateMode = "day" | "week" | "month";
 type DispatchFilter = "" | "NOT_STARTED" | "IN_EXECUTION" | "COMPLETED";
+const PAGE_SIZE = 10;
 
 function localDate(value: string, timezone: string) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -62,15 +65,15 @@ function EstimateValue({ estimate }: { estimate: DispatchEstimate }) {
   if (!estimate.complete) {
     return <span className="text-xs font-semibold text-warning">Estimación incompleta</span>;
   }
-  return <span className="whitespace-nowrap font-semibold">{formatDispatchMoney(estimate.amount, estimate.currency)}</span>;
+  return <span className="break-words font-semibold tabular-nums">{formatDispatchMoney(estimate.amount, estimate.currency)}</span>;
 }
 
 function DispatchSchedule({ value, timezone }: { value: string; timezone: string }) {
-  const date = new Date(value);
+  const schedule = formatDispatchSchedule(value, timezone);
   return (
     <time dateTime={value} className="block">
-      <span className="block whitespace-nowrap">{new Intl.DateTimeFormat("es-GT", { day: "numeric", month: "numeric", year: "numeric", timeZone: timezone }).format(date)}</span>
-      <span className="mt-0.5 block">{new Intl.DateTimeFormat("es-GT", { timeStyle: "short", timeZone: timezone }).format(date)}</span>
+      <span className="block whitespace-nowrap">{schedule.date}</span>
+      <span className="mt-0.5 block">{schedule.time}</span>
     </time>
   );
 }
@@ -90,16 +93,16 @@ function DispatchActions({
 }) {
   if (!item.dispatchId) {
     return (
-      <div className="grid w-full gap-2 sm:flex sm:flex-wrap sm:justify-end">
-        <Link href={`/programming/${item.programmingId}`} className="secondary-button w-full gap-1.5 px-3 text-xs sm:w-auto">Ver programación <ChevronRight className="size-3.5" /></Link>
-        {canCreate && <button type="button" onClick={onStart} className="primary-button w-full gap-1.5 px-3 text-xs sm:w-auto"><Plus className="size-4" /> Iniciar despacho</button>}
+      <div className="dispatches-actions grid w-full grid-cols-1 gap-2">
+        <Link href={`/programming/${item.programmingId}`} className="secondary-button w-full gap-1.5 px-3 text-xs">Ver programación <ChevronRight className="size-3.5" /></Link>
+        {canCreate && ["CONFIRMED", "IN_EXECUTION"].includes(item.programmingStatus) && <button type="button" onClick={onStart} className="primary-button w-full gap-1.5 px-3 text-xs"><Plus className="size-4" /> Iniciar despacho</button>}
       </div>
     );
   }
   return (
-    <div className="grid w-full gap-2 sm:flex sm:flex-wrap sm:justify-end">
-      <Link href={`/dispatches/${item.dispatchId}`} className="secondary-button w-full gap-1.5 px-3 text-xs sm:w-auto">Ver despacho <ChevronRight className="size-3.5" /></Link>
-      {item.dispatchStatus === "IN_EXECUTION" && canModify && <button type="button" onClick={onAddGuide} className="primary-button w-full gap-1.5 px-3 text-xs sm:w-auto"><Plus className="size-4" /> Agregar guía</button>}
+    <div className="dispatches-actions grid w-full grid-cols-1 gap-2">
+      <Link href={`/dispatches/${item.dispatchId}`} className="secondary-button w-full gap-1.5 px-3 text-xs">Ver despacho <ChevronRight className="size-3.5" /></Link>
+      {item.dispatchStatus === "IN_EXECUTION" && canModify && <button type="button" onClick={onAddGuide} className="primary-button w-full gap-1.5 px-3 text-xs"><Plus className="size-4" /> Agregar guía</button>}
     </div>
   );
 }
@@ -110,18 +113,21 @@ export function DispatchesWorkspace({
   canModify,
   data,
   receiverName,
+  residentView = false,
 }: {
   project: ProjectSummary;
   canCreate: boolean;
   canModify: boolean;
   data: DispatchPageData;
   receiverName: string;
+  residentView?: boolean;
 }) {
   const [programmingStatus, setProgrammingStatus] = useState<ProgrammingDispatchStatus | "">("");
   const [dispatchStatus, setDispatchStatus] = useState<DispatchFilter>("");
   const [dateMode, setDateMode] = useState<DateMode>("day");
   const [date, setDate] = useState("");
   const [code, setCode] = useState("");
+  const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [startItem, setStartItem] = useState<ProgrammingDispatchItem | null>(null);
   const [guideItem, setGuideItem] = useState<ProgrammingDispatchItem | null>(null);
@@ -131,12 +137,20 @@ export function DispatchesWorkspace({
     const statusMatches = dispatchStatus === ""
       || (dispatchStatus === "NOT_STARTED" ? !item.dispatchId : item.dispatchStatus === dispatchStatus);
     return (
-      (!programmingStatus || item.programmingStatus === programmingStatus)
+      (!programmingStatus || getProgrammingDisplayStatus(item.programmingStatus, residentView) === getProgrammingDisplayStatus(programmingStatus, residentView))
       && statusMatches
       && (!code || item.programmingCode.toLowerCase().includes(code.trim().toLowerCase()))
       && matchesPeriod(itemDate, date, dateMode)
     );
-  }), [code, data.items, date, dateMode, dispatchStatus, programmingStatus, project.timezone]);
+  }), [code, data.items, date, dateMode, dispatchStatus, programmingStatus, project.timezone, residentView]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const firstItem = (currentPage - 1) * PAGE_SIZE;
+  const visibleItems = filtered.slice(firstItem, firstItem + PAGE_SIZE);
+  const changePage = (nextPage: number) => {
+    setPage(Math.max(1, Math.min(nextPage, pageCount)));
+    setSelectedId(null);
+  };
   const selected = data.items.find((item) => item.programmingId === selectedId) ?? null;
   const hasFilters = Boolean(programmingStatus || dispatchStatus || date || code);
   const clearFilters = () => {
@@ -144,6 +158,7 @@ export function DispatchesWorkspace({
     setDispatchStatus("");
     setDate("");
     setCode("");
+    setPage(1);
   };
 
   return (
@@ -157,11 +172,11 @@ export function DispatchesWorkspace({
       <MotionSection className="dispatches-filters rounded-xl border border-border bg-surface p-4 shadow-[0_1px_2px_rgba(16,24,40,0.02)]">
         <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">Filtros</p>{hasFilters && <button type="button" onClick={clearFilters} className="secondary-button min-h-9 gap-1.5 px-3 text-xs"><X className="size-3.5" /> Limpiar</button>}</div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_0.8fr_1fr_1.2fr]">
-          <select aria-label="Estado programación" value={programmingStatus} onChange={(event) => setProgrammingStatus(event.target.value as ProgrammingDispatchStatus | "")} className="form-input"><option value="">Estado programación</option><option value="CONFIRMED">Confirmada</option><option value="IN_EXECUTION">En ejecución</option><option value="DISPATCH_COMPLETED">Pendiente de conciliación</option></select>
-          <select aria-label="Estado despacho" value={dispatchStatus} onChange={(event) => setDispatchStatus(event.target.value as DispatchFilter)} className="form-input"><option value="">Estado despacho</option><option value="NOT_STARTED">Sin iniciar</option><option value="IN_EXECUTION">En ejecución</option><option value="COMPLETED">Operación finalizada</option></select>
-          <select aria-label="Periodo de fecha" value={dateMode} onChange={(event) => setDateMode(event.target.value as DateMode)} className="form-input"><option value="day">Día</option><option value="week">Semana</option><option value="month">Mes</option></select>
-          <div className="relative"><CalendarDays className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" /><input aria-label="Fecha" type="date" value={date} onChange={(event) => setDate(event.target.value)} className="form-input pl-10" /></div>
-          <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" /><input aria-label="Código programación" value={code} onChange={(event) => setCode(event.target.value)} placeholder="Código programación" className="form-input pl-10" /></div>
+          <select aria-label="Estado programación" value={programmingStatus} onChange={(event) => { setProgrammingStatus(event.target.value as ProgrammingDispatchStatus | ""); setPage(1); }} className="form-input"><option value="">Estado programación</option><option value="CONFIRMED">Confirmada</option><option value="IN_EXECUTION">En ejecución</option><option value="DISPATCH_COMPLETED">{formatProgrammingStatus("DISPATCH_COMPLETED", residentView)}</option>{!residentView && <option value="COMPLETED">{formatProgrammingStatus("COMPLETED")}</option>}</select>
+          <select aria-label="Estado despacho" value={dispatchStatus} onChange={(event) => { setDispatchStatus(event.target.value as DispatchFilter); setPage(1); }} className="form-input"><option value="">Estado despacho</option><option value="NOT_STARTED">Sin iniciar</option><option value="IN_EXECUTION">En ejecución</option><option value="COMPLETED">{residentView ? "Despacho completo" : "Operación finalizada"}</option></select>
+          <select aria-label="Periodo de fecha" value={dateMode} onChange={(event) => { setDateMode(event.target.value as DateMode); setPage(1); }} className="form-input"><option value="day">Día</option><option value="week">Semana</option><option value="month">Mes</option></select>
+          <div className="relative"><CalendarDays className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" /><input aria-label="Fecha" type="date" value={date} onChange={(event) => { setDate(event.target.value); setPage(1); }} className="form-input pl-10" /></div>
+          <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" /><input aria-label="Código programación" value={code} onChange={(event) => { setCode(event.target.value); setPage(1); }} placeholder="Código programación" className="form-input pl-10" /></div>
         </div>
       </MotionSection>
 
@@ -170,10 +185,7 @@ export function DispatchesWorkspace({
         {!filtered.length ? <div className="p-6"><EmptyState icon={Truck} title="No hay programaciones disponibles" description={hasFilters ? "Ajusta los filtros para ver otros resultados." : "Las programaciones confirmadas aparecerán aquí."} /></div> : (
           <>
             <div className="dispatches-table-layout">
-              <table className="dispatches-table w-full table-fixed text-left text-xs">
-                <colgroup>
-                  {[11, 11, 10, 6, 8, 10, 9, 9, 10, 16].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
-                </colgroup>
+              <table className="dispatches-table w-full table-auto text-center text-xs">
                 <thead className="bg-muted/60 text-[10px] uppercase tracking-[0.08em] text-foreground-muted">
                   <tr>
                     <th className="px-5 py-3">Código programación</th>
@@ -185,18 +197,18 @@ export function DispatchesWorkspace({
                     <th className="px-5 py-3">Estimado productos</th>
                     <th className="px-5 py-3">Estimado servicios</th>
                     <th className="px-5 py-3">Estado despacho</th>
-                    <th className="px-5 py-3 text-right">Acciones</th>
+                    <th className="px-5 py-3">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filtered.map((item) => (
+                  {visibleItems.map((item) => (
                     <tr
                       key={item.programmingId}
                       onClick={() => setSelectedId(item.programmingId)}
                       className={`cursor-pointer hover:bg-muted/35 ${selectedId === item.programmingId ? "bg-brand-soft/35" : ""}`}
                     >
                       <td className="dispatches-code px-5 py-4 font-mono text-xs font-semibold text-brand-strong">{item.programmingCode}</td>
-                      <td className="px-5 py-4"><span className={`dispatches-programming-status inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.programmingStatus)}`}>{formatStatusLabel(item.programmingStatus)}</span></td>
+                      <td className="px-5 py-4"><span className={`dispatches-programming-status inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.programmingStatus, residentView)}`}>{formatProgrammingStatus(item.programmingStatus, residentView)}</span></td>
                       <td className="px-5 py-4 font-medium">{item.supplierName}</td>
                       <td className="px-5 py-4 font-medium">{item.orderNumber ?? "—"}</td>
                       <td className="max-w-64 px-5 py-4 text-foreground-muted">
@@ -207,7 +219,7 @@ export function DispatchesWorkspace({
                       <td className="px-5 py-4 text-foreground-muted"><DispatchSchedule value={item.scheduledAt} timezone={project.timezone || "America/Guatemala"} /></td>
                       <td className="px-5 py-4"><EstimateValue estimate={item.productEstimate} /></td>
                       <td className="px-5 py-4"><EstimateValue estimate={item.serviceEstimate} /></td>
-                      <td className="dispatches-dispatch-status px-5 py-4">{item.dispatchStatus ? <DispatchStatusBadge status={item.dispatchStatus} billingComplete={item.dispatchBillingComplete} /> : <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted">Sin iniciar</span>}</td>
+                      <td className="dispatches-dispatch-status px-5 py-4">{item.dispatchStatus ? <DispatchStatusBadge status={item.dispatchStatus} billingComplete={item.dispatchBillingComplete} residentView={residentView} /> : <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted">Sin iniciar</span>}</td>
                       <td className="px-5 py-4" onClick={(event) => event.stopPropagation()}><DispatchActions item={item} canCreate={canCreate} canModify={canModify} onStart={() => setStartItem(item)} onAddGuide={() => setGuideItem(item)} /></td>
                     </tr>
                   ))}
@@ -215,7 +227,7 @@ export function DispatchesWorkspace({
               </table>
             </div>
             <div className="dispatches-card-layout divide-y divide-border">
-              {filtered.map((item) => (
+              {visibleItems.map((item) => (
                 <article
                   key={item.programmingId}
                   className={`p-4 transition-colors ${selectedId === item.programmingId ? "bg-brand-soft/25" : ""}`}
@@ -226,14 +238,14 @@ export function DispatchesWorkspace({
                       <p className="font-mono text-xs font-semibold text-brand-strong">{item.programmingCode}</p>
                       <p className="mt-1 break-words font-semibold">{item.supplierName}</p>
                     </div>
-                    {item.dispatchStatus ? <DispatchStatusBadge status={item.dispatchStatus} billingComplete={item.dispatchBillingComplete} /> : <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold">Sin iniciar</span>}
+                    {item.dispatchStatus ? <DispatchStatusBadge status={item.dispatchStatus} billingComplete={item.dispatchBillingComplete} residentView={residentView} /> : <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold">Sin iniciar</span>}
                   </div>
                   <dl className="mt-3 grid grid-cols-2 gap-3 rounded-lg bg-muted/35 p-3 text-xs">
                     <div className="col-span-2 min-[420px]:col-span-1"><dt className="font-medium text-foreground-muted">Fecha programada</dt><dd className="mt-1 font-semibold text-foreground">{formatDispatchDateTime(item.scheduledAt, project.timezone)}</dd></div>
                     <div><dt className="font-medium text-foreground-muted">No. de pedido</dt><dd className="mt-1 break-words font-semibold text-foreground">{item.orderNumber ?? "—"}</dd></div>
                     <div><dt className="font-medium text-foreground-muted">Tipo de concreto</dt><dd className="mt-1 break-words font-semibold text-foreground">{concreteTypeLabel(item.concreteTypes)}</dd></div>
-                    <div><dt className="font-medium text-foreground-muted">Programación</dt><dd className="mt-1 font-semibold text-foreground"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.programmingStatus)}`}>{formatStatusLabel(item.programmingStatus)}</span></dd></div>
-                    <div><dt className="font-medium text-foreground-muted">Despacho</dt><dd className="mt-1 font-semibold text-foreground">{item.dispatchStatus ? formatStatusLabel(item.dispatchStatus) : "Sin iniciar"}</dd></div>
+                    <div><dt className="font-medium text-foreground-muted">Programación</dt><dd className="mt-1 font-semibold text-foreground"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.programmingStatus, residentView)}`}>{formatProgrammingStatus(item.programmingStatus, residentView)}</span></dd></div>
+                    <div><dt className="font-medium text-foreground-muted">Despacho</dt><dd className="mt-1 font-semibold text-foreground">{item.dispatchStatus ? formatDispatchStatus(item.dispatchStatus, residentView) : "Sin iniciar"}</dd></div>
                     <div><dt className="font-medium text-foreground-muted">Estimado productos</dt><dd className="mt-1 text-foreground"><EstimateValue estimate={item.productEstimate} /></dd></div>
                     <div><dt className="font-medium text-foreground-muted">Estimado servicios</dt><dd className="mt-1 text-foreground"><EstimateValue estimate={item.serviceEstimate} /></dd></div>
                   </dl>
@@ -241,11 +253,23 @@ export function DispatchesWorkspace({
                 </article>
               ))}
             </div>
+            {filtered.length > PAGE_SIZE && (
+              <nav aria-label="Paginación de despachos" className="flex flex-col items-center justify-between gap-3 border-t border-border px-4 py-3 sm:flex-row sm:px-5">
+                <p className="text-center text-xs text-foreground-muted" aria-live="polite">
+                  Mostrando <strong className="font-semibold text-foreground">{firstItem + 1}–{Math.min(firstItem + PAGE_SIZE, filtered.length)}</strong> de {filtered.length} registros
+                </p>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-medium text-foreground-muted">Página {currentPage} de {pageCount}</span>
+                  <button type="button" aria-label="Ver página anterior" disabled={currentPage === 1} onClick={() => changePage(currentPage - 1)} className="grid size-10 place-items-center rounded-lg border border-border text-foreground-muted transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 disabled:pointer-events-none disabled:opacity-35"><ChevronLeft aria-hidden="true" className="size-4" /></button>
+                  <button type="button" aria-label="Ver página siguiente" disabled={currentPage === pageCount} onClick={() => changePage(currentPage + 1)} className="grid size-10 place-items-center rounded-lg border border-border text-foreground-muted transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 disabled:pointer-events-none disabled:opacity-35"><ChevronRight aria-hidden="true" className="size-4" /></button>
+                </div>
+              </nav>
+            )}
           </>
         )}
       </MotionSection>
 
-      {selected?.dispatchId && <MotionSection className="overflow-hidden rounded-xl border border-border bg-surface"><div className="flex flex-col gap-3 border-b border-border px-4 py-4 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between sm:px-6"><div><h2 className="break-words font-semibold">Despacho {selected.programmingCode}</h2><p className="mt-1 text-xs text-foreground-muted">Estado: {selected.dispatchStatus ? formatStatusLabel(selected.dispatchStatus) : "Sin iniciar"}</p></div><Link href={`/dispatches/${selected.dispatchId}`} className="inline-flex min-h-10 w-full items-center justify-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold text-brand-strong min-[420px]:w-auto min-[420px]:border-0 min-[420px]:p-0">Ver detalle <ChevronRight className="size-4" /></Link></div>{selected.guides.length ? <><div className="hidden overflow-x-auto sm:block"><table className="w-full min-w-[620px] text-left text-sm"><thead className="bg-muted/45 text-xs text-foreground-muted"><tr><th className="px-5 py-3">Guía</th><th className="px-5 py-3">Volumen</th><th className="px-5 py-3">Productos</th><th className="px-5 py-3">Servicios</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-border">{selected.guides.map((guide) => <tr key={guide.id}><td className="px-5 py-4 font-semibold">{guide.guideNumber}</td><td className="px-5 py-4">{formatDispatchQuantity(guide.quantity)} {guide.unitCode}</td><td className="px-5 py-4">{guide.productCount}</td><td className="px-5 py-4">{guide.serviceCount}</td><td className="px-5 py-4 text-right"><Link href={`/dispatches/${selected.dispatchId}#guides`} className="text-xs font-semibold text-brand-strong">Ver / Editar</Link></td></tr>)}</tbody></table></div><div className="divide-y divide-border sm:hidden">{selected.guides.map((guide) => <article key={guide.id} className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="break-all text-sm font-semibold">Guía {guide.guideNumber}</p><p className="mt-1 text-xs text-foreground-muted">{guide.productCount} producto(s) · {guide.serviceCount} servicio(s)</p></div><p className="shrink-0 text-sm font-semibold">{formatDispatchQuantity(guide.quantity)} {guide.unitCode}</p></div><Link href={`/dispatches/${selected.dispatchId}#guides`} className="secondary-button mt-3 w-full text-xs">Ver / Editar</Link></article>)}</div><div className="flex flex-col gap-3 border-t border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:gap-x-8"><div><p className="text-xs font-medium text-foreground-muted">Total según guías</p><p className="mt-1 font-semibold">{formatDispatchQuantity(selected.guideTotal)} {selected.unitCode}</p></div><div><p className="text-xs font-medium text-foreground-muted">Estimado productos</p><p className="mt-1"><EstimateValue estimate={selected.productEstimate} /></p></div><div><p className="text-xs font-medium text-foreground-muted">Estimado servicios</p><p className="mt-1"><EstimateValue estimate={selected.serviceEstimate} /></p></div>{selected.dispatchStatus === "COMPLETED" && <div className="rounded-lg bg-brand-soft/50 px-3 py-2"><p className="text-xs font-semibold text-brand-strong">Volumen Real</p><p className="mt-1 text-base font-bold text-brand-strong">{selected.realVolume === null ? "No registrado" : `${formatDispatchQuantity(selected.realVolume)} ${selected.realUnitCode ?? selected.unitCode}`}</p></div>}</div>{selected.dispatchStatus === "IN_EXECUTION" && canModify && <button type="button" onClick={() => setGuideItem(selected)} className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-semibold text-white sm:w-auto"><Plus className="size-4" /> Agregar guía</button>}</div></> : <div className="p-4 sm:p-5"><EmptyState title="Sin guías registradas" description="Este despacho aún no tiene entregas documentadas." action={selected.dispatchStatus === "IN_EXECUTION" && canModify ? <button type="button" onClick={() => setGuideItem(selected)} className="primary-button w-full sm:w-auto"><Plus className="size-4" /> Agregar guía</button> : undefined} /></div>}</MotionSection>}
+      {selected?.dispatchId && <MotionSection className="overflow-hidden rounded-xl border border-border bg-surface"><div className="flex flex-col gap-3 border-b border-border px-4 py-4 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between sm:px-6"><div><h2 className="break-words font-semibold">Despacho {selected.programmingCode}</h2><p className="mt-1 text-xs text-foreground-muted">Estado: {selected.dispatchStatus ? formatDispatchStatus(selected.dispatchStatus, residentView) : "Sin iniciar"}</p></div><Link href={`/dispatches/${selected.dispatchId}`} className="inline-flex min-h-10 w-full items-center justify-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold text-brand-strong min-[420px]:w-auto min-[420px]:border-0 min-[420px]:p-0">Ver detalle <ChevronRight className="size-4" /></Link></div>{selected.guides.length ? <><div className="hidden overflow-x-auto sm:block"><table className="w-full min-w-[620px] text-left text-sm"><thead className="bg-muted/45 text-xs text-foreground-muted"><tr><th className="px-5 py-3">Guía</th><th className="px-5 py-3">Volumen</th><th className="px-5 py-3">Productos</th><th className="px-5 py-3">Servicios</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-border">{selected.guides.map((guide) => <tr key={guide.id}><td className="px-5 py-4 font-semibold">{guide.guideNumber}</td><td className="px-5 py-4">{formatDispatchQuantity(guide.quantity)} {guide.unitCode}</td><td className="px-5 py-4">{guide.productCount}</td><td className="px-5 py-4">{guide.serviceCount}</td><td className="px-5 py-4 text-right"><Link href={`/dispatches/${selected.dispatchId}#guides`} className="text-xs font-semibold text-brand-strong">Ver / Editar</Link></td></tr>)}</tbody></table></div><div className="divide-y divide-border sm:hidden">{selected.guides.map((guide) => <article key={guide.id} className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="break-all text-sm font-semibold">Guía {guide.guideNumber}</p><p className="mt-1 text-xs text-foreground-muted">{guide.productCount} producto(s) · {guide.serviceCount} servicio(s)</p></div><p className="shrink-0 text-sm font-semibold">{formatDispatchQuantity(guide.quantity)} {guide.unitCode}</p></div><Link href={`/dispatches/${selected.dispatchId}#guides`} className="secondary-button mt-3 w-full text-xs">Ver / Editar</Link></article>)}</div><div className="flex flex-col gap-3 border-t border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:gap-x-8"><div><p className="text-xs font-medium text-foreground-muted">Total según guías</p><p className="mt-1 font-semibold">{formatDispatchQuantity(selected.guideTotal)} {selected.unitCode}</p></div><div><p className="text-xs font-medium text-foreground-muted">Estimado productos</p><p className="mt-1"><EstimateValue estimate={selected.productEstimate} /></p></div><div><p className="text-xs font-medium text-foreground-muted">Estimado servicios</p><p className="mt-1"><EstimateValue estimate={selected.serviceEstimate} /></p></div>{selected.dispatchStatus === "COMPLETED" && <div className="rounded-lg bg-brand-soft/50 px-3 py-2"><p className="text-xs font-semibold text-brand-strong">Volumen Real</p><p className="mt-1 text-base font-bold text-brand-strong">{selected.realVolume === null ? "No registrado" : `${formatDispatchQuantity(selected.realVolume)} ${selected.realUnitCode ?? selected.unitCode}`}</p></div>}</div>{selected.dispatchStatus === "IN_EXECUTION" && canModify && <button type="button" onClick={() => setGuideItem(selected)} className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-semibold text-white sm:w-auto"><Plus className="size-4" /> Agregar guía</button>}</div></> : <div className="p-4 sm:p-5"><EmptyState title="Sin guías registradas" description="Este despacho aún no tiene entregas documentadas." action={selected.dispatchStatus === "IN_EXECUTION" && canModify ? <button type="button" onClick={() => setGuideItem(selected)} className="primary-button w-full sm:w-auto"><Plus className="size-4" /> Agregar guía</button> : undefined} /></div>}</MotionSection>}
 
       {startItem && <StartDispatchDialog projectId={project.id} timezone={project.timezone || "America/Guatemala"} receiverName={receiverName} programming={startItem} onClose={() => setStartItem(null)} />}
       {guideItem?.dispatchId && guideItem.version && <DispatchGuideDialog timezone={project.timezone} projectId={project.id} programmingId={guideItem.programmingId} dispatchId={guideItem.dispatchId} expectedVersion={guideItem.version} programmedUnitCode={guideItem.unitCode} defaultProductDescription={guideItem.concreteTypes[0] ?? null} defaultCastingElement={guideItem.programmingCastingElement} defaultCatalogProduct={guideItem.defaultCatalogProduct} units={data.units} onClose={() => setGuideItem(null)} />}

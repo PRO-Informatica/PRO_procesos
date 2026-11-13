@@ -11,13 +11,14 @@ import { notifications } from "@/lib/notification-messages";
 import { mutateProgrammingAction } from "../actions";
 import { initialProgrammingMutationState, type ProgrammingItem } from "../types";
 
-export function ProgrammingCancelDialog({ item, onClose, onCancelled }: {
+export function ProgrammingCancelDialog({ item, onClose, onCancelled, mutationAction = mutateProgrammingAction }: {
   item: Pick<ProgrammingItem, "id" | "projectId" | "version" | "dispatches">;
   onClose: () => void;
   onCancelled: () => void;
+  mutationAction?: typeof mutateProgrammingAction;
 }) {
   const [reason, setReason] = useState("");
-  const [state, action, pending] = useActionState(mutateProgrammingAction, initialProgrammingMutationState);
+  const [state, action, pending] = useActionState(mutationAction, initialProgrammingMutationState);
   const handled = useRef(false);
   useActionNotification({ pending, status: state.status, success: notifications.programmingCancelled });
   useEffect(() => {

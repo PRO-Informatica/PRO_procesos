@@ -67,6 +67,7 @@ test("un despacho operativo finalizado conserva la advertencia hasta completar l
   const jsx = (type, props) => ({ type, props });
   const loaded = await load("src/features/dispatches/components/dispatch-badges.tsx", {
     "react/jsx-runtime": { jsx, jsxs: jsx }, "@/components/ui/badge": { StatusBadge: "StatusBadge" },
+    "@/features/programming/formatters": { programmingStatusTone: () => "" },
     "../formatters": { formatDispatchStatus: (value) => value === "COMPLETED" ? "Completado" : "En ejecución", formatDispatchResult: (value) => value },
   });
   assert.equal(loaded.DispatchStatusBadge({ status: "COMPLETED", billingComplete: false }).props.label, "Pendiente de conciliación");

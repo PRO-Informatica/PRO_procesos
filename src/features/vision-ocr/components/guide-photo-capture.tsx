@@ -238,7 +238,7 @@ export const GuidePhotoCapture = forwardRef<GuidePhotoCaptureHandle, {
       <p className="break-words text-sm font-semibold" role="status">Revisando: {guideSourceLabel(current)}</p>
       <p className="text-xs leading-5 text-foreground-muted">{sources.length} guía(s) en cola. Acepta la imagen, revisa sus datos y guarda para pasar a la siguiente.</p>
       <GuidePhotoQueue sources={sources} />
-      <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={working} onClick={() => void skip()}>Omitir esta {current.pageNumber ? "página" : "foto"}</Button><Button variant="ghost" disabled={working} onClick={() => void skip(true)}>Descartar cola y volver a formulario vacío</Button></div>
+      <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={working} onClick={() => void skip()}>Omitir esta {current.pageNumber ? "página" : "foto"}</Button><Button variant="ghost" disabled={working} onClick={() => void skip(true)}>Descartar cola</Button></div>
     </div>}
     {sourceUrl && !prepared && !read && !pageChoices.length && <>
       <p className="text-xs text-foreground-muted">Gira hasta que las letras queden derechas. Mueve las cuatro esquinas para incluir solo esta guía; puedes usar las flechas del teclado.</p>

@@ -4,7 +4,9 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { ProgrammingDetailView } from "@/features/programming/components/programming-detail-view";
 import { getProgrammingDetailPageData } from "@/features/programming/queries";
+import { usesResidentProgrammingView } from "@/features/programming/status-presentation";
 import { getProjectContext } from "@/features/projects/queries";
+import { isSupervisorOnly } from "@/features/projects/access-policy";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -52,14 +54,15 @@ export default async function ProgrammingDetailPage({
     <ProgrammingDetailView
       data={data}
       project={context.activeProject}
+      residentView={usesResidentProgrammingView(context.roleCodes)}
       receiverName={profile.fullName}
       permissions={{
         canModify: context.permissions.includes("programming.modify"),
         canConfirm: context.permissions.includes("programming.confirm"),
         canCancel: context.permissions.includes("programming.cancel"),
         canClose: context.permissions.includes("programming.close"),
-        canCreateDispatch: context.permissions.includes("dispatch.create"),
-        canModifyDispatch: context.permissions.includes("dispatch.modify"),
+        canCreateDispatch: !isSupervisorOnly(context.roleCodes) && context.permissions.includes("dispatch.create"),
+        canModifyDispatch: !isSupervisorOnly(context.roleCodes) && context.permissions.includes("dispatch.modify"),
       }}
     />
   );

@@ -5,6 +5,8 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 
+import { restrictSupervisorAccess } from "../src/features/projects/access-policy.ts";
+
 import { getDispatchStartLocalDateTime } from "../src/features/dispatches/registration.ts";
 
 const projectId = "78f495d6-d721-4b65-94f0-fdc94a03b8df";
@@ -174,16 +176,18 @@ test("las acciones siguen exigiendo permisos y rechazan identificadores fuera de
   }
 });
 
-test("Supervisor puede guardar el despacho, pero no finalizar por ninguna Server Action", async () => {
-  const permissions = ["dispatch.view", "dispatch.create", "dispatch.modify", "dispatch.register_incident"];
+test("Supervisor puede iniciar, pero no modificar, finalizar ni registrar incidencias manuales", async () => {
+  const { permissions } = restrictSupervisorAccess({ roleCodes: ["SUPERVISOR"], isCompanyAdmin: false,
+    permissions: ["dispatch.view", "dispatch.create", "dispatch.modify", "dispatch.register_incident"] });
   const supervisor = actions({ permissions });
-  assert.equal((await supervisor.exports.saveDispatchAction({}, form())).status, "success");
-  assert.equal(supervisor.calls[0].name, "update_dispatch");
-  for (const action of ["completeDispatchAction", "finalizeDispatchAction"]) {
+  assert.equal((await supervisor.exports.startDispatchAction({}, form())).status, "success");
+  assert.equal(supervisor.calls[0].name, "start_dispatch");
+  for (const action of ["saveDispatchAction", "completeDispatchAction", "finalizeDispatchAction", "registerIncidentAction"]) {
     const denied = actions({ permissions });
-    const result = await denied.exports[action]({}, form());
+    const result = await denied.exports[action]({}, form({ incidentTypeId: programmingId,
+      responsibility: "PROJECT", chargeApplicability: "NO", notes: "No autorizado" }));
     assert.equal(result.status, "error");
-    assert.match(result.message, /No tienes permiso para finalizar/u);
+    assert.match(result.message, /No tienes permiso/u);
     assert.equal(denied.calls.length, 0);
     assert.equal(denied.queries.length, 0);
   }

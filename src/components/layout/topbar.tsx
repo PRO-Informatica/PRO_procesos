@@ -5,10 +5,12 @@ import { Bell, ChevronDown, LogOut, Menu } from "lucide-react";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import Link from "next/link";
 import type { SessionProfile } from "@/features/auth/types";
+import { hasExactCorporateDomain } from "@/features/auth/security";
 import { canUseGmailModule } from "@/features/integrations/gmail/access-policy";
 import { GmailConnectionIndicator } from "@/features/integrations/gmail/components/gmail-connection-indicator";
 import { usePlatformContext } from "@/features/platform/platform-context";
 import { useProjectContext } from "@/features/projects/project-context";
+import { canAccessOperationalSection } from "@/features/projects/access-policy";
 
 function initials(name: string) {
   return name
@@ -30,7 +32,7 @@ export function Topbar({
 }) {
   const projectContext = useProjectContext();
   const platformContext = usePlatformContext();
-  const canViewGmail = canUseGmailModule({
+  const canViewGmail = hasExactCorporateDomain(profile.email) && canUseGmailModule({
     isPlatformAdmin: platformContext.isPlatformAdmin,
     projectStatus: projectContext.activeProject?.status,
     permissions: projectContext.permissions,
@@ -60,7 +62,7 @@ export function Topbar({
       <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
         {canViewGmail ? <GmailConnectionIndicator /> : null}
         <ThemeToggle />
-        <Link
+        {canAccessOperationalSection(projectContext.roleCodes, "/notifications") && <Link
           href="/notifications"
           className="relative grid size-11 place-items-center rounded-lg border border-border bg-surface text-foreground-muted transition-colors hover:bg-muted hover:text-foreground active:bg-muted"
           aria-label={`${unreadNotifications} notificaciones sin leer`}
@@ -68,7 +70,7 @@ export function Topbar({
         >
           <Bell aria-hidden="true" className="size-4" />
           {unreadNotifications > 0 && <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-brand px-1 text-[9px] font-bold leading-4 text-white">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
-        </Link>
+        </Link>}
 
         <details className="group relative ml-1">
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 transition-colors hover:bg-muted active:bg-muted sm:pr-2 [&::-webkit-details-marker]:hidden">

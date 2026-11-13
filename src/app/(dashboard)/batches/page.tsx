@@ -3,6 +3,7 @@ import { requireActiveProfile } from "@/features/auth/queries";
 import { BatchesWorkspace } from "@/features/batches/components/batches-workspace";
 import { getBatchPageData } from "@/features/batches/queries";
 import { getProjectContext } from "@/features/projects/queries";
+import { canAccessOperationalSection } from "@/features/projects/access-policy";
 
 export default async function BatchesPage() {
   const profile = await requireActiveProfile();
@@ -11,7 +12,7 @@ export default async function BatchesPage() {
   if (!context.activeProject) {
     return <div className="mx-auto max-w-3xl"><EmptyState title="No tienes un proyecto operacional" description="Selecciona un proyecto antes de consultar sus lotes semanales." /></div>;
   }
-  if (!context.permissions.includes("batch.view")) {
+  if (!canAccessOperationalSection(context.roleCodes, "/batches") || !context.permissions.includes("batch.view")) {
     return <div className="mx-auto max-w-3xl"><EmptyState title="Sin acceso a lotes" description="Tu rol actual no incluye batch.view para este proyecto." /></div>;
   }
   const data = await getBatchPageData(context.activeProject.id, context.activeProject.timezone);

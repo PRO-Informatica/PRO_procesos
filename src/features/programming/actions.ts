@@ -507,7 +507,9 @@ export async function createProgrammingAction(
     };
   }
 
-  await requireActiveProfile();
+  if (!(await authorizeProject(projectId, "programming.create"))) {
+    return { status: "error", message: "No tienes permiso para crear programaciones en este proyecto.", fields };
+  }
   const supabase = await createClient();
   const { data: project, error: projectError } = await supabase
     .from("projects")

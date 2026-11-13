@@ -1,5 +1,7 @@
 "use client";
 
+import { hasExactCorporateDomain } from "@/features/auth/security";
+
 import {
   Bell,
   BarChart3,
@@ -28,8 +30,10 @@ import { canUseGmailModule } from "@/features/integrations/gmail/access-policy";
 import { usePlatformContext } from "@/features/platform/platform-context";
 import { ProjectSelector } from "@/features/projects/components/project-selector";
 import { useProjectContext } from "@/features/projects/project-context";
+import { canAccessOperationalSection } from "@/features/projects/access-policy";
 
 type SidebarProps = {
+  profileEmail: string;
   collapsed: boolean;
   mobileOpen: boolean;
   onCollapse: () => void;
@@ -119,6 +123,7 @@ const navigation: Array<{ label: string; items: NavigationItem[] }> = [
 ];
 
 export function AppSidebar({
+  profileEmail,
   collapsed,
   mobileOpen,
   onCollapse,
@@ -131,6 +136,7 @@ export function AppSidebar({
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => {
+        if (item.href && !canAccessOperationalSection(projectContext.roleCodes, item.href)) return false;
         if (item.universalInvoicesOnly) return projectContext.hasUniversalInvoiceAccess;
         if (item.universalBatchesOnly) return projectContext.hasUniversalBatchAccess;
         if (item.universalReportsOnly) return projectContext.hasUniversalReportAccess;
@@ -138,16 +144,13 @@ export function AppSidebar({
           return true;
         }
         if (item.companyAdminOnly && projectContext.isCompanyAdmin) return true;
-        if (
-          item.permission === "gmail.mailbox.view" &&
-          canUseGmailModule({
+        if (item.permission === "gmail.mailbox.view") {
+          return hasExactCorporateDomain(profileEmail) && canUseGmailModule({
             isPlatformAdmin: platformContext.isPlatformAdmin,
             projectStatus: projectContext.activeProject?.status,
             permissions: projectContext.permissions,
             permission: "gmail.mailbox.view",
-          })
-        ) {
-          return true;
+          });
         }
         if (item.permission && projectContext.permissions.includes(item.permission)) return true;
         return item.anyPermission?.some((permission) =>

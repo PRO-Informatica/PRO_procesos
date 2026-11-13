@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { requireActiveProfile } from "@/features/auth/queries";
 import { getProjectContext } from "@/features/projects/queries";
+import { canAccessOperationalSection } from "@/features/projects/access-policy";
 import { reportArchiveItems, sanitizeArchiveSegment } from "@/features/reports/export-utils";
 import { archiveIdChunks, getReportEvidence, readArchiveRows } from "@/features/reports/archive-queries";
 import { createReportZip, ReportArchiveTooLargeError } from "@/features/reports/zip-archive";
@@ -260,7 +261,7 @@ export async function GET(request: NextRequest) {
     const context = universal ? null : await getProjectContext(profile.id);
     const projects = universal
       ? (await getUniversalReportScopes(profile.id)).map(({ project }) => project)
-      : context?.status === "ready" && context.activeProject && context.permissions.includes("dispatch.view")
+      : context?.status === "ready" && context.activeProject && canAccessOperationalSection(context.roleCodes, "/reports") && context.permissions.includes("dispatch.view")
         ? context.isCompanyAdmin
           ? context.projects.filter((project) => project.companyId === context.activeProject?.companyId)
           : [context.activeProject]

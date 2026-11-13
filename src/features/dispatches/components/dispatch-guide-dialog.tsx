@@ -144,6 +144,8 @@ export function DispatchGuideDialog({
   const [truckDepartureTime, setTruckDepartureTime] = useState(truckTime(guide?.truckDepartureAt, timezone));
   const appEnvironment = getPublicEnvironment().appEnvironment;
   const ocrEnabled = appEnvironment === "DEV" || appEnvironment === "PROD";
+  const canChooseEntryMethod = ocrEnabled && !guide && !readOnly;
+  const [entryMethod, setEntryMethod] = useState<"ocr" | "manual">(canChooseEntryMethod ? "ocr" : "manual");
   const [capture, setCapture] = useState<GuidePhotoResult | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoSelected, setPhotoSelected] = useState(false);
@@ -168,7 +170,12 @@ export function DispatchGuideDialog({
         }))
       : [initialLine(programmedUnitCode, defaultProductDescription ?? "", defaultCatalogProduct)],
   );
+  const servicesOnly = lines.length > 0 && lines.every((line) => line.catalogType === "SERVICE");
+  // Keep the user's selection if a product is added back, but do not save
+  // a hidden laboratory selection on a guide that contains only services.
+  const effectiveLaboratoryApplied = servicesOnly ? false : laboratoryApplied;
   const [confirmClose, setConfirmClose] = useState(false);
+  const showGuideForm = !canChooseEntryMethod || entryMethod === "manual" || Boolean(capture);
   const editSnapshot = JSON.stringify({ guideNumber, guideDate, truckArrivalTime, truckDepartureTime, castingElement, laboratoryApplied, details, lines });
   const [initialEditSnapshot] = useState(editSnapshot);
   const hasUnsavedChanges = Boolean(guide && !readOnly && editSnapshot !== initialEditSnapshot);
@@ -186,7 +193,7 @@ export function DispatchGuideDialog({
     let result: DispatchMutationState;
     if (capture && details && !guide && ocrEnabled) {
       const draft: GuideOcrDraft = { ...capture.draft, guideNumber, arrivalTime: truckArrivalTime, departureTime: truckDepartureTime,
-        resident: { castingElement, laboratoryApplied: laboratoryApplied === true }, details: { ...details, guideDate }, lines: lines.map((line) => ({ quantity: line.quantity, unit: line.unitCode, productCode: line.productCode,
+        resident: { castingElement, laboratoryApplied: effectiveLaboratoryApplied === true }, details: { ...details, guideDate }, lines: lines.map((line) => ({ quantity: line.quantity, unit: line.unitCode, productCode: line.productCode,
           description: line.productDescription, type: line.catalogType, catalogItemId: line.catalogItemId, candidates: [], warning: null })) };
       try {
         const response = await fetch(guideCaptureUrl(projectId, dispatchId), { method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -221,10 +228,17 @@ export function DispatchGuideDialog({
     router.refresh();
     if (guide) onClose();
     else if (!photoCaptureRef.current?.focusPending()) {
-      guideNumberRef.current?.focus();
-      guideNumberRef.current?.scrollIntoView({ block: "center" });
+      const nextField = guideNumberRef.current ?? document.getElementById("guide-photo-heading");
+      nextField?.focus();
+      nextField?.scrollIntoView({ block: "center" });
     }
   }, [guide, onClose, pending, router, state]);
+
+  useEffect(() => {
+    if (canChooseEntryMethod && entryMethod === "manual") {
+      guideNumberRef.current?.focus({ preventScroll: true });
+    }
+  }, [canChooseEntryMethod, entryMethod]);
 
   useEffect(() => {
     if (!capture) return;
@@ -289,7 +303,7 @@ export function DispatchGuideDialog({
 <p className="text-xs leading-5 text-foreground-muted">La fecha de la guía corresponde a la llegada del camión. Si la hora de salida es menor que la de llegada, se registra al día siguiente. Los horarios son independientes del inicio del despacho.</p>
           {truckArrivalTime && truckDepartureTime && truckDepartureTime < truckArrivalTime && <p role="status" className="rounded-lg bg-muted px-3 py-2 text-xs text-foreground">El camión sale al día siguiente de la fecha de la guía.</p>}
   </>;
-  const residentFields = <GuideResidentFields element={castingElement} laboratory={laboratoryApplied} disabled={locked} onElement={(value) => { setCastingElement(value); setOcrReviewed(false); }} onLaboratory={(value) => { setLaboratoryApplied(value); setOcrReviewed(false); }} />;
+  const residentFields = <GuideResidentFields element={castingElement} laboratory={effectiveLaboratoryApplied} showLaboratory={!servicesOnly} disabled={locked} onElement={(value) => { setCastingElement(value); setOcrReviewed(false); }} onLaboratory={(value) => { setLaboratoryApplied(value); setOcrReviewed(false); }} />;
   const catalogWarnings = capture ? guideCatalogReviewWarnings(lines) : [];
   const warnings = [...(capture?.draft.warnings.filter((warning) => !/^Línea \d+: confirma la UM/u.test(warning)) ?? []), ...catalogWarnings];
   const lineEditor = (
@@ -354,7 +368,7 @@ export function DispatchGuideDialog({
       </>}
       <form hidden={confirmClose} className="dispatch-guide-form" onSubmit={(event) => {
         event.preventDefault();
-        if (photoSelected && !capture) return;
+        if (!showGuideForm || (photoSelected && !capture)) return;
         // Retain every controlled field when the action returns a validation
         // error. Native form-action resets can clear the visible service unit.
         const data = new FormData(event.currentTarget);
@@ -368,22 +382,28 @@ export function DispatchGuideDialog({
         <input type="hidden" name="guideDetails" value={JSON.stringify({ ...details, guideDate })} />
         <div className="space-y-5 p-4 sm:p-6">
           {!guide && state.status === "success" && <p role="status" className="text-sm text-success">Guía guardada. Puedes ingresar la siguiente o cerrar esta ventana.</p>}
-          {ocrEnabled && !guide && !readOnly && <GuidePhotoCapture ref={photoCaptureRef} environment={appEnvironment} projectId={projectId} dispatchId={dispatchId} disabled={pending || Boolean(photoRetryGuide)} onRead={applyCapture} onReset={(usingPhoto) => {
+          {canChooseEntryMethod && entryMethod === "ocr" && <GuidePhotoCapture ref={photoCaptureRef} environment={appEnvironment} projectId={projectId} dispatchId={dispatchId} disabled={pending || Boolean(photoRetryGuide)} onRead={applyCapture} onReset={(usingPhoto) => {
             setPhotoSelected(usingPhoto); setCapture(null); setDetails(emptyGuideDetails()); setOcrReviewed(false); setCastingElement(normalizeCastingElement(defaultCastingElement) ?? ""); setLaboratoryApplied(false);
             if (!usingPhoto) { setGuideNumber(""); setTruckArrivalTime(""); setTruckDepartureTime(""); setLines([initialLine(programmedUnitCode, defaultProductDescription ?? "", defaultCatalogProduct)]); }
           }} onBusy={setPhotoBusy} />}
+          {canChooseEntryMethod && !capture && <div className="flex justify-center sm:justify-start">
+            <Button variant="secondary" disabled={pending || photoBusy || photoSelected || Boolean(photoRetryGuide)}
+              onClick={() => setEntryMethod(entryMethod === "ocr" ? "manual" : "ocr")}>
+              {entryMethod === "ocr" ? "Carga manual" : "Volver a carga OCR"}
+            </Button>
+          </div>}
           {ocrEnabled && guide && <SavedGuideOcrDetails projectId={projectId} dispatchId={dispatchId} guideId={guide.id} />}
           {capture && details && <>
             {warnings.length > 0 && <div id="guide-review-alerts" className="space-y-2 rounded-lg bg-amber-100 p-3 text-sm text-amber-950" role="status"><ul className="list-inside list-disc space-y-1">{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>{catalogWarnings.length > 0 && <p>Si guardas la guía con códigos fuera de la cotización, se registrará una incidencia en este despacho con el detalle de los productos o servicios.</p>}</div>}
           </>}
-          {(capture || !photoSelected) && <GuideOcrReview value={details} draft={capture?.draft} disabled={locked} onChange={(key, value) => {
+          {showGuideForm && <GuideOcrReview value={details} draft={capture?.draft} disabled={locked} onChange={(key, value) => {
             setDetails((current) => ({ ...current, [key]: value })); setOcrReviewed(false);
           }} number={numberField} date={dateField} arrival={arrivalField} departure={departureField} lines={lineEditor} timeHint={timeHint} />}
-          {(capture || !photoSelected) && residentFields}
+          {showGuideForm && residentFields}
           {state.status === "error" && <p role="alert" className="rounded-lg bg-destructive-soft px-4 py-3 text-sm text-destructive">{state.message}</p>}
           {capture && <label className="flex min-h-11 items-start gap-3 rounded-xl border border-border p-4 text-sm"><input type="checkbox" className="mt-0.5 size-4 shrink-0" checked={ocrReviewed} disabled={pending || photoBusy || Boolean(photoRetryGuide)} onChange={(event) => setOcrReviewed(event.target.checked)} />Revisé la foto y los datos extraídos, incluidos los horarios y todas las líneas. Confirmo los datos corregidos antes de guardar.</label>}
         </div>
-        <DialogFooter><Button variant="secondary" onClick={requestClose} disabled={pending || photoBusy}>{readOnly ? "Cerrar" : "Cancelar"}</Button>{!readOnly && (!photoSelected || capture) && <LoadingButton loading={pending} loadingLabel="Guardando…" disabled={photoBusy || (photoSelected && !capture) || lines.length === 0 || (!capture && lines.some((line) => !line.catalogItemId && !line.lineId)) || Boolean(capture && !ocrReviewed)}>{photoRetryGuide ? "Reintentar foto" : capture ? "Guardar y escanear otra" : "Guardar guía"}</LoadingButton>}</DialogFooter>
+        <DialogFooter><Button variant="secondary" onClick={requestClose} disabled={pending || photoBusy}>{readOnly ? "Cerrar" : "Cancelar"}</Button>{!readOnly && showGuideForm && (!photoSelected || capture) && <LoadingButton loading={pending} loadingLabel="Guardando…" disabled={photoBusy || (photoSelected && !capture) || lines.length === 0 || (!capture && lines.some((line) => !line.catalogItemId && !line.lineId)) || Boolean(capture && !ocrReviewed)}>{photoRetryGuide ? "Reintentar foto" : capture ? "Guardar y escanear otra" : "Guardar guía"}</LoadingButton>}</DialogFooter>
       </form>
     </Dialog>
   );

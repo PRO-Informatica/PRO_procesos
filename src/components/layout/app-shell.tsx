@@ -23,6 +23,7 @@ export function AppShell({
   return (
     <div className="min-h-screen overflow-x-clip bg-canvas">
       <AppSidebar
+        profileEmail={profile.email}
         collapsed={sidebarCollapsed}
         mobileOpen={mobileSidebarOpen}
         onCollapse={() => setSidebarCollapsed((value) => !value)}

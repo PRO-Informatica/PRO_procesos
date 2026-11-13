@@ -9,7 +9,7 @@ import * as imageModel from '../src/features/vision-ocr/vision-ocr.ts';
 const source=await readFile('src/features/vision-ocr/capture-server.ts','utf8');
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const id='00000000-0000-4000-8000-000000000001',actor='00000000-0000-4000-8000-000000000002',projectId='00000000-0000-4000-8000-000000000003',dispatchId='00000000-0000-4000-8000-000000000004';
-function fixture({copyFails=false,alreadyUploaded=false,environment='DEV',wrongProject=false,permission=true,deferredOperation=false,visionResult=null}={}){
+function fixture({copyFails=false,alreadyUploaded=false,environment='DEV',wrongProject=false,permission=true,permissions=null,deferredOperation=false,visionResult=null}={}){
  const bytes=new Uint8Array([255,216,255,4]),sha=crypto.createHash('sha256').update(bytes).digest('hex');
  const project={id:projectId,name:'Proyecto QA',code:'QA',address:'1 calle 3-45 zona 1 Guatemala',additionalAddresses:[]};
  const capture={id,project_id:projectId,dispatch_id:dispatchId,created_by:actor,status:'EXTRACTED',guide_id:null,original_path:'original',original_name:'qa.jpg',original_mime:'image/jpeg',original_size:bytes.length,original_sha256:sha,expires_at:'2099-01-01T00:00:00Z',evidence_attached_at:null};
@@ -35,7 +35,7 @@ function fixture({copyFails=false,alreadyUploaded=false,environment='DEV',wrongP
   })}},
  };
  const exports={};class VisionError extends Error{}
- const imports={'server-only':{},'node:crypto':crypto,'@/features/projects/queries':{getProjectContext:async()=>({status:'ready',activeProject:project,permissions:permission?['dispatch.modify','dispatch.view']:[]})},'@/lib/env':{SUPABASE_PROJECT_REFS:{DEV:'gholwtklihaphoevosyb',PROD:'jeyjblxfqqlypxiaznad'},getPublicEnvironment:()=>({appEnvironment:environment,projectRef:wrongProject?'other':environment==='PROD'?'jeyjblxfqqlypxiaznad':'gholwtklihaphoevosyb'})},'@/lib/supabase/admin':{createAdminClient:()=>{calls.adminCreated++;return admin}},'@/lib/supabase/server':{createClient:async()=>db},'@/lib/http/same-origin':{hasValidSameOrigin:()=>true},'./guide-draft':draftModel,'./service':{VisionOcrError:VisionError,extractDocumentText:async()=>{calls.extracts++;if(visionResult)return visionResult;if(deferredOperation)return{text:'PEDIDO / CONTROL OPERACIÓN',guideDraft:null};throw Error('Unexpected Google call')}},'./vision-ocr':imageModel};
+ const imports={'server-only':{},'node:crypto':crypto,'@/features/projects/queries':{getProjectContext:async()=>({status:'ready',activeProject:project,permissions:permissions??(permission?['dispatch.modify','dispatch.view']:[])})},'@/lib/env':{SUPABASE_PROJECT_REFS:{DEV:'gholwtklihaphoevosyb',PROD:'jeyjblxfqqlypxiaznad'},getPublicEnvironment:()=>({appEnvironment:environment,projectRef:wrongProject?'other':environment==='PROD'?'jeyjblxfqqlypxiaznad':'gholwtklihaphoevosyb'})},'@/lib/supabase/admin':{createAdminClient:()=>{calls.adminCreated++;return admin}},'@/lib/supabase/server':{createClient:async()=>db},'@/lib/http/same-origin':{hasValidSameOrigin:()=>true},'./guide-draft':draftModel,'./service':{VisionOcrError:VisionError,extractDocumentText:async()=>{calls.extracts++;if(visionResult)return visionResult;if(deferredOperation)return{text:'PEDIDO / CONTROL OPERACIÓN',guideDraft:null};throw Error('Unexpected Google call')}},'./vision-ocr':imageModel};
  runInNewContext(compiled,{exports,Blob,File,AbortSignal,Date,console,Uint8Array,require(name){assert.ok(name in imports,name);return imports[name]}});
  return{server:exports,capture,calls,context:{db,admin,actor,project,dispatch:{id:dispatchId,status:'IN_EXECUTION'},unit:'M3',bucket:environment==='PROD'?'vision-ocr-prod':'vision-ocr-dev'},draft:{resident:{castingElement:'PILES',laboratoryApplied:true},guideNumber:'QA-1',arrivalTime:'23:22',departureTime:'03:20',details:{...draftModel.emptyGuideDetails(),projectName:project.name,workAddress:project.address,guideDate:'2026-10-29',orderNumber:'999'},lines:[{quantity:'1',unit:'UN',type:'SERVICE',productCode:'UNKNOWN',description:'Sin catálogo',catalogItemId:'',unitPrice:999}]}};
 }
@@ -118,4 +118,11 @@ test('guarda selección del residente y UM vacía sin coerción; rechaza omitir 
  assert.equal(p.casting_element,'PILES');assert.equal(p.laboratory_applied,true);assert.equal(p.lines[0].unit_code,'');
  const missing=fixture();delete missing.draft.resident;
  await assert.rejects(missing.server.saveCapture(missing.context,id,missing.draft,1),/elemento a fundir/);assert.equal(missing.calls.commits,0);
+});
+
+test('Supervisor puede guardar OCR y su evidencia con permiso de guías, sin modificar el despacho',async()=>{
+ const f=fixture({permissions:['dispatch.manage_guides','dispatch.view']});
+ const context=await f.server.captureContext(new Request('http://localhost'),projectId,dispatchId);
+ const result=await f.server.saveCapture(context,id,f.draft,1);
+ assert.equal(result.guideId,'saved-guide');assert.equal(f.calls.commits,1);assert.equal(f.calls.finalizes,1);
 });
