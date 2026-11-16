@@ -1,5 +1,5 @@
 import { CASTING_ELEMENTS, normalizeCastingElement } from "../dispatches/casting-elements.ts";
-import { readReportParam, reportDateRange, type ReportParams } from "./filters.ts";
+import { readBillingStatus, readReportParam, reportDateRange, type ReportParams } from "./filters.ts";
 import type { DispatchReportSummary } from "./types";
 
 export type RadarFilters = {
@@ -12,6 +12,7 @@ export type RadarFilters = {
   truck?: string;
   concrete?: string;
   laboratory?: "yes" | "no";
+  billingStatus?: "reconciled" | "pending";
 };
 
 export type RadarLine = {
@@ -21,6 +22,9 @@ export type RadarLine = {
   reference: string;
   quantity: number;
   unit: string;
+  unitPrice?: number | null;
+  estimatedSubtotal?: number | null;
+  currency?: string | null;
 };
 
 export type RadarGuide = {
@@ -78,12 +82,13 @@ export function parseRadarFilters(params: ReportParams): RadarFilters {
     truck: read("truck") || undefined,
     concrete: read("concrete") || undefined,
     laboratory: laboratory === "yes" || laboratory === "no" ? laboratory : undefined,
+    billingStatus: readBillingStatus(params),
   };
 }
 
 export function radarSearchParams(filters: RadarFilters, universal = false) {
   const params = new URLSearchParams({ from: filters.dateFrom, to: filters.dateTo });
-  for (const [key, value] of Object.entries({ project: filters.projectId, dispatch: filters.dispatch, castingElement: filters.castingElement, guide: filters.guide, truck: filters.truck, concrete: filters.concrete, laboratory: filters.laboratory })) {
+  for (const [key, value] of Object.entries({ project: filters.projectId, dispatch: filters.dispatch, castingElement: filters.castingElement, guide: filters.guide, truck: filters.truck, concrete: filters.concrete, laboratory: filters.laboratory, billing: filters.billingStatus })) {
     if (value) params.set(key, value);
   }
   if (universal) params.set("scope", "universal");
@@ -114,6 +119,7 @@ export function filterRadarDispatches(dispatches: RadarDispatch[], filters: Rada
     const date = radarLocalDate(dispatch.scheduledAt, dispatch.timezone);
     if (date < filters.dateFrom || date > filters.dateTo) return false;
     if (filters.projectId && dispatch.projectId !== filters.projectId) return false;
+    if (filters.billingStatus && (dispatch.summary.billingComplete === true) !== (filters.billingStatus === "reconciled")) return false;
     if (filters.dispatch && !identifierMatches(dispatch.code, filters.dispatch) && !identifierMatches(dispatch.id, filters.dispatch)) return false;
     if (filters.castingElement && !dispatch.summary.castingElements.includes(filters.castingElement)) return false;
     if (filters.guide && !dispatch.guides.some((guide) => identifierMatches(guide.number, filters.guide!))) return false;
@@ -141,6 +147,7 @@ export function radarQueryDateRange(filters: RadarFilters) {
 type Row = Record<string, unknown>;
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
 function number(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
+function nullableNumber(value: unknown) { return value !== null && value !== undefined && String(value).trim() !== "" && Number.isFinite(Number(value)) ? Number(value) : null; }
 
 export function makeRadarGuide(row: Row, lineRows: Row[], programmingCasting?: unknown): RadarGuide {
   const details = row.details && typeof row.details === "object" && !Array.isArray(row.details) ? row.details as Row : {};
@@ -148,6 +155,7 @@ export function makeRadarGuide(row: Row, lineRows: Row[], programmingCasting?: u
     type: line.catalog_type === "SERVICE" ? "SERVICE" : "PRODUCT",
     code: text(line.product_code), description: text(line.product_description), reference: text(line.catalog_reference),
     quantity: number(line.quantity), unit: text(line.unit_code),
+    unitPrice: nullableNumber(line.unit_price), estimatedSubtotal: nullableNumber(line.estimated_subtotal), currency: text(line.currency) || null,
   }));
   const products = lines.filter((line) => line.type === "PRODUCT");
   const element = normalizeCastingElement(text(row.casting_element) || text(programmingCasting));

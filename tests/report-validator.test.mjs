@@ -19,7 +19,7 @@ function fixture({labelsMissing=false,billingComplete=false}={}){
  const tables={programming:[{id:'program-a',project_id:'project-a',supplier_id:'supplier',created_by:'program-creator',status:'CONFIRMED',scheduled_at:'2026-10-27T13:00:00Z',requested_quantity:7,confirmed_quantity:7,unit_code:'M3'}],dispatches:[{...base,id:'completed'},{...base,id:'open',status:'IN_EXECUTION'},{...base,id:'legacy',completed_by:null},{...base,id:'foreign',programming_id:'program-b',project_id:'project-b'}],suppliers:[{id:'supplier',name:'Mixto Listo'}]};
  const client={from(table){calls.push({table});const checks=[];const q={select(value){calls.push({table,select:value});return q;},in(key,values){checks.push(row=>values.includes(row[key]));return q;},eq(key,value){checks.push(row=>row[key]===value);return q;},gte(){return q;},lte(){return q;},order(){return q;},is(){return q;},then(resolve,reject){return Promise.resolve({data:(tables[table]??[]).filter(row=>checks.every(check=>check(row))),error:null}).then(resolve,reject);}};return q;},async rpc(name,args){calls.push({rpc:name,args});return {data:[{profile_id:'program-creator',display_label:'Creador de programación'},{profile_id:'registrar',display_label:'Registró Uno'},...(!labelsMissing?[{profile_id:'validator',display_label:'Validó Dos'}]:[]),{profile_id:'unrelated',display_label:'Otro proyecto'}],error:null};}};
  const {getGuideReport}=load(querySource,{'server-only':{},'@/features/dispatches/billing-completion-queries':{getDispatchBillingCompletion:async()=>({completed:billingComplete,legacy:false,open:false})},'@/lib/supabase/admin':{createAdminClient:()=>client},'@/lib/supabase/server':{createClient:async()=>client},'@/features/projects/queries':{},'@/features/projects/access-policy':{},'./guide-metadata':{guideReportMetadata}});
- return {calls,report:()=>getGuideReport(projects,{dateFrom:'2026-10-01',dateTo:'2026-10-31'})};
+ return {calls,report:(filters={})=>getGuideReport(projects,{dateFrom:'2026-10-01',dateTo:'2026-10-31',...filters})};
 }
 test('Reportería usa completed_by, distinto al registrador, sin atribuir validación a despachos abiertos',async()=>{
  const f=fixture(),report=await f.report();
@@ -85,4 +85,17 @@ test('el Excel usa el cierre financiero y conserva Producto conciliado con Servi
  const sheet=reopened.getWorksheet('Reporte');
  assert.equal(sheet.getCell(REPORT_TABLE_HEADER_ROW+1,dispatchColumn).value,'PENDING_RECONCILIATION');
  assert.equal(sheet.getCell(REPORT_TABLE_HEADER_ROW+1,productColumn).value,'RECONCILED');
+});
+
+
+test('la conciliación completa solo incluye despachos autorizados y elimina programaciones sin coincidencias',async()=>{
+ const f=fixture({billingComplete:true});
+ const complete=await f.report({billingStatus:'reconciled'});
+ assert.deepEqual(Array.from(complete.rows,row=>row.dispatchId),['completed']);
+ assert.equal(complete.programming[0].dispatches.length,1);
+ const pending=await f.report({billingStatus:'pending'});
+ assert.deepEqual(Array.from(pending.rows,row=>row.dispatchId).sort(),['legacy','open']);
+ const none=await fixture().report({billingStatus:'reconciled'});
+ assert.equal(none.rows.length,0);
+ assert.equal(none.programming.length,0);
 });

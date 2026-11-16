@@ -8,6 +8,7 @@ export type GuideReportFilters = {
   programmingStatus?: string;
   castingElement?: string;
   reconciliationStatus?: string;
+  billingStatus?: "reconciled" | "pending";
   withIncidents?: "yes" | "no";
   dateFrom: string;
   dateTo: string;

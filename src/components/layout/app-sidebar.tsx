@@ -74,13 +74,6 @@ const navigation: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "Gestión",
     items: [
-      { label: "Reportería", icon: BarChart3, href: "/reports", permission: "dispatch.view", exact: true },
-      {
-        label: "Reportería Universal",
-        icon: Globe2,
-        href: "/reports/universal",
-        universalReportsOnly: true,
-      },
       { label: "Lotes", icon: FolderKanban, href: "/batches", permission: "batch.view", exact: true },
       {
         label: "Lotes Universal",
@@ -100,6 +93,18 @@ const navigation: Array<{ label: string; items: NavigationItem[] }> = [
         icon: Scale,
         href: "/reconciliation",
         permission: "invoice.view",
+      },
+    ],
+  },
+  {
+    label: "Reportería",
+    items: [
+      { label: "Reportería", icon: BarChart3, href: "/reports", permission: "dispatch.view", exact: true },
+      {
+        label: "Reportería Universal",
+        icon: Globe2,
+        href: "/reports/universal",
+        universalReportsOnly: true,
       },
     ],
   },

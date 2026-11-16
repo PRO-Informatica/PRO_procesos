@@ -7,15 +7,16 @@ import ExcelJS from "exceljs";
 import * as radar from "../src/features/reports/radar.ts";
 import { CASTING_ELEMENTS } from "../src/features/dispatches/casting-elements.ts";
 import { buildRadarWorkbook } from "../src/features/reports/radar-workbook.ts";
+import { buildConcreteControlWorkbook } from "../src/features/reports/concrete-control-workbook.ts";
 
 const source = await readFile(new URL("../src/features/reports/components/casting-radar.tsx", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
 const jsx = (type, props) => ({ type, props });
 const nodes = (node) => !node || typeof node !== "object" ? [] : Array.isArray(node) ? node.flatMap(nodes) : [node, ...nodes(node.props?.children), ...nodes(node.props?.selection)];
 const text = (node) => node == null || typeof node === "boolean" ? "" : typeof node !== "object" ? String(node) : Array.isArray(node) ? node.map(text).join("") : text(node.props?.children);
-const filters = { dateFrom: "2026-11-01", dateTo: "2026-11-30", dispatch: "DSP", castingElement: "PILES" };
+const filters = { dateFrom: "2026-11-01", dateTo: "2026-11-30", dispatch: "DSP", castingElement: "PILES", billingStatus: "reconciled" };
 
-function fixture(count = 10) {
+function fixture(count = 10, report = "radar") {
   const state = [], calls = [], notifications = [];
   let cursor = 0, downloaded;
   const dispatches = Array.from({ length: count }, (_, i) => ({ id: `d${i}`, code: `DSP-${i}`, scheduledAt: "2026-11-03T13:00:00Z", timezone: "America/Guatemala", projectName: "Proyecto QA", projectId: "qa", supplierName: "Proveedor QA", orderNumber: "88", programmingCode: "PRG-QA", summary: { castingElementLabel: "Pilotes" }, guides: [radar.makeRadarGuide({ id: `g${i}`, guide_number: `000${i}`, guide_date: "2026-11-03" }, [], "PILES")] }));
@@ -39,12 +40,12 @@ function fixture(count = 10) {
     async fetch(url, options) {
       const ids = JSON.parse(options.body).dispatchIds;
       calls.push({ url, ids });
-      const buffer = await buildRadarWorkbook(radar.selectRadarDispatches(dispatches, ids)).xlsx.writeBuffer();
+      const buffer = await (report === "concrete" ? buildConcreteControlWorkbook : buildRadarWorkbook)(radar.selectRadarDispatches(dispatches, ids)).xlsx.writeBuffer();
       return { ok: true, blob: async () => buffer };
     },
     require(name) { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; },
   });
-  return { calls, notifications, card, button, downloaded: () => downloaded, render() { cursor = 0; return nodes(exports.CastingRadar({ data: { dispatches, projects: [] }, filters, universal: true })); } };
+  return { calls, notifications, card, button, downloaded: () => downloaded, render() { cursor = 0; return nodes(exports.CastingRadar({ data: { dispatches, projects: [] }, filters, universal: true, report })); } };
 }
 
 test("la vista muestra tarjetas de despacho y todos los filtros solicitados", () => {
@@ -52,7 +53,7 @@ test("la vista muestra tarjetas de despacho y todos los filtros solicitados", ()
   assert.equal(tree.filter((node) => node.type === f.card).length, 8);
   assert.equal(tree.filter((node) => node.type === "table").length, 0);
   assert.ok(tree.some((node) => node.type === "h2" && text(node) === "Filtros por despacho"));
-  for (const name of ["from", "to", "guide", "dispatch", "truck", "concrete", "laboratory", "castingElement", "project"]) assert.ok(tree.some((node) => node.props?.name === name), name);
+  for (const name of ["from", "to", "guide", "dispatch", "truck", "concrete", "laboratory", "castingElement", "project", "billing"]) assert.ok(tree.some((node) => node.props?.name === name), name);
   assert.equal(tree.find((node) => node.type === f.button).props.disabled, true);
 });
 
@@ -69,6 +70,7 @@ test("la selección conserva despachos entre páginas y descarga exactamente dos
   assert.equal(query.get("scope"), "universal");
   assert.equal(query.get("dispatch"), "DSP");
   assert.equal(query.get("castingElement"), "PILES");
+  assert.equal(query.get("billing"), "reconciled");
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(f.downloaded());
   assert.deepEqual(workbook.worksheets.map(({ name }) => name), ["DSP-0", "DSP-1"]);
@@ -85,4 +87,26 @@ test("seleccionar todos respeta el límite de cien despachos y avisa al excederl
   f.render().find((node) => node.props?.["aria-label"] === "Seleccionar DSP-100").props.onChange({ target: { checked: true } });
   assert.ok(f.notifications.some(([title]) => title === "Límite de selección"));
   assert.ok(f.render().some((node) => text(node) === "101 despacho(s) · 100 seleccionado(s)"));
+});
+
+test("control de concreto conserva filtros y selección entre páginas y exporta todos en una sola hoja", async () => {
+  const f = fixture(10, "concrete");
+  assert.ok(f.render().some((node) => node.type === "h1" && text(node) === "Control de concreto"));
+  f.render().find((node) => node.props?.["aria-label"] === "Seleccionar DSP-0").props.onChange({ target: { checked: true } });
+  f.render().find((node) => node.type === "button" && text(node).includes("Siguiente")).props.onClick();
+  f.render().find((node) => node.props?.["aria-label"] === "Seleccionar DSP-9").props.onChange({ target: { checked: true } });
+  await f.render().find((node) => node.type === f.button).props.onClick();
+  assert.ok(f.calls[0].url.startsWith("/reports/concrete-control/export?"));
+  assert.deepEqual(f.calls[0].ids, ["d0", "d9"]);
+  const query = new URL(f.calls[0].url, "http://localhost").searchParams;
+  assert.equal(query.get("scope"), "universal");
+  assert.equal(query.get("castingElement"), "PILES");
+  assert.equal(query.get("billing"), "reconciled");
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(f.downloaded());
+  assert.deepEqual(workbook.worksheets.map(({ name }) => name), ["Control de concreto"]);
+  assert.equal(workbook.worksheets[0].getCell("C6").value, "0000");
+  assert.equal(workbook.worksheets[0].getCell("C7").value, "0009");
+  assert.ok(f.render().some((node) => text(node) === "Selecciona uno o varios despachos y descarga un Excel con todas sus guías en una sola hoja."));
+  assert.ok(f.notifications.some(([, message]) => message === "2 despacho(s) en una sola hoja."));
 });

@@ -31,9 +31,26 @@ test("las fechas directas del reporte se respetan aunque llegue un período ante
 
 test("los rangos invertidos se corrigen y los filtros de radar sobreviven al exportar", () => {
   const result = parseRadarFilters({ from: "2026-11-30", to: "2026-11-01", dispatch: " DSP-ABC ", castingElement: "pilotes y columnas", truck: " 183 ", guide: "6015", concrete: "CONF4001", laboratory: "yes", project: "acoat" });
-  assert.deepEqual(result, { ...filters, dispatch: "DSP-ABC", castingElement: "PILES_AND_COLUMNS", truck: "183", guide: "6015", concrete: "CONF4001", laboratory: "yes", projectId: "acoat" });
+  assert.deepEqual(result, { ...filters, dispatch: "DSP-ABC", castingElement: "PILES_AND_COLUMNS", truck: "183", guide: "6015", concrete: "CONF4001", laboratory: "yes", projectId: "acoat", billingStatus: undefined });
   assert.equal(radarSearchParams(result, true).get("scope"), "universal");
   assert.deepEqual(parseRadarFilters(radarSearchParams(result)), result);
+});
+
+test("la conciliación completa se valida y conserva en los filtros de las tres reporterías", () => {
+  for (const value of ["reconciled", "pending"]) {
+    const params = new URLSearchParams({ from: filters.dateFrom, to: filters.dateTo, billing: value, reconciliation: "RECONCILED" });
+    const general = parseGuideReportFilters(params), radar = parseRadarFilters(params);
+    assert.equal(general.billingStatus, value);
+    assert.equal(general.reconciliationStatus, "RECONCILED");
+    assert.equal(radar.billingStatus, value);
+    assert.equal(reportSearchParams(general).get("billing"), value);
+    assert.deepEqual(parseRadarFilters(radarSearchParams(radar, true)), radar);
+  }
+  for (const value of ["", "all", "RECONCILED", "invalid"]) {
+    const params = new URLSearchParams({ billing: value });
+    assert.equal(parseGuideReportFilters(params).billingStatus, undefined);
+    assert.equal(parseRadarFilters(params).billingStatus, undefined);
+  }
 });
 
 test("la reportería resume elementos, camiones únicos y laboratorio por guía", () => {
