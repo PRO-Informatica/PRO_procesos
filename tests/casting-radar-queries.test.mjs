@@ -12,7 +12,7 @@ const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.Modu
 const filters = { dateFrom: "2026-11-01", dateTo: "2026-11-30" };
 const projects = [{ id: "project-a", name: "ACOAT", code: "ACOAT", timezone: "America/Guatemala" }];
 
-function fixture({ guideCount = 2, errorTable } = {}) {
+function fixture({ guideCount = 2, billingComplete = false, errorTable } = {}) {
   const calls = [];
   const tables = {
     programming: [{ id: "program-a", project_id: "project-a", scheduled_at: "2026-12-01T05:00:00Z", casting_element: "PILES", unit_code: "M3" }, { id: "program-b", project_id: "project-b", scheduled_at: "2026-11-03T13:00:00Z" }],
@@ -56,7 +56,7 @@ function fixture({ guideCount = 2, errorTable } = {}) {
     };
   }
   const exports = {};
-  const imports = { "server-only": {}, "@/features/dispatches/billing-completion-queries": { getDispatchBillingCompletion: async () => ({ full: false, empty: false }) }, "@/lib/supabase/server": { createClient: async () => client() }, "@/lib/supabase/admin": { createAdminClient: () => client(true) }, "./guide-metadata": { guideReportMetadata }, "./radar": radar };
+  const imports = { "server-only": {}, "@/features/dispatches/billing-completion-queries": { getDispatchBillingCompletion: async () => ({ full: billingComplete, empty: false }) }, "@/lib/supabase/server": { createClient: async () => client() }, "@/lib/supabase/admin": { createAdminClient: () => client(true) }, "./guide-metadata": { guideReportMetadata }, "./radar": radar };
   runInNewContext(compiled, { exports, Date, Intl, require(name) { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; } });
   return { calls, run: (input = filters) => exports.getCastingRadar(projects, input) };
 }
@@ -98,4 +98,15 @@ test("un proyecto ajeno no consulta datos y los errores no se presentan como una
   assert.equal((await f.run({ ...filters, projectId: "project-b" })).dispatches.length, 0);
   assert.equal(f.calls.length, 0);
   await assert.rejects(fixture({ errorTable: "dispatches" }).run(), /No fue posible cargar/);
+});
+
+
+test("la conciliación completa filtra despachos en servidor y conserva todas las guías", async () => {
+  const f = fixture({ billingComplete: true });
+  const complete = await f.run({ ...filters, billingStatus: "reconciled", guide: "0000" });
+  assert.deepEqual(Array.from(complete.dispatches, row => row.id), ["full"]);
+  assert.equal(complete.dispatches[0].guides.length, 2);
+  const pending = await f.run({ ...filters, billingStatus: "pending" });
+  assert.deepEqual(Array.from(pending.dispatches, row => row.id), ["empty"]);
+  assert.equal((await fixture().run({ ...filters, billingStatus: "reconciled" })).dispatches.length, 0);
 });

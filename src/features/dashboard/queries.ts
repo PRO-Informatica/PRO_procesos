@@ -1,11 +1,13 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { getDispatchBillingCompletion } from "@/features/dispatches/billing-completion-queries";
+import { dashboardBillingStatus, type DashboardReconciliation } from "./reconciliation";
 import type { BatchStatus, DashboardActivity, DashboardBatch, DashboardWeekDay, ProgrammingStatus, ProjectDashboardData } from "./types";
 
 const DEFAULT_TIMEZONE = "America/Guatemala";
 type ProgrammingRow = { id: string; scheduled_at: string; requested_quantity: number | string; confirmed_quantity: number | string | null; unit_code: string; status: ProgrammingStatus };
-type ReconciliationStatus = "NOT_STARTED" | "PENDING_RECONCILIATION" | "WITH_DIFFERENCES" | "PENDING_REINVOICING" | "RECONCILED";
-type ReconciliationRow = { id: string; dispatch_id: string; status: ReconciliationStatus };
+type BillingDispatch = { id: string; programming_id: string };
+type BillingProgramming = { id: string; delivery_modes: string[] | null };
 type BatchReconciliationRow = { id: string; code: string; period_start: string; members: Array<{ dispatch_id: string; removed_at: string | null }> | null };
 function numeric(value: unknown) { const parsed = Number(value ?? 0); return Number.isFinite(parsed) ? parsed : 0; }
 function quantity(row: ProgrammingRow) { return numeric(row.confirmed_quantity ?? row.requested_quantity); }
@@ -16,45 +18,63 @@ function weekStart(value: string) { const [y, m, d] = value.split("-").map(Numbe
 function zonedDate(value: string, timezone: string) { const p = parts(new Date(value), timezone); return key(p.year, p.month, p.day); }
 function percent(value: number, total: number) { return total > 0 ? Math.min(Math.round((value / total) * 100), 100) : 0; }
 
+async function readBillingRows<T>(query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
+  const rows: T[] = [];
+  const pageSize = 500;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await query(from, from + pageSize - 1);
+    if (error) throw new Error(`No fue posible cargar la conciliación del Dashboard. ${error.message}`);
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+}
+
 export async function getProjectDashboard(projectId: string, projectTimezone: string | null): Promise<ProjectDashboardData> {
   const supabase = await createClient(); const timezone = projectTimezone || DEFAULT_TIMEZONE; const now = new Date(); const p = parts(now, timezone); const today = key(p.year, p.month, p.day); const start = weekStart(today); const end = add(start, 6); const monthStart = key(p.year, p.month, 1); const nextMonth = key(p.month === 12 ? p.year + 1 : p.year, p.month === 12 ? 1 : p.month + 1, 1);
-  const [programmingResult, guidesResult, ordersResult, batchResult, recentBatchesResult, activityResult] = await Promise.all([
+  const [programmingResult, guidesResult, orders, batchResult, recentBatchesResult, activityResult, billingDispatches, billingPrograms, billingCompletion] = await Promise.all([
     supabase.from("programming").select("id, scheduled_at, requested_quantity, confirmed_quantity, unit_code, status").eq("project_id", projectId).gte("scheduled_at", `${monthStart}T00:00:00`).lt("scheduled_at", `${nextMonth}T00:00:00`).order("scheduled_at"),
     supabase.from("dispatch_guides").select("id, guide_date, quantity, unit_code").eq("project_id", projectId).gte("guide_date", monthStart).lt("guide_date", nextMonth),
-    supabase.from("dispatch_reconciliations").select("id, dispatch_id, status").eq("project_id", projectId).limit(2000),
+    readBillingRows<DashboardReconciliation>((from, to) => supabase.from("dispatch_reconciliations").select("dispatch_id, status, service_status, current_product_invoice_id, current_service_invoice_id").eq("project_id", projectId).order("dispatch_id").range(from, to)),
     supabase.from("batches").select("id, code, period_start, period_end, accounting_period, status, members:batch_dispatches!batch_dispatches_batch_project_fk(id, removed_at)").eq("project_id", projectId).lte("period_start", today).gte("period_end", today).limit(1).maybeSingle(),
     supabase.from("batches").select("id, code, period_start, members:batch_dispatches!batch_dispatches_batch_project_fk(dispatch_id, removed_at)").eq("project_id", projectId).order("period_start", { ascending: false }).limit(6),
     supabase.from("audit_events").select("id, action, entity_type, entity_id, created_at, actor_user_id, profiles(full_name)").eq("project_id", projectId).order("created_at", { ascending: false }).limit(8),
+    readBillingRows<BillingDispatch>((from, to) => supabase.from("dispatches").select("id, programming_id").eq("project_id", projectId).order("id").range(from, to)),
+    readBillingRows<BillingProgramming>((from, to) => supabase.from("programming").select("id, delivery_modes").eq("project_id", projectId).order("id").range(from, to)),
+    getDispatchBillingCompletion([projectId]),
   ]);
-  const error = programmingResult.error ?? guidesResult.error ?? ordersResult.error ?? batchResult.error ?? recentBatchesResult.error ?? activityResult.error;
+  const error = programmingResult.error ?? guidesResult.error ?? batchResult.error ?? recentBatchesResult.error ?? activityResult.error;
   if (error) throw new Error(`No fue posible cargar el Dashboard. ${error.message}`);
-  const programming = (programmingResult.data ?? []) as ProgrammingRow[]; const guides = guidesResult.data ?? []; const orders = (ordersResult.data ?? []) as ReconciliationRow[];
+  const programming = (programmingResult.data ?? []) as ProgrammingRow[]; const guides = guidesResult.data ?? [];
   const weekProgramming = programming.filter((row) => { const date = zonedDate(row.scheduled_at, timezone); return date >= start && date <= end && row.status !== "CANCELLED"; });
   const todayProgramming = weekProgramming.filter((row) => zonedDate(row.scheduled_at, timezone) === today);
   const completedWeek = weekProgramming.filter((row) => row.status === "COMPLETED").length;
   const programmedMonth = programming.filter((row) => row.unit_code === "M3" && row.status !== "CANCELLED").reduce((sum, row) => sum + quantity(row), 0);
   const receivedMonth = guides.filter((row) => row.unit_code === "M3").reduce((sum, row) => sum + numeric(row.quantity), 0);
   const weekDays: DashboardWeekDay[] = Array.from({ length: 7 }, (_, index) => { const date = add(start, index); const dayPrograms = weekProgramming.filter((row) => zonedDate(row.scheduled_at, timezone) === date); const dayGuides = guides.filter((row) => row.guide_date === date && row.unit_code === "M3"); const shortLabel = new Intl.DateTimeFormat("es-GT", { weekday: "short", timeZone: timezone }).format(new Date(`${date}T12:00:00Z`)).replace(".", "").slice(0, 3); return { date, shortLabel, programmingCount: dayPrograms.length, programmedM3: dayPrograms.filter((row) => row.unit_code === "M3").reduce((sum, row) => sum + quantity(row), 0), receivedM3: dayGuides.reduce((sum, row) => sum + numeric(row.quantity), 0), isToday: date === today }; });
-  const matched = orders.filter((row) => row.status === "RECONCILED").length; const noInvoice = orders.filter((row) => row.status === "NOT_STARTED").length; const differences = orders.filter((row) => ["WITH_DIFFERENCES", "PENDING_REINVOICING"].includes(row.status)).length;
+  const reconciliationByDispatch = new Map(orders.map((row) => [row.dispatch_id, row]));
+  const deliveryModesByProgramming = new Map(billingPrograms.map((row) => [row.id, row.delivery_modes]));
+  const billingStatusByDispatch = new Map(billingDispatches.map((dispatch) => [dispatch.id, dashboardBillingStatus(reconciliationByDispatch.get(dispatch.id), deliveryModesByProgramming.get(dispatch.programming_id), billingCompletion[dispatch.id] === true)]));
+  const statuses = [...billingStatusByDispatch.values()];
+  const matched = statuses.filter((status) => status === "reconciled").length;
+  const noInvoice = statuses.filter((status) => status === "pendingInvoices").length;
+  const differences = statuses.filter((status) => status === "reinvoicing").length;
   const activity: DashboardActivity[] = (activityResult.data ?? []).map((row) => { const relation = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles; return { id: row.id, action: row.action, entityType: row.entity_type, entityId: row.entity_id, createdAt: row.created_at, actorName: relation?.full_name?.trim() || (row.actor_user_id ? "Usuario no disponible" : "Sistema") }; });
   const current = batchResult.data as null | { id: string; code: string; period_start: string; period_end: string; accounting_period: string; status: BatchStatus; members: Array<{ removed_at: string | null }> | null };
   const currentBatch: DashboardBatch | null = current ? { id: current.id, code: current.code, periodStart: current.period_start, periodEnd: current.period_end, accountingPeriod: current.accounting_period, status: current.status, activeGuideCount: (current.members ?? []).filter((row) => row.removed_at === null).length } : null;
-  const reconciliationByDispatch = new Map(orders.map((row) => [row.dispatch_id, row.status]));
   const batchReconciliation = ((recentBatchesResult.data ?? []) as BatchReconciliationRow[]).reverse().map((batch) => {
-    const statuses = (batch.members ?? [])
-      .filter((member) => member.removed_at === null)
-      .map((member) => reconciliationByDispatch.get(member.dispatch_id))
-      .filter((status): status is ReconciliationStatus => Boolean(status));
+    const dispatchIds = new Set((batch.members ?? []).filter((member) => member.removed_at === null).map((member) => member.dispatch_id));
+    const statuses = [...dispatchIds].flatMap((id) => { const status = billingStatusByDispatch.get(id); return status ? [status] : []; });
     return {
       batchId: batch.id,
       batchCode: batch.code,
       periodStart: batch.period_start,
-      pendingInvoices: statuses.filter((status) => status === "NOT_STARTED").length,
-      pendingReconciliation: statuses.filter((status) => status === "PENDING_RECONCILIATION").length,
-      reinvoicing: statuses.filter((status) => ["WITH_DIFFERENCES", "PENDING_REINVOICING"].includes(status)).length,
-      reconciled: statuses.filter((status) => status === "RECONCILED").length,
+      pendingInvoices: statuses.filter((status) => status === "pendingInvoices").length,
+      pendingReconciliation: statuses.filter((status) => status === "pendingReconciliation").length,
+      reinvoicing: statuses.filter((status) => status === "reinvoicing").length,
+      reconciled: statuses.filter((status) => status === "reconciled").length,
     };
   });
   const overdueProgramming = programming.filter((row) => zonedDate(row.scheduled_at, timezone) < today && !["COMPLETED", "CANCELLED"].includes(row.status)).length;
-  return { today, weekStart: start, weekEnd: end, timezone, weekDays, currentBatch, batchReconciliation, activity, metrics: { today: { total: todayProgramming.length, completed: todayProgramming.filter((row) => row.status === "COMPLETED").length, pending: todayProgramming.filter((row) => !["COMPLETED", "CANCELLED"].includes(row.status)).length, programmedM3: todayProgramming.filter((row) => row.unit_code === "M3").reduce((sum, row) => sum + quantity(row), 0) }, week: { total: weekProgramming.length, completed: completedWeek, pending: weekProgramming.length - completedWeek, compliance: percent(completedWeek, weekProgramming.length) }, month: { programmedM3: programmedMonth, receivedM3: receivedMonth, execution: percent(receivedMonth, programmedMonth) }, orders: { pending: orders.length - matched - differences, completed: matched, reinvoicing: differences }, reconciliation: { matched, differences, withoutInvoice: noInvoice }, attention: { reinvoicing: differences, overdueProgramming, pendingInvoice: noInvoice } } };
+  return { today, weekStart: start, weekEnd: end, timezone, weekDays, currentBatch, batchReconciliation, activity, metrics: { today: { total: todayProgramming.length, completed: todayProgramming.filter((row) => row.status === "COMPLETED").length, pending: todayProgramming.filter((row) => !["COMPLETED", "CANCELLED"].includes(row.status)).length, programmedM3: todayProgramming.filter((row) => row.unit_code === "M3").reduce((sum, row) => sum + quantity(row), 0) }, week: { total: weekProgramming.length, completed: completedWeek, pending: weekProgramming.length - completedWeek, compliance: percent(completedWeek, weekProgramming.length) }, month: { programmedM3: programmedMonth, receivedM3: receivedMonth, execution: percent(receivedMonth, programmedMonth) }, orders: { pending: statuses.length - matched - differences, completed: matched, reinvoicing: differences }, reconciliation: { matched, differences, withoutInvoice: noInvoice }, attention: { reinvoicing: differences, overdueProgramming, pendingInvoice: noInvoice } } };
 }

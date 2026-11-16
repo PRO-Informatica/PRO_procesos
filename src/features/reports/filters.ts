@@ -8,6 +8,11 @@ export function readReportParam(params: ReportParams, key: string) {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
+export function readBillingStatus(params: ReportParams) {
+  const value = readReportParam(params, "billing").trim();
+  return value === "reconciled" || value === "pending" ? value : undefined;
+}
+
 function validDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
   const date = new Date(`${value}T12:00:00Z`);
@@ -37,6 +42,7 @@ export function parseGuideReportFilters(params: ReportParams): GuideReportFilter
     programmingStatus: read("programmingStatus") || undefined,
     castingElement: normalizeCastingElement(read("castingElement")) ?? undefined,
     reconciliationStatus: read("reconciliation") || undefined,
+    billingStatus: readBillingStatus(params),
     withIncidents: incidents === "yes" || incidents === "no" ? incidents : undefined,
   };
 }
@@ -46,7 +52,7 @@ export function reportSearchParams(filters: GuideReportFilters) {
   const values: Array<[string, string | undefined]> = [
     ["project", filters.projectId], ["supplier", filters.supplierId], ["user", filters.userId],
     ["order", filters.orderNumber], ["batch", filters.batchId], ["dispatchStatus", filters.dispatchStatus], ["programmingStatus", filters.programmingStatus],
-    ["castingElement", filters.castingElement], ["reconciliation", filters.reconciliationStatus], ["incidents", filters.withIncidents],
+    ["castingElement", filters.castingElement], ["reconciliation", filters.reconciliationStatus], ["billing", filters.billingStatus], ["incidents", filters.withIncidents],
   ];
   for (const [key, value] of values) if (value) params.set(key, value);
   return params;

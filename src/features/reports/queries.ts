@@ -30,7 +30,7 @@ function objectValue(value: unknown): Row { return value && typeof value === "ob
 function programmingCode(id: string) { return `PRG-${id.slice(0, 8).toUpperCase()}`; }
 function dispatchCode(id: string) { return `DSP-${id.slice(0, 8).toUpperCase()}`; }
 function options(values: Array<[string, string]>): ReportOption[] { return [...new Map(values).entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, "es")); }
-function hasDispatchFilters(filters: GuideReportFilters) { return Boolean(filters.orderNumber || filters.batchId || filters.dispatchStatus || filters.reconciliationStatus || filters.withIncidents); }
+function hasDispatchFilters(filters: GuideReportFilters) { return Boolean(filters.orderNumber || filters.batchId || filters.dispatchStatus || filters.reconciliationStatus || filters.billingStatus || filters.withIncidents); }
 
 export async function getUniversalReportScopes(userId: string): Promise<ProjectAccessScope[]> {
   return (await getOperationalProjectAccess(userId)).filter(({ project, roleCodes, permissions }) =>
@@ -180,6 +180,7 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
     if (filters.dispatchStatus) children = children.filter((row) => row.dispatchStatus === filters.dispatchStatus);
     if (filters.castingElement) children = children.filter((row) => row.castingElements.includes(filters.castingElement!));
     if (filters.reconciliationStatus) children = children.filter((row) => row.reconciliationStatus === filters.reconciliationStatus);
+    if (filters.billingStatus) children = children.filter((row) => row.billingComplete === (filters.billingStatus === "reconciled"));
     if (filters.withIncidents) children = children.filter((row) => filters.withIncidents === "yes" ? row.incidentCount > 0 : row.incidentCount === 0);
     return { id: String(program.id), code: programmingCode(String(program.id)), projectId: String(program.project_id), projectName: project?.name ?? "Proyecto", projectCode: project?.code ?? "", projectBillingLegalName: project?.billingLegalName ?? null, companyName: project?.companyName ?? "Empresa", timezone: project?.timezone ?? "America/Guatemala", supplierId: String(program.supplier_id), supplierName: supplierMap.get(String(program.supplier_id)) ?? "Proveedor no disponible", scheduledAt: String(program.scheduled_at), requestedQuantity: numeric(program.requested_quantity), confirmedQuantity: program.confirmed_quantity === null ? null : numeric(program.confirmed_quantity), unitCode: String(program.unit_code), status: String(program.status), castingElementLabel: guideReportMetadata([], program.casting_element).castingElementLabel, createdById: String(program.created_by), createdByName: profileMap.get(String(program.created_by)) ?? "Usuario no disponible", dispatches: children };
   });

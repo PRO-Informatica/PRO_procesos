@@ -110,7 +110,7 @@ test("Dashboard desambigua la pertenencia del despacho al lote", () => {
 });
 
 test("Dashboard agrupa los cuatro estados de conciliación por lote", () => {
-  assert.match(dashboardQueries, /id, dispatch_id, status/u);
+  assert.match(dashboardQueries, /dispatch_id, status, service_status, current_product_invoice_id, current_service_invoice_id/u);
   assert.match(
     dashboardQueries,
     /members:batch_dispatches!batch_dispatches_batch_project_fk\(dispatch_id, removed_at\)/u,
