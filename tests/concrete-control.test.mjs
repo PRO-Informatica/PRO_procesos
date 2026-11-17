@@ -81,6 +81,28 @@ test("la consulta conserva snapshots numéricos cero y deja los históricos ause
   assert.equal(row.lines[1].currency, null);
 });
 
+test("Observaciones del control usa solo la nota del elemento a fundir, incluso al reabrir el Excel", async () => {
+  const note = "Columnas del eje A\nFundir hasta nivel 2.";
+  const rows = [
+    radar.makeRadarGuide({ id: "notes", guide_number: "001", details: { observations: "Nota general distinta", castingElementObservations: note } }, [{ catalog_type: "PRODUCT", product_description: "Sin PSI", quantity: 2, unit_code: "M3", unit_price: 100, currency: "GTQ" }]),
+    radar.makeRadarGuide({ id: "legacy", guide_number: "002", details: { observations: "Nota histórica general" } }, []),
+    radar.makeRadarGuide({ id: "empty", guide_number: "003", details: { observations: "Otra nota general", castingElementObservations: "" } }, []),
+  ];
+  assert.equal(rows[0].observations, "Nota general distinta");
+  assert.equal(rows[0].castingElementObservations, note);
+  assert.equal(rows[1].castingElementObservations, "");
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await buildConcreteControlWorkbook([dispatch("notes", rows)]).xlsx.writeBuffer());
+  const sheet = workbook.worksheets[0];
+  assert.equal(sheet.getCell("AE5").value, "Observaciones");
+  assert.equal(sheet.getCell("AE6").value, note);
+  assert.match(JSON.stringify(sheet.getCell("AE6").note), /sin resistencia PSI/);
+  for (const row of [7, 8]) {
+    assert.equal(sheet.getCell(`AE${row}`).value || "", "");
+    assert.match(JSON.stringify(sheet.getCell(`AE${row}`).note), /sin líneas/);
+  }
+});
+
 test("Excel reabierto: una sola hoja con todas las guías, campos del control y total general", async () => {
   const a = guide("a", [line("4000 PSI", 6.5, 1000), service("Bomba", 6, 100), service("Colocación", 6, 50)], { laboratory: true });
   const b = guide("b", [service("Recargo", 1, null, { unit: "UN" })]);

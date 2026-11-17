@@ -5,6 +5,7 @@ export const GUIDE_FIELDS = {
   customerName: "Nombre del cliente", projectName: "Proyecto", workAddress: "Dirección de obra",
   guideDate: "Fecha", orderNumber: "Número de pedido", plant: "Planta", truck: "Camión",
   loadingTime: "Hora de carga", pilot: "Piloto", operator: "Operador", observations: "Observaciones",
+  castingElementObservations: "Observaciones Elemento a fundir",
 } as const;
 export type GuideField = keyof typeof GUIDE_FIELDS;
 export type GuideDetails = Record<GuideField, string>;
@@ -18,8 +19,12 @@ export function validateGuideDetails(value: unknown): string | null {
   const details = value as Record<string, unknown>;
   if (!["DISPATCH_GUIDE", "MIXTO_OPERATION", "PANEXUS_OPERATION"].includes(String(details.documentType))) return "Selecciona un tipo de documento válido.";
   if (Object.keys(details).some((key) => !Object.hasOwn(GUIDE_FIELDS, key)) ||
-      Object.entries(GUIDE_FIELDS).some(([key]) => typeof details[key] !== "string" ||
-        (details[key] as string).length > (key === "observations" ? 4000 : 500))) {
+      Object.entries(GUIDE_FIELDS).some(([key]) => {
+        // Historical guides and pending OCR drafts predate this optional field.
+        if (key === "castingElementObservations" && details[key] === undefined) return false;
+        return typeof details[key] !== "string" ||
+          (details[key] as string).length > (["observations", "castingElementObservations"].includes(key) ? 4000 : 500);
+      })) {
     return "Revisa los campos de la guía y su longitud.";
   }
   if (details.loadingTime && !/^(?:[01]\d|2[0-3]):[0-5]\d$/u.test(details.loadingTime as string)) {

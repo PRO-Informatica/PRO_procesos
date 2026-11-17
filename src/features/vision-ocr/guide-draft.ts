@@ -2,7 +2,7 @@ import { normalizeServiceUnit } from "../platform/project-price-catalogs/service
 import { CASTING_ELEMENTS } from "../dispatches/casting-elements.ts";
 import { validateGuideDetails } from "../dispatches/guide-details.ts";
 import type { DispatchCatalogOption } from "../dispatches/types";
-import { GUIDE_FIELDS, type GuideField, type GuideDetails } from "../dispatches/guide-details.ts";
+import type { GuideDetails } from "../dispatches/guide-details.ts";
 export { GUIDE_FIELDS, emptyGuideDetails, type GuideField, type GuideDetails } from "../dispatches/guide-details.ts";
 export type OcrDraftLine = {
   quantity: string; unit: string; productCode: string; description: string;
@@ -88,7 +88,6 @@ export function validateOcrReview(value: unknown): string | null {
   const detailsError = validateGuideDetails(draft.details);
   if (detailsError) return detailsError;
   if (typeof draft.guideNumber !== "string" || !draft.guideNumber.trim() || draft.guideNumber.length > 120) return "Registra un número de guía válido.";
-  if (!draft.details || Object.keys(GUIDE_FIELDS).some((key) => typeof draft.details[key as GuideField] !== "string" || draft.details[key as GuideField].length > (key === "observations" ? 4000 : 500))) return "Revisa los campos de la guía y su longitud.";
   if (!normalizeGuideDate(draft.details.guideDate)) return "Confirma una fecha válida en la guía.";
   if (![draft.arrivalTime, draft.departureTime].every((time) => typeof time === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/u.test(time))) return "Confirma las horas de llegada y salida del camión.";
   if (draft.details.loadingTime && !normalizeGuideTime(draft.details.loadingTime)) return "Corrige la hora de carga o déjala vacía si no es legible.";

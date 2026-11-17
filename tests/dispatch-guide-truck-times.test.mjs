@@ -85,7 +85,7 @@ test('errores de horario y conflictos no se muestran como éxito ni refrescan da
 });
 
 function nodes(node) { if (!node || typeof node !== 'object') return []; if (Array.isArray(node)) return node.flatMap(nodes); if(typeof node.type==='function')return nodes(node.type(node.props));return [node,...nodes(node.props?.children)]; }
-function dialogFixture({readOnly=false,guide,manual=false}={}) {
+function dialogFixture({readOnly=false,guide,manual=false,interactive=false}={}) {
   const jsx = (type, props) => ({type,props});
   const state=[];let cursor=0;
   const dialog = load(dialogSource, {
@@ -111,7 +111,7 @@ function dialogFixture({readOnly=false,guide,manual=false}={}) {
   const render=()=>{cursor=0;return nodes(dialog({projectId,dispatchId,programmingId:projectId,expectedVersion:2,programmedUnitCode:'M3',units:[{code:'M3'}],timezone:'America/Guatemala',guide,readOnly,onClose(){}}));};
   let tree=render();
   if(manual){tree.find(n=>n.type==='Button'&&n.props.children==='Carga manual').props.onClick();tree=render();}
-  return tree;
+  return interactive ? { tree, render } : tree;
 }
 test('al elegir carga manual se muestran ambas horas obligatorias sin inventar valores', () => {
   assert.ok(!dialogFixture().some(n=>n.type==='input'&&n.props.name==='truckArrivalTime'));
@@ -126,6 +126,22 @@ test('editar/ver usa la zona del proyecto y conserva modo de solo lectura', () =
   const tree=dialogFixture({readOnly:true,guide:{id:guideId,guideNumber:'1234',guideDate:'2026-10-26',truckArrivalAt:'2026-10-26T21:30:00Z',truckDepartureAt:'2026-10-26T22:10:00Z',lines:[]}});
   assert.equal(tree.find(n=>n.type==='input'&&n.props.name==='truckArrivalTime').props.value,'15:30');
   const exit=tree.find(n=>n.type==='input'&&n.props.name==='truckDepartureTime'); assert.equal(exit.props.value,'16:10'); assert.equal(exit.props.min,undefined); assert.equal(exit.props.disabled,true);
+});
+
+test('el diálogo guarda las observaciones del elemento en los detalles y las recupera al editar', () => {
+  const note='Columnas del eje A\nFundir hasta nivel 2.';
+  const draft=dialogFixture({manual:true,interactive:true});
+  draft.tree.find(n=>n.type==='ResidentFields').props.onElementObservations(note);
+  const details=JSON.parse(draft.render().find(n=>n.type==='input'&&n.props.name==='guideDetails').props.value);
+  assert.equal(details.castingElementObservations,note);
+  assert.equal(details.observations,'');
+  const base={id:guideId,guideNumber:'1234',guideDate:'2026-10-26',castingElement:'COLUMNS',lines:[]};
+  for(const readOnly of [false,true]){
+    const tree=dialogFixture({readOnly,guide:{...base,details}});
+    const resident=tree.find(n=>n.type==='ResidentFields');
+    assert.equal(resident.props.elementObservations,note);assert.equal(resident.props.disabled,readOnly);
+  }
+  assert.equal(dialogFixture({guide:base}).find(n=>n.type==='ResidentFields').props.elementObservations,'');
 });
 
 test('las consultas trasladan horarios nuevos e históricos sin fabricar datos', async () => {
@@ -159,7 +175,7 @@ test('guía manual permite UM vacía y exige elección del residente antes del R
 });
 
 test('crear y editar conservan todos los datos manuales, sin validar proyecto o pedido contra el despacho', async () => {
- const details={...guideDetailsModel.emptyGuideDetails(),customerName:'Cliente escrito',projectName:'Otra etiqueta de obra',workAddress:'Dirección informativa',guideDate:'2026-10-26',orderNumber:'PEDIDO-PAPEL',plant:'6015',truck:'0183',loadingTime:'18:27',pilot:'Piloto manual',operator:'Operador manual',observations:'Observaciones del residente'};
+ const details={...guideDetailsModel.emptyGuideDetails(),customerName:'Cliente escrito',projectName:'Otra etiqueta de obra',workAddress:'Dirección informativa',guideDate:'2026-10-26',orderNumber:'PEDIDO-PAPEL',plant:'6015',truck:'0183',loadingTime:'18:27',pilot:'Piloto manual',operator:'Operador manual',observations:'Observaciones del residente',castingElementObservations:'Columnas del eje A\nFundir hasta nivel 2.'};
  for(const id of ['',guideId]) {
   const f=actionFixture();const result=await f.save({},form({guideId:id,guideDetails:JSON.stringify(details)}));
   assert.equal(result.status,'success');assert.equal(JSON.stringify(f.calls[0].args.p_details),JSON.stringify(details));

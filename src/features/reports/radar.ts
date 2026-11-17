@@ -46,6 +46,7 @@ export type RadarGuide = {
   pilot: string;
   operator: string;
   observations: string;
+  castingElementObservations: string;
   temperature: number | null;
   slump: string;
   laboratoryNotes: string;
@@ -167,6 +168,7 @@ export function makeRadarGuide(row: Row, lineRows: Row[], programmingCasting?: u
     arrivalAt: text(row.truck_arrival_at) || null, departureAt: text(row.truck_departure_at) || null,
     laboratory: typeof row.laboratory_applied === "boolean" ? row.laboratory_applied : null, castingElement: element ? CASTING_ELEMENTS[element] : "Sin registrar",
     pilot: text(details.pilot), operator: text(details.operator), observations: text(details.observations),
+    castingElementObservations: text(details.castingElementObservations),
     temperature: details.temperature !== null && details.temperature !== undefined && String(details.temperature).trim() !== "" && Number.isFinite(Number(details.temperature)) ? Number(details.temperature) : null,
     slump: text(details.slump), laboratoryNotes: text(details.laboratoryNotes),
     concreteQuantity: Math.round(products.filter((line) => /^m[³3]$/iu.test(line.unit)).reduce((total, line) => total + line.quantity, 0) * 10000) / 10000,

@@ -80,7 +80,9 @@ export function buildConcreteControlWorkbook(dispatches: RadarDispatch[]) {
       formulaCell(row.getCell(COL.consumedVolume), `IF(COUNT(R${r},U${r})=2,(R${r}+U${r})/2,"Pendiente")`, control.consumedVolume);
       row.getCell(COL.laboratory).value = guide.laboratory === null ? "Sin registrar" : guide.laboratory ? "Sí" : "No";
       row.getCell(COL.element).value = guide.castingElement;
-      row.getCell(COL.observations).value = [guide.observations, ...control.warnings].filter(Boolean).join("\n");
+      const observations = row.getCell(COL.observations);
+      observations.value = guide.castingElementObservations || "";
+      if (control.warnings.length) observations.note = `Avisos del reporte:\n${control.warnings.join("\n")}`;
     } else row.getCell(3).value = "Sin guías registradas";
     row.height = Math.max(30, String(row.getCell(COL.observations).value || "").split("\n").reduce((sum, text) => sum + Math.max(1, Math.ceil(text.length / 62)), 0) * 15);
     for (let col = 1; col <= HEADERS.length; col++) {
