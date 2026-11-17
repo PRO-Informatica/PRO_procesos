@@ -5,6 +5,7 @@ import {
   formatAccountingPeriod,
   formatDashboardDateTime,
   formatDashboardTime,
+  formatDashboardActivity,
   formatDateRange,
   formatQuantity,
 } from "../src/features/dashboard/formatters.ts";
@@ -23,6 +24,20 @@ test("los formatos compartidos por SSR y cliente no conservan separadores Unicod
   for (const value of values) {
     assert.doesNotMatch(value, unstableIntlCharacters);
   }
+});
+
+test("la actividad reciente traduce los eventos y nunca muestra códigos desconocidos en inglés", () => {
+  const expected = {
+    DISPATCH_SAVED: "Despacho guardado",
+    DISPATCH_SERVICE_REINVOICING_REQUESTED: "Refacturación de Servicio solicitada",
+    PROJECT_ROLE_ASSIGNED: "Rol de proyecto asignado",
+    PROGRAMMING_CREATED: "Programación creada",
+    INVOICE_REPLACED: "Factura reemplazada",
+  };
+  for (const [code, label] of Object.entries(expected)) assert.equal(formatDashboardActivity(code), label);
+  assert.equal(formatDashboardActivity(" Dispatch Saved "), "Despacho guardado");
+  assert.equal(formatDashboardActivity("dispatch-saved"), "Despacho guardado");
+  assert.equal(formatDashboardActivity("SOME_NEW_ENGLISH_ACTION"), "Actividad registrada");
 });
 
 test("la fecha reciente conserva la zona horaria y el texto esperado", () => {

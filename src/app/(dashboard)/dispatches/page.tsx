@@ -4,8 +4,9 @@ import { DispatchesWorkspace } from "@/features/dispatches/components/dispatches
 import { getDispatchPageData } from "@/features/dispatches/queries";
 import { usesResidentProgrammingView } from "@/features/programming/status-presentation";
 import { getProjectContext } from "@/features/projects/queries";
+import { getDashboardListScope, type DashboardSearchParams } from "@/features/dashboard/list-scope";
 
-export default async function DispatchesPage() {
+export default async function DispatchesPage({ searchParams }: { searchParams?: Promise<DashboardSearchParams> }) {
   const profile = await requireActiveProfile();
   const context = await getProjectContext(profile.id);
 
@@ -25,8 +26,13 @@ export default async function DispatchesPage() {
     );
   }
 
+  const params = await searchParams ?? {};
+  const filter = await getDashboardListScope(params, context, "/dispatches");
+  if (filter.status === "error") return <EmptyState title="Indicador no disponible" description={filter.message} />;
   const data = await getDispatchPageData(context.activeProject.id);
   return <DispatchesWorkspace
+    key={JSON.stringify([context.activeProject.id, params])}
+    dashboardScope={filter.status === "ready" ? filter.scope : undefined}
     project={context.activeProject}
     residentView={usesResidentProgrammingView(context.roleCodes)}
     canCreate={context.permissions.includes("dispatch.create")}

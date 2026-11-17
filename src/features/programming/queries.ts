@@ -699,8 +699,9 @@ export async function getProgrammingDetailPageData(
 export async function getProgrammingPageData(
   projectId: string,
   timezone: string,
+  requestedRange?: ProgrammingRange,
 ): Promise<ProgrammingPageData> {
-  const range = getInitialProgrammingRange(timezone);
+  const range = requestedRange ?? getInitialProgrammingRange(timezone);
   const [items, catalogs] = await Promise.all([
     getProgrammingItems(projectId, range, {}, timezone),
     getProgrammingCatalogs(projectId),

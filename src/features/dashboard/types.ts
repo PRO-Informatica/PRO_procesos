@@ -12,8 +12,15 @@ export type DashboardBatchReconciliation = {
   reinvoicing: number;
   reconciled: number;
 };
+export type DashboardRecord = {
+  id: string; kind: "programming" | "guide" | "dispatch"; title: string;
+  orderNumber: string; date: string; quantity: number; unitCode: string;
+  href: string; status: string; groups: string[]; batchIds: string[];
+  productStatus?: string; serviceStatus?: string;
+};
 export type ProjectDashboardData = {
   today: string; weekStart: string; weekEnd: string; timezone: string; weekDays: DashboardWeekDay[]; currentBatch: DashboardBatch | null; batchReconciliation: DashboardBatchReconciliation[]; activity: DashboardActivity[];
+  records: DashboardRecord[];
   metrics: {
     today: { total: number; completed: number; pending: number; programmedM3: number };
     week: { total: number; completed: number; pending: number; compliance: number };

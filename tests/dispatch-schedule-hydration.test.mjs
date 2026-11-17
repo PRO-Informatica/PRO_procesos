@@ -10,6 +10,8 @@ function load(path, imports, intl) {
   }).outputText;
   const exports = {};
   runInNewContext(compiled, { exports, Date, Intl: intl, require(name) {
+    if (name === "@/features/dashboard/components/indicator-filter") return { IndicatorFilter: "IndicatorFilter" };
+    if (name === "@/features/dashboard/list-scope") return { getDashboardListScope: async () => ({ status: "none" }) };
     assert.ok(Object.hasOwn(imports, name), name);
     return imports[name];
   } });

@@ -9,6 +9,8 @@ import { MotionPage } from "@/components/motion/motion-page";
 import { MotionSection } from "@/components/motion/motion-section";
 import { MotionSwap } from "@/components/motion/motion-swap";
 import type { ProjectSummary } from "@/features/projects/types";
+import type { DashboardListScope } from "@/features/dashboard/details";
+import { IndicatorFilter } from "@/features/dashboard/components/indicator-filter";
 
 import { loadProgrammingRange } from "../actions";
 import { isActiveProgramming, isHistoricalProgramming } from "../availability";
@@ -79,6 +81,7 @@ export function ProgrammingWorkspace({
   canStartDispatch = false,
   initialData,
   residentView = false,
+  dashboardScope,
 }: {
   project: ProjectSummary;
   canCreate: boolean;
@@ -88,8 +91,9 @@ export function ProgrammingWorkspace({
   canStartDispatch?: boolean;
   initialData: ProgrammingPageData;
   residentView?: boolean;
+  dashboardScope?: DashboardListScope;
 }) {
-  const [view, setView] = useState<ViewMode>("calendar");
+  const [view, setView] = useState<ViewMode>(dashboardScope ? "kanban" : "calendar");
   const [scope, setScope] = useState<ProgrammingScope>("active");
   const [items, setItems] = useState(initialData.items);
   const [range, setRange] = useState(initialData.range);
@@ -178,14 +182,16 @@ export function ProgrammingWorkspace({
   );
   const scopedItems = useMemo(() => {
     return items.filter((item) => {
+      if (dashboardScope && !dashboardScope.recordIds.includes(item.id)) return false;
       const displayStatus = getProgrammingDisplayStatus(item.effectiveStatus, residentView);
       if (status && displayStatus !== getProgrammingDisplayStatus(status, residentView)) return false;
+      if (dashboardScope) return true;
       const programming = { effectiveStatus: item.effectiveStatus };
       return scope === "active"
         ? isActiveProgramming(programming)
         : residentView ? displayStatus === "DISPATCH_COMPLETED" : isHistoricalProgramming(programming);
     });
-  }, [items, residentView, scope, status]);
+  }, [items, residentView, scope, status, dashboardScope]);
   const creationActions = canCreate && scope === "active" && (
     <div className="grid w-full gap-2 sm:flex sm:w-auto sm:items-center">
       <button
@@ -202,6 +208,7 @@ export function ProgrammingWorkspace({
 
   return (
     <MotionPage className="mx-auto w-full min-w-0 max-w-[1600px]">
+      {dashboardScope && <div className="mb-4"><IndicatorFilter scope={dashboardScope} clearHref="/programming" /></div>}
       <MotionSection className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">
