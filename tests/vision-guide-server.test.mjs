@@ -56,6 +56,20 @@ test('guardado deja pedido informativo, elimina precios enviados por cliente y a
  const payload=f.calls.updates.find(x=>x.review_payload).review_payload;
  assert.equal(payload.details.orderNumber,'999');assert.equal(payload.lines[0].product_code,'UNKNOWN');assert.ok(!('unitPrice'in payload.lines[0]));assert.ok(!('unit_price'in payload.lines[0]));assert.equal(payload.lines[0].catalog_item_id,null);
 });
+test('OCR conserva observaciones del elemento separadas de las generales y acepta capturas anteriores',async()=>{
+ for(const legacy of [false,true]){
+  const f=fixture();f.draft.details.observations='Nota general de la guía';
+  if(legacy)delete f.draft.details.castingElementObservations;
+  else f.draft.details.castingElementObservations='Columnas del eje A\nNivel 2.';
+  await f.server.saveCapture(f.context,id,f.draft,1);
+  const details=f.calls.updates.find(x=>x.review_payload).review_payload.details;
+  assert.equal(details.observations,'Nota general de la guía');
+  assert.equal(details.castingElementObservations,legacy?undefined:'Columnas del eje A\nNivel 2.');
+ }
+ const f=fixture();f.draft.details.castingElementObservations='x'.repeat(4001);
+ await assert.rejects(f.server.saveCapture(f.context,id,f.draft,1),/longitud/);
+ assert.equal(f.calls.commits,0);
+});
 test('una incidencia de catálogo desactivada informa la causa y no reporta guardado exitoso',async()=>{
  const f=fixture();
  f.context.db.rpc=async()=>({data:null,error:{message:'GUIDE_CATALOG_INCIDENT_TYPE_INACTIVE'}});

@@ -282,7 +282,7 @@ export function DispatchGuideDialog({
   const addLine = () => { setOcrReviewed(false); setLines((current) => [...current, emptyLine(crypto.randomUUID())]); };
   const locked = readOnly || pending || photoBusy || Boolean(photoRetryGuide) || (photoSelected && !capture);
   const applyCapture = (result: GuidePhotoResult) => {
-    setCapture(result); setDetails(result.draft.details); setOcrReviewed(false);
+    setCapture(result); setDetails({ ...emptyGuideDetails(), ...result.draft.details }); setOcrReviewed(false);
     setCastingElement(normalizeCastingElement(defaultCastingElement) ?? ""); setLaboratoryApplied(false);
     setGuideNumber(result.draft.guideNumber); setGuideDate(result.draft.details.guideDate);
     setTruckArrivalTime(result.draft.arrivalTime); setTruckDepartureTime(result.draft.departureTime);
@@ -303,7 +303,11 @@ export function DispatchGuideDialog({
 <p className="text-xs leading-5 text-foreground-muted">La fecha de la guía corresponde a la llegada del camión. Si la hora de salida es menor que la de llegada, se registra al día siguiente. Los horarios son independientes del inicio del despacho.</p>
           {truckArrivalTime && truckDepartureTime && truckDepartureTime < truckArrivalTime && <p role="status" className="rounded-lg bg-muted px-3 py-2 text-xs text-foreground">El camión sale al día siguiente de la fecha de la guía.</p>}
   </>;
-  const residentFields = <GuideResidentFields element={castingElement} laboratory={effectiveLaboratoryApplied} showLaboratory={!servicesOnly} disabled={locked} onElement={(value) => { setCastingElement(value); setOcrReviewed(false); }} onLaboratory={(value) => { setLaboratoryApplied(value); setOcrReviewed(false); }} />;
+  const residentFields = <GuideResidentFields element={castingElement} elementObservations={details.castingElementObservations}
+    laboratory={effectiveLaboratoryApplied} showLaboratory={!servicesOnly} disabled={locked}
+    onElement={(value) => { setCastingElement(value); setOcrReviewed(false); }}
+    onElementObservations={(value) => { setDetails((current) => ({ ...current, castingElementObservations: value })); setOcrReviewed(false); }}
+    onLaboratory={(value) => { setLaboratoryApplied(value); setOcrReviewed(false); }} />;
   const catalogWarnings = capture ? guideCatalogReviewWarnings(lines) : [];
   const warnings = [...(capture?.draft.warnings.filter((warning) => !/^Línea \d+: confirma la UM/u.test(warning)) ?? []), ...catalogWarnings];
   const lineEditor = (
