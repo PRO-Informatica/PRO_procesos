@@ -16,6 +16,8 @@ function load(path, imports, globals = {}) {
   }).outputText;
   const exports = {};
   runInNewContext(compiled, { exports, Date, Intl, ...globals, require(name) {
+    if (name === "@/features/dashboard/components/indicator-filter") return { IndicatorFilter: "IndicatorFilter" };
+    if (name === "@/features/dashboard/list-scope") return { getDashboardListScope: async () => ({ status: "none" }) };
     assert.ok(Object.hasOwn(imports, name), `Missing import: ${name}`);
     return imports[name];
   } });
@@ -205,7 +207,7 @@ test("las páginas obtienen la vista del rol autenticado sin modificar los permi
       "@/features/programming/components/programming-workspace": { ProgrammingWorkspace: "Workspace" },
       "@/features/programming/components/programming-detail-view": { ProgrammingDetailView: "Detail" },
     };
-    const list = await load("app/(dashboard)/programming/page.tsx", imports).default();
+    const list = await load("app/(dashboard)/programming/page.tsx", imports).default({});
     const detail = await load("app/(dashboard)/programming/[id]/page.tsx", imports).default({ params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000001" }) });
     assert.equal(list.props.residentView, roleCodes.length === 1 && roleCodes[0] === "RESIDENT");
     assert.equal(detail.props.residentView, list.props.residentView);

@@ -1,10 +1,14 @@
 import type { ServiceReconciliationSummary } from "@/features/invoices/service-reconciliation";
+import type { DashboardBillingStatus } from "@/features/dashboard/reconciliation";
 export type GlobalReconciliationItem = {
   id: string;
   dispatchId: string;
   programmingCode: string;
   batchId: string;
   batchCode: string;
+  batchIds: string[];
+  billingStatus: DashboardBillingStatus;
+  requiresServiceInvoice: boolean;
   orderNumber: string;
   supplierName: string;
   realVolume: number;

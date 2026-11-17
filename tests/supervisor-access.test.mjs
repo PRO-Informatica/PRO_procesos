@@ -7,6 +7,7 @@ import * as access from "../src/features/projects/access-policy.ts";
 import * as gmailAccess from "../src/features/integrations/gmail/access-policy.ts";
 import * as security from "../src/features/auth/security.ts";
 import * as programmingTypes from "../src/features/programming/types.ts";
+import * as dashboardDetails from "../src/features/dashboard/details.ts";
 
 const inherited = ["programming.view", "programming.create", "programming.modify", "programming.confirm", "programming.cancel", "programming.close",
   "batch.view", "invoice.view", "report.view", "dispatch.view", "dispatch.create", "dispatch.modify", "dispatch.complete", "dispatch.register_incident", "document.upload", "document.view", "gmail.mailbox.view", "gmail.mail.send"];
@@ -20,6 +21,8 @@ function load(path, imports) {
   }).outputText;
   const exports = {};
   runInNewContext(compiled, { exports, Date, Intl, File, Response, URL, require(name) {
+    if (name === "@/features/dashboard/components/indicator-filter") return { IndicatorFilter: "IndicatorFilter" };
+    if (name === "@/features/dashboard/list-scope") return { getDashboardListScope: async () => ({ status: "none" }) };
     assert.ok(Object.hasOwn(imports, name), `Missing import: ${name}`); return imports[name];
   } });
   return exports;
@@ -60,11 +63,11 @@ test("Programación expone solo consulta; Despachos conserva inicio y carga de g
     "@/features/dispatches/components/dispatch-detail-view": { DispatchDetailView: "DispatchDetailView" },
     "@/features/dispatches/queries": { getDispatchPageData: async () => ({}), getDispatchDetail: async () => ({}) },
   };
-  const programming = await load("app/(dashboard)/programming/page.tsx", imports).default();
+  const programming = await load("app/(dashboard)/programming/page.tsx", imports).default({});
   for (const key of ["canCreate", "canModify", "canConfirm", "canCancel"]) assert.equal(programming.props[key], false, key);
   const detail = await load("app/(dashboard)/programming/[id]/page.tsx", imports).default({ params: Promise.resolve({ id }) });
   assert.ok(Object.values(detail.props.permissions).every(value => value === false));
-  const dispatches = await load("app/(dashboard)/dispatches/page.tsx", imports).default();
+  const dispatches = await load("app/(dashboard)/dispatches/page.tsx", imports).default({});
   assert.equal(dispatches.props.canCreate, true); assert.equal(dispatches.props.canModify, true);
   const dispatch = await load("app/(dashboard)/dispatches/[id]/page.tsx", imports).default({ params: Promise.resolve({ id }) });
   assert.equal(dispatch.props.permissions.canManageGuides, true);
@@ -191,6 +194,7 @@ test("Inicio no muestra lotes, conciliación ni accesos financieros a Supervisor
     "@/lib/status-labels": { formatStatusLabel: String }, "../formatters": { formatDateRange: () => "Semana", formatQuantity: String },
     "./dashboard-charts": { BatchReconciliationChart: "BatchChart", WeeklyVolumeChart: "WeeklyChart" },
     "./recent-activity": { RecentActivity: "RecentActivity" },
+    "../details": dashboardDetails,
   };
   const data = { metrics: { today: {}, week: {}, month: {}, orders: {}, attention: { reinvoicing: 1, overdueProgramming: 1, pendingInvoice: 1 } },
     currentBatch: { id: "batch" }, activity: ["programming", "dispatch", "dispatch_guide", "invoice", "reconciliation_order"].map(entityType => ({ entityType })) };
@@ -198,9 +202,23 @@ test("Inicio no muestra lotes, conciliación ni accesos financieros a Supervisor
   const tree = component({ project: context.activeProject, roleCodes: ["SUPERVISOR"], data });
   assert.equal(nodes(tree).some(n => n.type === "BatchChart"), false);
   assert.equal(nodes(tree).some(n => n.type === "Link" && /^\/(batches|invoices|reconciliation|reports)/u.test(n.props.href)), false);
+  assert.equal(nodes(tree).some(n => n.type === "Link" && n.props.href.startsWith("/dashboard/details") && dashboardDetails.isFinancialDashboardDetail(new URL(n.props.href, "http://localhost").searchParams.get("view"))), false);
   assert.deepEqual(nodes(tree).find(n => n.type === "RecentActivity").props.items.map(n => n.entityType), ["programming", "dispatch", "dispatch_guide"]);
   const admin = component({ project: context.activeProject, roleCodes: ["COMPANY_ADMIN"], data });
   assert.ok(nodes(admin).some(n => n.type === "BatchChart"));
+});
+
+test("el detalle financiero del dashboard rechaza a Supervisor antes de cargar datos", async () => {
+  const imports = { ...base,
+    "@/features/dashboard/details": dashboardDetails,
+    "@/features/dashboard/components/dashboard-details": { DashboardDetails: "DashboardDetails" },
+    "@/features/dashboard/queries": { getProjectDashboard: async () => { assert.fail("No debe cargar el detalle financiero"); } },
+  };
+  const component = load("app/(dashboard)/dashboard/details/page.tsx", imports).default;
+  for (const view of ["orders", "pendingOrders", "pendingInvoices", "pendingReconciliation", "reinvoicing", "reconciled"]) {
+    const tree = await component({ searchParams: Promise.resolve({ project: projectId, view }) });
+    assert.equal(tree.props.title, "Sin acceso a este detalle", view);
+  }
 });
 
 test("exportar Reportería por URL devuelve 403 antes de consultar datos o archivos", async () => {

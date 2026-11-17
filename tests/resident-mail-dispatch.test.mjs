@@ -15,6 +15,8 @@ function load(path, imports) {
   }).outputText;
   const exports = {};
   runInNewContext(compiled, { exports, Date, Intl, URL, require(name) {
+    if (name === "@/features/dashboard/components/indicator-filter") return { IndicatorFilter: "IndicatorFilter" };
+    if (name === "@/features/dashboard/list-scope") return { getDashboardListScope: async () => ({ status: "none" }) };
     assert.ok(Object.hasOwn(imports, name), `Missing import: ${name}`);
     return imports[name];
   } });

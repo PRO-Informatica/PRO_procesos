@@ -1,0 +1,12 @@
+.barLink { outline: none; cursor: pointer; }
+.barBody { transition: filter 180ms ease, stroke-width 180ms ease; }
+.barLink:hover .barBody, .barLink:focus-visible .barBody {
+  stroke: var(--foreground);
+  stroke-width: 2;
+  filter: brightness(1.06);
+}
+.barSheen { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .barSheen { display: none; }
+  .barBody { transition: none; }
+}

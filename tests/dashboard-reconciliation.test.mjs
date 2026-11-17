@@ -4,6 +4,10 @@ import { runInNewContext } from "node:vm";
 import test from "node:test";
 import ts from "typescript";
 import { dashboardBillingStatus } from "../src/features/dashboard/reconciliation.ts";
+import { serviceReconciliationSummary } from "../src/features/invoices/service-reconciliation.ts";
+import { requiresServiceInvoice } from "../src/features/programming/invoice-policy.ts";
+import { resolveReconciliationQuantityBasis, selectValidProgrammedQuantity } from "../src/features/invoices/reconciliation-quantity.ts";
+import { selectDashboardRecords } from "../src/features/dashboard/details.ts";
 
 const reconciled = { dispatch_id: "d", status: "RECONCILED", service_status: "RECONCILED", current_product_invoice_id: "product", current_service_invoice_id: "service" };
 
@@ -40,6 +44,8 @@ test("solo Concreto directo explícito conserva la excepción de Servicio", () =
 const source = await readFile(new URL("../src/features/dashboard/queries.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 
+const reconciliationCompiled = ts.transpileModule(await readFile(new URL("../src/features/reconciliation/queries.ts", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+
 function fixture({ count = 4, complete = false, direct = false, errorTable, rpcError = false, duplicate = false } = {}) {
   const calls = [];
   const dispatches = Array.from({ length: count }, (_, i) => ({ id: `dispatch-${String(i).padStart(5, "0")}`, project_id: "project-a", programming_id: "program" }));
@@ -62,6 +68,7 @@ function fixture({ count = 4, complete = false, direct = false, errorTable, rpcE
     let bounds, limit, single = false;
     const query = {
       select(value) { call.select = value; return query; },
+      is(key, value) { checks.push(row => row[key] === value); return query; },
       eq(key, value) { call.eq.push([key, value]); checks.push(row => row[key] === value); return query; },
       gte(key, value) { checks.push(row => row[key] >= value); return query; },
       lte(key, value) { checks.push(row => row[key] <= value); return query; },
@@ -85,14 +92,22 @@ function fixture({ count = 4, complete = false, direct = false, errorTable, rpcE
   const imports = {
     "server-only": {}, "@/lib/supabase/server": { createClient: async () => client },
     "./reconciliation": { dashboardBillingStatus },
+    "@/features/dashboard/reconciliation": { dashboardBillingStatus },
+    "@/features/invoices/service-reconciliation": { serviceReconciliationSummary },
+    "@/features/batches/formatters": { formatProgrammingCode: id => `PRG-${id}` },
+    "@/features/invoices/reconciliation-quantity": { resolveReconciliationQuantityBasis, selectValidProgrammedQuantity },
+    "@/features/programming/invoice-policy": { requiresServiceInvoice },
     "@/features/dispatches/billing-completion-queries": { getDispatchBillingCompletion: async ids => {
       calls.push({ rpc: ids });
       if (rpcError) throw new Error("Completion unavailable");
       return Object.fromEntries(dispatches.map(row => [row.id, complete || direct]));
     } },
   };
-  runInNewContext(compiled, { exports, Date, Intl, require(name) { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; } });
-  return { calls, run: () => exports.getProjectDashboard("project-a", "America/Guatemala") };
+  class DashboardDate extends Date { constructor(value) { super(value ?? "2026-11-17T16:00:00Z"); } }
+  runInNewContext(compiled, { exports, Date: DashboardDate, Intl, require(name) { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; } });
+  const listExports = {};
+  runInNewContext(reconciliationCompiled, { exports: listExports, require: name => { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; } });
+  return { calls, tables, run: () => exports.getProjectDashboard("project-a", "America/Guatemala"), list: () => listExports.getGlobalReconciliation("project-a") };
 }
 
 test("regresión del lote: cuatro productos conciliados con Servicio pendiente no son cuatro conciliados", async () => {
@@ -118,9 +133,70 @@ test("el dashboard carga más de mil despachos sin truncar la conciliación", as
   const f = fixture({ count: 1101, complete: true }), dashboard = await f.run();
   assert.equal(dashboard.metrics.orders.completed, 1101);
   assert.equal(dashboard.batchReconciliation[0].reconciled, 1101);
+  assert.equal(selectDashboardRecords(dashboard, "reconciled", { batch: "batch" }).length, 1101);
   for (const table of ["dispatches", "dispatch_reconciliations"]) {
     assert.equal(f.calls.filter(call => call.table === table && call.range).length, 3);
   }
+});
+
+test("abrir seis refacturaciones devuelve esos seis despachos y respeta el lote seleccionado", async () => {
+  const f = fixture({ count: 6, duplicate: true });
+  // One issue is on Product; the others are on Service. Neither is lost.
+  f.tables.dispatch_reconciliations[0].status = "PENDING_REINVOICING";
+  f.tables.dispatch_reconciliations[0].service_status = "RECONCILED";
+  f.tables.batches.push({ id: "another-batch", code: "LOT-2026-11-16", project_id: "project-a", period_start: "2026-11-16", period_end: "2026-11-22", status: "OPEN", members: [{ dispatch_id: "dispatch-00000", removed_at: null }] });
+  const dashboard = await f.run();
+  const all = selectDashboardRecords(dashboard, "reinvoicing");
+  assert.equal(all.length, dashboard.metrics.attention.reinvoicing);
+  assert.equal(all.length, 6);
+  assert.equal(new Set(all.map(row => row.id)).size, 6);
+  assert.ok(all.some(row => row.productStatus === "PENDING_REINVOICING"));
+  assert.ok(all.some(row => row.serviceStatus === "PENDING_REINVOICING"));
+  for (const batch of dashboard.batchReconciliation) {
+    for (const view of ["pendingInvoices", "pendingReconciliation", "reinvoicing", "reconciled"]) {
+      assert.equal(selectDashboardRecords(dashboard, view, { batch: batch.batchId }).length, batch[view]);
+    }
+  }
+  assert.equal(selectDashboardRecords(dashboard, "reinvoicing", { batch: "batch" }).length, 5);
+  assert.deepEqual(selectDashboardRecords(dashboard, "reinvoicing", { batch: "another-batch" }).map(row => row.id), ["dispatch-00000"]);
+  assert.equal(selectDashboardRecords(dashboard, "reconciled").length, 0);
+  assert.ok(dashboard.records.every(row => !row.href.includes("foreign")));
+  assert.equal(selectDashboardRecords(dashboard, "orders", { batch: "foreign-batch" }).length, 0);
+});
+
+test("los enlaces diarios, semanales y mensuales coinciden con las cantidades del indicador", async () => {
+  const f = fixture();
+  const program = f.tables.programming[0];
+  f.tables.programming = [
+    { ...program, id: "today", scheduled_at: "2026-11-17T13:00:00Z", status: "COMPLETED", confirmed_quantity: 8 },
+    { ...program, id: "night", scheduled_at: "2026-11-18T02:00:00Z", requested_quantity: 2 },
+    { ...program, id: "week", scheduled_at: "2026-11-19T13:00:00Z", requested_quantity: 4 },
+    { ...program, id: "overdue", scheduled_at: "2026-11-10T13:00:00Z" },
+    { ...program, id: "cancelled", scheduled_at: "2026-11-17T13:00:00Z", status: "CANCELLED" },
+    { ...program, id: "service", scheduled_at: "2026-11-17T13:00:00Z", unit_code: "UN", requested_quantity: 1 },
+  ];
+  f.tables.dispatch_guides = [
+    { id: "guide-today", project_id: "project-a", dispatch_id: "dispatch-00000", guide_date: "2026-11-17", guide_number: "A-1", quantity: 5, unit_code: "M3" },
+    { id: "guide-month", project_id: "project-a", dispatch_id: "dispatch-00000", guide_date: "2026-11-10", quantity: 3, unit_code: "M3" },
+    { id: "guide-service", project_id: "project-a", dispatch_id: "dispatch-00000", guide_date: "2026-11-17", quantity: 2, unit_code: "UN" },
+    { id: "guide-foreign", project_id: "project-b", dispatch_id: "foreign", guide_date: "2026-11-17", quantity: 100, unit_code: "M3" },
+  ];
+  const dashboard = await f.run();
+  for (const view of ["today", "week"]) assert.equal(selectDashboardRecords(dashboard, view).length, dashboard.metrics[view].total);
+  assert.equal(selectDashboardRecords(dashboard, "weekCompleted").length, dashboard.metrics.week.completed);
+  assert.equal(selectDashboardRecords(dashboard, "weekPending").length, dashboard.metrics.week.pending);
+  const volume = view => selectDashboardRecords(dashboard, view).reduce((sum, row) => sum + row.quantity, 0);
+  assert.equal(volume("month"), dashboard.metrics.month.programmedM3);
+  assert.equal(volume("receivedMonth"), dashboard.metrics.month.receivedM3);
+  for (const day of dashboard.weekDays) {
+    for (const [view, field] of [["programmedDay", "programmedM3"], ["receivedDay", "receivedM3"]]) {
+      assert.equal(selectDashboardRecords(dashboard, view, { date: day.date }).reduce((sum, row) => sum + row.quantity, 0), day[field]);
+    }
+  }
+  assert.equal(selectDashboardRecords(dashboard, "programmedDay", { date: "2026-11-17" }).length, 2);
+  assert.equal(selectDashboardRecords(dashboard, "receivedDay", { date: "2026-11-17" }).length, 1);
+  assert.equal(selectDashboardRecords(dashboard, "programmedDay", { date: "2026-10-01" }).length, 0);
+  assert.equal(selectDashboardRecords(dashboard, "overdue").length, dashboard.metrics.attention.overdueProgramming);
 });
 
 test("un error de conciliación impide presentar cifras incompletas", async () => {
@@ -128,4 +204,34 @@ test("un error de conciliación impide presentar cifras incompletas", async () =
     await assert.rejects(fixture({ errorTable }).run(), /No fue posible cargar/);
   }
   await assert.rejects(fixture({ rpcError: true }).run(), /Completion unavailable/);
+});
+
+
+test("la lista reutilizada coincide con las seis refacturaciones e incluye despachos sin factura o lote", async () => {
+  const f = fixture({ count: 6 });
+  f.tables.dispatch_reconciliations[0].status = "PENDING_REINVOICING";
+  f.tables.dispatch_reconciliations[0].service_status = "RECONCILED";
+  f.tables.batch_dispatches = f.tables.batches[0].members.map((row, i) => ({ ...row, id: String(i), batch_id: "batch", project_id: "project-a" }));
+  // Remove a relation: the dispatch still belongs in the global indicator.
+  f.tables.batch_dispatches[1].removed_at = "2026-11-16";
+  f.tables.batch_dispatches.push({ ...f.tables.batch_dispatches[0], id: "duplicate" });
+  const dashboard = await f.run(), list = await f.list();
+  assert.equal(list.items.length, 7);
+  assert.equal(new Set(list.items.map(row => row.dispatchId)).size, 7);
+  for (const bucket of ["pendingInvoices", "pendingReconciliation", "reinvoicing", "reconciled"]) {
+    assert.deepEqual(Array.from(list.items.filter(row => row.billingStatus === bucket), row => row.dispatchId).sort(), Array.from(selectDashboardRecords(dashboard, bucket), row => row.id).sort());
+  }
+  const without = list.items.find(row => row.dispatchId === "without-reconciliation");
+  assert.equal(without.billingStatus, "pendingInvoices");
+  assert.equal(without.reconciliationStatus, "NOT_STARTED");
+  assert.equal(list.items.find(row => row.dispatchId === "dispatch-00001").batchId, "");
+  assert.ok(list.items.every(row => !row.dispatchId.includes("foreign")));
+});
+
+test("Conciliación comparte la excepción DIRECT y carga más de mil filas sin truncar", async () => {
+  const f = fixture({ count: 1101, direct: true });
+  const data = await f.list();
+  assert.equal(data.items.filter(item => item.billingStatus === "reconciled").length, 1101);
+  assert.ok(data.items.every(item => item.requiresServiceInvoice === false));
+  for (const table of ["dispatches", "dispatch_reconciliations"]) assert.equal(f.calls.filter(call => call.table === table).length, 3);
 });

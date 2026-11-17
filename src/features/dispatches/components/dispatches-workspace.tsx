@@ -11,6 +11,8 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { MotionPage } from "@/components/motion/motion-page";
 import { MotionSection } from "@/components/motion/motion-section";
 import type { ProjectSummary } from "@/features/projects/types";
+import type { DashboardListScope } from "@/features/dashboard/details";
+import { IndicatorFilter } from "@/features/dashboard/components/indicator-filter";
 
 import {
   formatDispatchDateTime,
@@ -114,6 +116,7 @@ export function DispatchesWorkspace({
   data,
   receiverName,
   residentView = false,
+  dashboardScope,
 }: {
   project: ProjectSummary;
   canCreate: boolean;
@@ -121,6 +124,7 @@ export function DispatchesWorkspace({
   data: DispatchPageData;
   receiverName: string;
   residentView?: boolean;
+  dashboardScope?: DashboardListScope;
 }) {
   const [programmingStatus, setProgrammingStatus] = useState<ProgrammingDispatchStatus | "">("");
   const [dispatchStatus, setDispatchStatus] = useState<DispatchFilter>("");
@@ -133,6 +137,7 @@ export function DispatchesWorkspace({
   const [guideItem, setGuideItem] = useState<ProgrammingDispatchItem | null>(null);
 
   const filtered = useMemo(() => data.items.filter((item) => {
+    if (dashboardScope && (!item.dispatchId || !dashboardScope.recordIds.includes(item.dispatchId))) return false;
     const itemDate = localDate(item.scheduledAt, project.timezone || "America/Guatemala");
     const statusMatches = dispatchStatus === ""
       || (dispatchStatus === "NOT_STARTED" ? !item.dispatchId : item.dispatchStatus === dispatchStatus);
@@ -142,7 +147,7 @@ export function DispatchesWorkspace({
       && (!code || item.programmingCode.toLowerCase().includes(code.trim().toLowerCase()))
       && matchesPeriod(itemDate, date, dateMode)
     );
-  }), [code, data.items, date, dateMode, dispatchStatus, programmingStatus, project.timezone, residentView]);
+  }), [code, data.items, date, dateMode, dispatchStatus, programmingStatus, project.timezone, residentView, dashboardScope]);
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const firstItem = (currentPage - 1) * PAGE_SIZE;
@@ -163,6 +168,7 @@ export function DispatchesWorkspace({
 
   return (
     <MotionPage className="dispatches-workspace mx-auto w-full min-w-0 max-w-[1600px] space-y-4 pb-10">
+      {dashboardScope && <IndicatorFilter scope={dashboardScope} clearHref="/dispatches" />}
       <MotionSection>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Operación · Despachos en obra</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-[1.75rem]">Despachos</h1>
