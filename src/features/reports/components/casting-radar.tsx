@@ -1,6 +1,5 @@
 "use client";
 
-import { Pagination } from "@/components/ui/pagination";
 import { useState } from "react";
 import { FileSpreadsheet, FlaskConical, Radar, ClipboardList } from "lucide-react";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -8,22 +7,29 @@ import { LoadingButton } from "@/components/feedback/loading-button";
 import { MotionPage } from "@/components/motion/motion-page";
 import { MotionSection } from "@/components/motion/motion-section";
 import { notify } from "@/lib/notify";
-import { MAX_RADAR_DISPATCHES, radarDate, radarLocalDate, radarSearchParams, type RadarData, type RadarFilters } from "../radar";
+import { MAX_RADAR_DISPATCHES, radarSearchParams, type RadarData, type RadarFilters } from "../radar";
 import { DispatchReportFilters } from "./report-filters";
-import { DispatchReportCard } from "./dispatch-report-card";
+import { ReportResultsPagination } from "./report-results-pagination";
 import { ReportSections } from "./report-sections";
+import { DispatchTableRow } from "./report-table-rows";
 
-const PAGE_SIZE = 8;
-export function CastingRadar({ data, filters, universal = false, report = "radar" }: { data: RadarData; filters: RadarFilters; universal?: boolean; report?: "radar" | "concrete" }) {
+export function CastingRadar({
+  data,
+  filters,
+  universal = false,
+  report = "radar",
+}: {
+  data: RadarData;
+  filters: RadarFilters;
+  universal?: boolean;
+  report?: "radar" | "concrete";
+}) {
   const concrete = report === "concrete";
   const route = concrete ? "/reports/concrete-control" : "/reports/radar";
   const title = concrete ? "Sistema de control" : "Radar de fundición";
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [page, setPage] = useState(1);
   const [downloading, setDownloading] = useState(false);
-  const pageCount = Math.max(1, Math.ceil(data.dispatches.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount);
-  const visible = data.dispatches.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const { dispatches, projects } = data;
   const query = radarSearchParams(filters, universal).toString();
 
   function toggle(id: string, checked: boolean) {
@@ -63,20 +69,32 @@ export function CastingRadar({ data, filters, universal = false, report = "radar
       <LoadingButton type="button" loading={downloading} loadingLabel="Generando Excel…" disabled={!selected.size} onClick={download} className="w-full shrink-0 sm:w-auto"><FileSpreadsheet className="size-4" />Exportar Excel ({selected.size})</LoadingButton>
     </MotionSection>
     <ReportSections universal={universal} radar={!concrete} concrete={concrete} />
-    <DispatchReportFilters key={query} filters={filters} projects={data.projects} route={route} />
+    <DispatchReportFilters key={query} filters={filters} projects={projects} route={route} />
     <MotionSection className="mt-4 flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div><p className="text-sm font-semibold text-foreground">{data.dispatches.length} despacho(s) · {selected.size} seleccionado(s)</p><p className="mt-1 text-xs text-foreground-muted">Máximo {MAX_RADAR_DISPATCHES} por descarga. La selección se conserva al cambiar de página.</p></div>
-      <div className="flex flex-wrap gap-2"><button type="button" className="secondary-button text-xs" disabled={!data.dispatches.length || downloading} onClick={() => setSelected(new Set(data.dispatches.slice(0, MAX_RADAR_DISPATCHES).map((dispatch) => dispatch.id)))}>{data.dispatches.length > MAX_RADAR_DISPATCHES ? `Seleccionar primeros ${MAX_RADAR_DISPATCHES}` : "Seleccionar todos"}</button><button type="button" className="ghost-button text-xs" disabled={!selected.size || downloading} onClick={() => setSelected(new Set())}>Quitar selección</button></div>
+      <div><p className="text-sm font-semibold text-foreground">{dispatches.length} despacho(s) · {selected.size} seleccionado(s)</p><p className="mt-1 text-xs text-foreground-muted">Máximo {MAX_RADAR_DISPATCHES} por descarga. La selección se conserva al cambiar de página.</p></div>
+      <div className="flex flex-wrap gap-2"><button type="button" className="secondary-button text-xs" disabled={!dispatches.length || downloading} onClick={() => setSelected(new Set(dispatches.slice(0, MAX_RADAR_DISPATCHES).map(({ id }) => id)))}>{dispatches.length > MAX_RADAR_DISPATCHES ? `Seleccionar primeros ${MAX_RADAR_DISPATCHES}` : "Seleccionar todos"}</button><button type="button" className="ghost-button text-xs" disabled={!selected.size || downloading} onClick={() => setSelected(new Set())}>Quitar selección</button></div>
     </MotionSection>
     <div className="mt-3 flex items-center gap-2 text-xs text-foreground-muted"><span className="inline-flex items-center gap-1.5 rounded-md bg-[#FFE066] px-2 py-1 text-[#1A1A1A]"><FlaskConical className="size-3.5" />Laboratorio aplicado</span><span>{concrete ? "Los despachos con laboratorio se resaltan en amarillo en el Excel." : "Las guías con laboratorio se resaltan en amarillo en el Excel."}</span></div>
-    <MotionSection className="mt-4 space-y-4">
-      {!data.dispatches.length ? <div className="rounded-xl border border-border bg-surface p-6"><EmptyState title="Sin despachos" description="No se encontraron despachos con estos filtros. Prueba otro rango de fechas o limpia la búsqueda." /></div> : visible.map((dispatch) => <article key={dispatch.id} className="min-w-0 rounded-xl bg-surface">
-        <DispatchReportCard dispatch={dispatch.summary}
-          selection={<input type="checkbox" className="size-5 shrink-0 accent-red-600" checked={selected.has(dispatch.id)} disabled={downloading} onChange={(event) => toggle(dispatch.id, event.target.checked)} aria-label={`Seleccionar ${dispatch.code}`} />}
-          context={<p className="mt-2 break-words text-xs text-foreground-muted">{dispatch.projectName} · {dispatch.supplierName} · {radarDate(radarLocalDate(dispatch.scheduledAt, dispatch.timezone))}</p>}
+    <MotionSection className="mt-4 min-w-0">
+      {dispatches.length ? (
+        <ReportResultsPagination
+          selectable
+          paginationLabel={`Paginación de despachos de ${title.toLowerCase()}`}
+          results={dispatches.map(({ id, code, summary }) => (
+            <DispatchTableRow
+              key={id}
+              dispatch={summary}
+              selection={(
+                <label className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center has-disabled:cursor-wait">
+                  <input type="checkbox" className="size-4 accent-brand" checked={selected.has(id)} disabled={downloading} onChange={(event) => toggle(id, event.target.checked)} aria-label={`Seleccionar ${code}`} />
+                </label>
+              )}
+            />
+          ))}
         />
-      </article>)}
+      ) : (
+        <div className="rounded-xl border border-border bg-surface p-6"><EmptyState title="Sin despachos" description="No se encontraron despachos con estos filtros. Prueba otro rango de fechas o limpia la búsqueda." /></div>
+      )}
     </MotionSection>
-    {pageCount > 1 && <Pagination page={currentPage} pageSize={PAGE_SIZE} total={data.dispatches.length} onPageChange={setPage} itemLabel="despachos" ariaLabel={`Paginación de despachos de ${title.toLowerCase()}`} className="mt-4 border border-border" />}
   </MotionPage>;
 }

@@ -75,10 +75,10 @@ test("Excel y ZIP reutilizan exactamente el mismo reporte filtrado", () => {
   assert.match(route, /buildZip\(report,/u);
 });
 
-test("Reportería pagina la vista cada ocho programaciones sin limitar la exportación", () => {
+test("Reportería pagina la vista cada ocho despachos sin limitar la exportación", () => {
   assert.match(reportPagination, /const PAGE_SIZE = 8/u);
-  assert.match(reportPagination, /Children\.toArray\(children\)/u);
-  assert.match(reportView, /<ReportResultsPagination[^>]*>\{data\.programming\.map/u);
+  assert.match(reportPagination, /results\.slice\(firstItem, firstItem \+ PAGE_SIZE\)/u);
+  assert.match(reportView, /<ReportResultsPagination[^>]*results=\{data\.rows\.map/u);
   assert.doesNotMatch(route, /PAGE_SIZE/u);
 });
 

@@ -7,7 +7,7 @@ const page = await read("../src/app/(dashboard)/reports/universal/page.tsx");
 const route = await read("../src/app/(dashboard)/reports/export/route.ts");
 const queries = await read("../src/features/reports/queries.ts");
 const accessPolicy = await read("../src/features/projects/access-policy.ts");
-const reportView = await read("../src/features/reports/components/guide-report.tsx");
+const tableRows = await read("../src/features/reports/components/report-table-rows.tsx");
 const scopedLink = await read("../src/features/reports/components/project-scoped-report-link.tsx");
 const sidebar = await read("../src/components/layout/app-sidebar.tsx");
 const filtersView = await read("../src/features/reports/components/report-filters.tsx");
@@ -52,7 +52,7 @@ test("Excel y ZIP revalidan el alcance universal en servidor", () => {
 });
 
 test("los enlaces de otro proyecto cambian el contexto antes de abrir el detalle", () => {
-  assert.match(reportView, /ProjectScopedReportLink/u);
+  assert.match(tableRows, /<ProjectScopedReportLink projectId=\{dispatch\.projectId\} href=\{/u);
   assert.match(scopedLink, /context\.activeProject\?\.id !== projectId/u);
   assert.match(scopedLink, /name="projectId" value=\{projectId\}/u);
   assert.match(scopedLink, /name="returnTo" value=\{href\}/u);

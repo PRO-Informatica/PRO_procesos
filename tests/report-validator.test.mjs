@@ -6,27 +6,53 @@ import ts from 'typescript';
 import ExcelJS from 'exceljs';
 import {REPORT_TABLE_HEADER_ROW,setupReportSheet} from '../src/features/reports/workbook-header.ts';
 import {guideReportMetadata} from '../src/features/reports/guide-metadata.ts';
-import {reportDispatchProcessStatus} from '../src/features/reports/presentation.ts';
+import {serviceReconciliationSummary} from '../src/features/invoices/service-reconciliation.ts';
+import {requiresServiceInvoice} from '../src/features/programming/invoice-policy.ts';
+import {reportDispatchProcessStatus,reportStatusTone} from '../src/features/reports/presentation.ts';
 import * as projectAccess from '../src/features/projects/access-policy.ts';
 
 const root=new URL('../',import.meta.url);
-const [querySource,routeSource,cardSource]=await Promise.all(['src/features/reports/queries.ts','src/app/(dashboard)/reports/export/route.ts','src/features/reports/components/dispatch-report-card.tsx'].map(f=>readFile(new URL(f,root),'utf8')));
+const [querySource,routeSource,rowSource]=await Promise.all(['src/features/reports/queries.ts','src/app/(dashboard)/reports/export/route.ts','src/features/reports/components/report-table-rows.tsx'].map(f=>readFile(new URL(f,root),'utf8')));
 function load(source,imports){const exports={};const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;runInNewContext(compiled,{exports,require(name){assert.ok(Object.hasOwn(imports,name),name);return imports[name];},Date,Intl,Response});return exports;}
 const projects=[{id:'project-a',name:'ADO',code:'ADO-PRO',companyName:'Empresa',timezone:'America/Guatemala',billingLegalName:'Cliente'}];
 const base={project_id:'project-a',supplier_id:'supplier',programming_id:'program-a',status:'COMPLETED',result:'DISPATCHED',created_by:'registrar',created_at:'2026-10-27T13:00:00Z',order_number:'47',real_volume:7,real_unit_code:'M3',completed_by:'validator'};
-function fixture({labelsMissing=false,billingComplete=false,supplierName="Mixto Listo",otherSupplier=false,reportProjects=projects,withoutDispatches=false}={}){
+function fixture({labelsMissing=false,billingComplete=false,supplierName="Mixto Listo",otherSupplier=false,reportProjects=projects,withoutDispatches=false,reconciliations=[],deliveryModes}={}){
  const calls=[];
  const tables={programming:[{id:'program-a',project_id:'project-a',supplier_id:'supplier',created_by:'program-creator',status:'CONFIRMED',scheduled_at:'2026-10-27T13:00:00Z',requested_quantity:7,confirmed_quantity:7,unit_code:'M3'}],dispatches:[{...base,id:'completed'},{...base,id:'open',status:'IN_EXECUTION'},{...base,id:'legacy',completed_by:null},{...base,id:'foreign',programming_id:'program-b',project_id:'project-b'}],suppliers:[{id:'supplier',name:supplierName}]};
+ tables.programming[0].delivery_modes=deliveryModes;
+ tables.dispatch_reconciliations=reconciliations;
  if(otherSupplier){tables.suppliers.push({id:'other',name:'Otro proveedor'});tables.programming.push({...tables.programming[0],id:'other-program',supplier_id:'other'});tables.dispatches.push({...base,id:'other-dispatch',programming_id:'other-program',supplier_id:'other'});}
  if(withoutDispatches)tables.dispatches=[];
  const client={from(table){calls.push({table});const checks=[];const q={select(value){calls.push({table,select:value});return q;},in(key,values){checks.push(row=>values.includes(row[key]));return q;},eq(key,value){checks.push(row=>row[key]===value);return q;},gte(){return q;},lte(){return q;},order(){return q;},is(){return q;},then(resolve,reject){return Promise.resolve({data:(tables[table]??[]).filter(row=>checks.every(check=>check(row))),error:null}).then(resolve,reject);}};return q;},async rpc(name,args){calls.push({rpc:name,args});return {data:[{profile_id:'program-creator',display_label:'Creador de programación'},{profile_id:'registrar',display_label:'Registró Uno'},...(!labelsMissing?[{profile_id:'validator',display_label:'Validó Dos'}]:[]),{profile_id:'unrelated',display_label:'Otro proyecto'}],error:null};}};
- const {getGuideReport}=load(querySource,{'server-only':{},'@/features/dispatches/billing-completion-queries':{getDispatchBillingCompletion:async(ids)=>{calls.push({billingProjects:Array.from(ids)});return {completed:billingComplete,legacy:false,open:false};}},'@/lib/supabase/admin':{createAdminClient:()=>client},'@/lib/supabase/server':{createClient:async()=>client},'@/features/projects/queries':{},'@/features/projects/access-policy':{},'./guide-metadata':{guideReportMetadata}});
+ const {getGuideReport}=load(querySource,{'server-only':{},'@/features/dispatches/billing-completion-queries':{getDispatchBillingCompletion:async(ids)=>{calls.push({billingProjects:Array.from(ids)});return {completed:billingComplete,legacy:false,open:false};}},'@/lib/supabase/admin':{createAdminClient:()=>client},'@/lib/supabase/server':{createClient:async()=>client},'@/features/projects/queries':{},'@/features/projects/access-policy':{},'@/features/invoices/service-reconciliation':{serviceReconciliationSummary},'@/features/programming/invoice-policy':{requiresServiceInvoice},'./guide-metadata':{guideReportMetadata}});
  return {calls,report:(filters={},settings={})=>getGuideReport(reportProjects,{dateFrom:'2026-10-01',dateTo:'2026-10-31',...filters},settings)};
 }
 test('el reporte consulta el cierre solo de proyectos con despachos visibles, sin incluir empresas vacías',async()=>{
  const f=fixture({reportProjects:[...projects,{...projects[0],id:'empty-project',companyName:'Otra empresa'}]});
  assert.equal((await f.report()).rows.length,3);
  assert.deepEqual(f.calls.find(call=>call.billingProjects).billingProjects,['project-a']);
+});
+test("el reporte conserva el estado y la diferencia de Servicio cuando Producto ya está conciliado", async () => {
+  const reconciliations = [
+    {
+      dispatch_id: "completed", status: "RECONCILED", current_service_invoice_id: "service",
+      service_status: "WITH_DIFFERENCES", service_comparison: { difference: "167.74", currency: "GTQ" },
+    },
+    { dispatch_id: "open", status: "NOT_STARTED", current_service_invoice_id: "pending-service", service_status: "NOT_STARTED" },
+  ];
+  const report = await fixture({ reconciliations, deliveryModes: ["PUMP", "PLACEMENT"] }).report();
+  const completed = report.rows.find(({ dispatchId }) => dispatchId === "completed");
+  assert.equal(completed.reconciliationStatus, "RECONCILED");
+  assert.equal(completed.serviceReconciliation.status, "WITH_DIFFERENCES");
+  assert.equal(completed.serviceReconciliation.difference, 167.74);
+  assert.equal(completed.serviceReconciliation.currency, "GTQ");
+  assert.equal(completed.billingComplete, false);
+  assert.equal(report.rows.find(({ dispatchId }) => dispatchId === "open").serviceReconciliation.status, "PENDING_RECONCILIATION");
+
+  const direct = await fixture({ deliveryModes: ["DIRECT"] }).report();
+  assert.ok(direct.rows.every((row) => row.serviceReconciliation === null));
+  const historical = await fixture().report();
+  assert.ok(historical.rows.every((row) => row.serviceReconciliation.status === "NOT_STARTED"));
 });
 test('una programación sin despachos no solicita el cierre financiero de su proyecto',async()=>{
  const f=fixture({withoutDispatches:true});
@@ -69,15 +95,20 @@ test('el Excel conserva la columna Validado por y su fondo verde al guardar y re
 function nodes(node){if(!node||typeof node!=='object')return[];if(Array.isArray(node))return node.flatMap(nodes);return[node,...nodes(node.props?.children)];}
 function text(node){if(node==null||typeof node==='boolean')return'';if(typeof node!=='object')return String(node);return Array.isArray(node)?node.map(text).join(''):text(node.props?.children);}
 const jsx=(type,props)=>({type,props});
-const {DispatchReportCard: testDispatchBlock}=load(cardSource,{
- 'react/jsx-runtime':{jsx,jsxs:jsx},'lucide-react':{},'next/link':{},'@/components/feedback/empty-state':{},'@/components/motion/motion-page':{},'@/components/motion/motion-section':{},'@/components/ui/badge':{},'@/lib/status-labels':{formatStatusLabel:value=>value??''},'@/features/programming/formatters':{programmingStatusTone:()=>''},'../filters':{},'../presentation':{reportDispatchProcessStatus},'./report-export-actions':{},'./report-results-pagination':{},'./project-scoped-report-link':{},
+const {DispatchTableRow}=load(rowSource,{
+ 'react/jsx-runtime':{jsx,jsxs:jsx},'lucide-react':{Eye:'Eye'},'@/components/ui/badge':{},'@/lib/status-labels':{formatStatusLabel:value=>value??''},
+ '@/features/dispatches/formatters':{formatDispatchDateTime:value=>value,formatDispatchQuantity:value=>value,formatDispatchMoney:value=>value},
+ '../presentation':{reportDispatchProcessStatus,reportStatusTone},'./project-scoped-report-link':{ProjectScopedReportLink:'ProjectScopedReportLink'},'./report-results-table.module.css':{default:{}},
 });
-test('la casilla de Reportería muestra el validador con fondo verde y conserva Pendiente/No registrado',async()=>{
+test('la fila muestra el validador y conserva Pendiente/No registrado',async()=>{
  const report=await fixture().report();
  for(const [id,label] of [['completed','Validó Dos'],['open','Pendiente'],['legacy','No registrado']]){
-  const tree=testDispatchBlock({dispatch:report.rows.find(row=>row.dispatchId===id)});
-  const cell=nodes(tree).find(node=>node.props?.className?.includes('bg-success-soft')&&text(node).startsWith('Validado por'));
-  assert.ok(cell);assert.equal(text(cell),'Validado por'+label);
+  const tree=DispatchTableRow({dispatch:report.rows.find(row=>row.dispatchId===id)});
+  assert.equal(text(tree.props.children.at(-2)),label);
+  const action=nodes(tree).find(node=>node.type==='ProjectScopedReportLink');
+  assert.equal(action.props.href,`/dispatches/${id}`);
+  assert.equal(text(action),`Ver despacho DSP-${id.toUpperCase().slice(0,8)}`);
+  assert.ok(nodes(action).some(node=>node.type==='Eye'&&node.props['aria-hidden']));
  }
 });
 
@@ -85,8 +116,9 @@ test('Reportería conserva Producto conciliado sin mostrar cierre global cuando 
  for(const complete of [false,true]){
   const report=await fixture({billingComplete:complete}).report(),row=report.rows.find(row=>row.dispatchId==='completed');
   assert.equal(row.billingComplete,complete);row.reconciliationStatus='RECONCILED';
-  const tree=testDispatchBlock({dispatch:row});
-  assert.ok(nodes(tree).some(node=>node.props?.label===(complete?'COMPLETED':'PENDING_RECONCILIATION')));
+  const tree=DispatchTableRow({dispatch:row});
+  assert.equal(tree.props.children[3].props.children.props.status,complete?'COMPLETED':'PENDING_RECONCILIATION');
+  assert.equal(tree.props.children[4].props.children.props.status,'RECONCILED');
  }
 });
 
@@ -142,6 +174,6 @@ test('los reportes universales conservan proyectos históricos y excluyen Reside
   {project:{id:'supervisor'},roleCodes:['SUPERVISOR'],permissions:['dispatch.view']},
   {project:{id:'missing-permission'},roleCodes:['PURCHASING'],permissions:[]},
  ];
- const {getUniversalReportScopes}=load(querySource,{'server-only':{},'@/features/dispatches/billing-completion-queries':{},'@/lib/supabase/admin':{},'@/lib/supabase/server':{},'@/features/projects/queries':{getOperationalProjectAccess:async()=>scopes},'@/features/projects/access-policy':projectAccess,'./guide-metadata':{guideReportMetadata}});
+ const {getUniversalReportScopes}=load(querySource,{'server-only':{},'@/features/dispatches/billing-completion-queries':{},'@/lib/supabase/admin':{},'@/lib/supabase/server':{},'@/features/projects/queries':{getOperationalProjectAccess:async()=>scopes},'@/features/projects/access-policy':projectAccess,'@/features/invoices/service-reconciliation':{serviceReconciliationSummary},'@/features/programming/invoice-policy':{requiresServiceInvoice},'./guide-metadata':{guideReportMetadata}});
  assert.deepEqual(Array.from(await getUniversalReportScopes('user'),scope=>scope.project.id),['company-a-active','company-b-history','platform-history']);
 });

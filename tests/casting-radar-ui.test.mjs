@@ -5,55 +5,94 @@ import test from "node:test";
 import ts from "typescript";
 import ExcelJS from "exceljs";
 import * as radar from "../src/features/reports/radar.ts";
-import { CASTING_ELEMENTS } from "../src/features/dispatches/casting-elements.ts";
 import { buildRadarWorkbook } from "../src/features/reports/radar-workbook.ts";
 import { buildConcreteControlWorkbook } from "../src/features/reports/concrete-control-workbook.ts";
 
-const source = await readFile(new URL("../src/features/reports/components/casting-radar.tsx", import.meta.url), "utf8");
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+const [view, pagination] = await Promise.all(["casting-radar.tsx", "report-results-pagination.tsx"].map(async (file) => {
+  const source = await readFile(new URL(`../src/features/reports/components/${file}`, import.meta.url), "utf8");
+  return ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+}));
 const jsx = (type, props) => ({ type, props });
 const nodes = (node) => !node || typeof node !== "object" ? [] : Array.isArray(node) ? node.flatMap(nodes) : [node, ...nodes(node.props?.children), ...nodes(node.props?.selection)];
 const text = (node) => node == null || typeof node === "boolean" ? "" : typeof node !== "object" ? String(node) : Array.isArray(node) ? node.map(text).join("") : text(node.props?.children);
 const filters = { dateFrom: "2026-11-01", dateTo: "2026-11-30", dispatch: "DSP", castingElement: "PILES", billingStatus: "reconciled" };
 
+test("Radar y Sistema de control conservan la propiedad data que espera el cliente durante una recarga", async () => {
+  const data = { dispatches: [{ id: "d0", summary: { dispatchId: "d0" } }], projects: [{ value: "qa", label: "Proyecto QA" }] };
+  const imports = {
+    "react/jsx-runtime": { jsx },
+    "@/components/feedback/empty-state": {},
+    "@/features/auth/queries": { requireActiveProfile: async () => ({ id: "profile" }) },
+    "@/features/reports/components/casting-radar": { CastingRadar: "CastingRadar" },
+    "@/features/reports/radar": radar,
+    "@/features/reports/radar-queries": { getCastingRadar: async () => data },
+    "@/features/reports/report-scope": { getRadarProjectScope: async () => [{ id: "qa" }] },
+  };
+  for (const route of ["radar", "concrete-control"]) {
+    const source = await readFile(new URL(`../src/app/(dashboard)/reports/${route}/page.tsx`, import.meta.url), "utf8");
+    const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+    const exports = {};
+    runInNewContext(compiled, { exports, require(name) { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; } });
+    const element = await exports.default({ searchParams: Promise.resolve({ from: filters.dateFrom, to: filters.dateTo }) });
+    assert.equal(element.type, "CastingRadar");
+    assert.equal(element.props.data, data);
+  }
+});
+
 function fixture(count = 10, report = "radar") {
   const state = [], calls = [], notifications = [];
   let cursor = 0, downloaded;
-  const dispatches = Array.from({ length: count }, (_, i) => ({ id: `d${i}`, code: `DSP-${i}`, scheduledAt: "2026-11-03T13:00:00Z", timezone: "America/Guatemala", projectName: "Proyecto QA", projectId: "qa", supplierName: "Proveedor QA", orderNumber: "88", programmingCode: "PRG-QA", summary: { castingElementLabel: "Pilotes" }, guides: [radar.makeRadarGuide({ id: `g${i}`, guide_number: `000${i}`, guide_date: "2026-11-03" }, [], "PILES")] }));
-  const link = () => {}, button = () => {}, card = () => {};
+  const dispatches = Array.from({ length: count }, (_, i) => ({ id: `d${i}`, code: `DSP-${i}`, scheduledAt: "2026-11-03T13:00:00Z", timezone: "America/Guatemala", projectName: "Proyecto QA", projectId: "qa", supplierName: "Proveedor QA", orderNumber: "88", programmingCode: "PRG-QA", summary: { dispatchId: `d${i}`, dispatchCode: `DSP-${i}`, castingElementLabel: "Pilotes" }, guides: [radar.makeRadarGuide({ id: `g${i}`, guide_number: `000${i}`, guide_date: "2026-11-03" }, [], "PILES")] }));
+  const button = "LoadingButton", row = "DispatchTableRow";
   const imports = {
     "react/jsx-runtime": { jsx, jsxs: jsx },
     react: { useState(initial) { const index = cursor++; if (!(index in state)) state[index] = initial; return [state[index], (value) => { state[index] = typeof value === "function" ? value(state[index]) : value; }]; } },
-    "next/link": { default: link }, "lucide-react": {},
+    "lucide-react": {},
     "@/components/ui/pagination": { Pagination: "Pagination" },
     "@/components/feedback/empty-state": {}, "@/components/feedback/loading-button": { LoadingButton: button },
     "@/components/motion/motion-page": {}, "@/components/motion/motion-section": {},
+    "@/components/motion/motion-swap": {}, "./report-results-table.module.css": { default: {} },
     "@/lib/notify": { notify: { error: (...args) => notifications.push(args), success: (...args) => notifications.push(args) } },
-    "../radar": radar, "@/features/dispatches/casting-elements": { CASTING_ELEMENTS },
+    "../radar": radar,
     "./report-filters": { DispatchReportFilters: "DispatchReportFilters" },
-    "./dispatch-report-card": { DispatchReportCard: card }, "./report-sections": {},
+    "./report-table-rows": { DispatchTableRow: row }, "./report-sections": {},
   };
-  const exports = {};
-  runInNewContext(compiled, {
-    exports, Set, Intl,
-    URL: { createObjectURL(blob) { downloaded = blob; return "blob:radar-qa"; }, revokeObjectURL() {} },
-    document: { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } },
-    setTimeout: (callback) => callback(),
-    async fetch(url, options) {
-      const ids = JSON.parse(options.body).dispatchIds;
-      calls.push({ url, ids });
-      const buffer = await (report === "concrete" ? buildConcreteControlWorkbook : buildRadarWorkbook)(radar.selectRadarDispatches(dispatches, ids)).xlsx.writeBuffer();
-      return { ok: true, blob: async () => buffer };
-    },
-    require(name) { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; },
-  });
-  return { calls, notifications, card, button, downloaded: () => downloaded, render() { cursor = 0; return nodes(exports.CastingRadar({ data: { dispatches, projects: [] }, filters, universal: true, report })); } };
+  const load = (compiled) => {
+    const exports = {};
+    runInNewContext(compiled, {
+      exports, Set, Intl,
+      URL: { createObjectURL(blob) { downloaded = blob; return "blob:radar-qa"; }, revokeObjectURL() {} },
+      document: { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } },
+      setTimeout: (callback) => callback(),
+      async fetch(url, options) {
+        const ids = JSON.parse(options.body).dispatchIds;
+        calls.push({ url, ids });
+        const buffer = await (report === "concrete" ? buildConcreteControlWorkbook : buildRadarWorkbook)(radar.selectRadarDispatches(dispatches, ids)).xlsx.writeBuffer();
+        return { ok: true, blob: async () => buffer };
+      },
+      require(name) { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; },
+    });
+    return exports;
+  };
+  imports["./report-results-pagination"] = load(pagination);
+  const { CastingRadar } = load(view);
+  return { calls, notifications, row, button, downloaded: () => downloaded, render() {
+    cursor = 0;
+    const tree = nodes(CastingRadar({ data: { dispatches, projects: [] }, filters, universal: true, report }));
+    const table = tree.find(({ type }) => type === imports["./report-results-pagination"].ReportResultsPagination);
+    return table ? [...tree, ...nodes(table.type(table.props))] : tree;
+  } };
 }
 
-test("la vista muestra tarjetas de despacho y todos los filtros solicitados", () => {
+test("el radar muestra una sola tabla de despachos con selección, conciliaciones y acciones", () => {
   const f = fixture(), tree = f.render();
-  assert.equal(tree.filter((node) => node.type === f.card).length, 8);
-  assert.equal(tree.filter((node) => node.type === "table").length, 0);
+  assert.equal(tree.filter((node) => node.type === f.row).length, 8);
+  assert.equal(tree.filter((node) => node.type === "table").length, 1);
+  const headings = tree.filter(({ type }) => type === "th").map(text);
+  assert.equal(headings[0], "Selección");
+  assert.equal(headings.at(-1), "Acciones");
+  assert.ok(headings.includes("Conciliación de producto"));
+  assert.ok(headings.includes("Conciliación de servicio"));
   const panel = tree.find((node) => node.type === "DispatchReportFilters");
   assert.equal(panel.props.filters, filters);
   assert.equal(panel.props.route, "/reports/radar");
@@ -66,7 +105,7 @@ test("la selección conserva despachos entre páginas y descarga exactamente dos
   for (const id of ["DSP-0", "DSP-1"]) f.render().find((node) => node.props?.["aria-label"] === `Seleccionar ${id}`).props.onChange({ target: { checked: true } });
   f.render().find((node) => node.type === "Pagination").props.onPageChange(2);
   let tree = f.render();
-  assert.equal(tree.filter((node) => node.type === f.card).length, 2);
+  assert.equal(tree.filter((node) => node.type === f.row).length, 2);
   assert.ok(tree.some((node) => text(node) === "10 despacho(s) · 2 seleccionado(s)"));
   await tree.find((node) => node.type === f.button).props.onClick();
   assert.deepEqual(f.calls[0].ids, ["d0", "d1"]);

@@ -5,6 +5,8 @@ import { runInNewContext } from "node:vm";
 import test from "node:test";
 import ts from "typescript";
 import { withQuotationSpecifications } from "../src/features/reports/quotation-specifications.ts";
+import { serviceReconciliationSummary } from "../src/features/invoices/service-reconciliation.ts";
+import { requiresServiceInvoice } from "../src/features/programming/invoice-policy.ts";
 import * as radar from "../src/features/reports/radar.ts";
 import { guideReportMetadata } from "../src/features/reports/guide-metadata.ts";
 import { buildRadarWorkbook } from "../src/features/reports/radar-workbook.ts";
@@ -13,7 +15,7 @@ import { buildConcreteControlWorkbook } from "../src/features/reports/concrete-c
 const source = await readFile(new URL("../src/features/reports/radar-queries.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const filters = { dateFrom: "2026-11-01", dateTo: "2026-11-30" };
-const projects = [{ id: "project-a", name: "ACOAT", code: "ACOAT", timezone: "America/Guatemala" }];
+const projects = [{ id: "project-a", name: "ACOAT", code: "ACOAT", companyName: "Empresa QA", timezone: "America/Guatemala" }];
 
 function fixture({ guideCount = 2, billingComplete = false, quotedMetadata = false, programmingConcrete = false, reportProjects = projects, errorTable } = {}) {
   const calls = [];
@@ -68,6 +70,8 @@ function fixture({ guideCount = 2, billingComplete = false, quotedMetadata = fal
   }
   const exports = {};
   const imports = { "server-only": {}, "@/features/dispatches/billing-completion-queries": { getDispatchBillingCompletion: async (ids) => { calls.push({ billingProjects: Array.from(ids) }); return { full: billingComplete, empty: false }; } }, "@/lib/supabase/server": { createClient: async () => client() }, "@/lib/supabase/admin": { createAdminClient: () => client(true) }, "./quotation-specifications": { withQuotationSpecifications }, "./guide-metadata": { guideReportMetadata }, "./radar": radar };
+  imports["@/features/invoices/service-reconciliation"] = { serviceReconciliationSummary };
+  imports["@/features/programming/invoice-policy"] = { requiresServiceInvoice };
   runInNewContext(compiled, { exports, Date, Intl, require(name) { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; } });
   return { calls, tables, run: (input = filters) => exports.getCastingRadar(reportProjects, input) };
 }
@@ -92,6 +96,9 @@ test("consulta por despachos, conserva los vacíos y carga sus resúmenes y guí
   assert.equal(full.summary.batchCode, "LOT-1");
   assert.equal(full.summary.incidentCount, 1);
   assert.equal(full.summary.completedByName, "Residente QA");
+  assert.equal(full.summary.projectName, full.projectName);
+  assert.equal(full.summary.companyName, "Empresa QA");
+  assert.equal(full.summary.scheduledAt, full.scheduledAt);
   assert.equal(full.summary.difference, 0);
   assert.equal(full.summary.productInvoice.number, "FACT-1");
   assert.equal(full.summary.productInvoice.extractionStatus, "CONFIRMED");
@@ -102,6 +109,22 @@ test("consulta por despachos, conserva los vacíos y carga sus resúmenes y guí
   assert.equal(workbook.worksheets[0].getCell("A8").value, "0000");
   assert.equal(workbook.worksheets[1].getCell("A8").value, "Sin guías registradas");
   assert.ok(f.calls.filter((call) => call.privileged).every((call) => call.in.some(([key, values]) => key === "invoice_id" && values.length === 1 && values[0] === "invoice")));
+});
+
+test("los resúmenes distinguen Producto conciliado, diferencias de Servicio y concreto directo", async () => {
+  const { tables, run } = fixture();
+  tables.programming[0].delivery_modes = ["DIRECT"];
+  Object.assign(tables.dispatch_reconciliations[0], {
+    current_service_invoice_id: "service",
+    service_status: "WITH_DIFFERENCES",
+    service_comparison: { difference: "167.74", currency: "GTQ" },
+  });
+  const { dispatches } = await run();
+  const full = dispatches.find(({ id }) => id === "full").summary;
+  assert.equal(full.reconciliationStatus, "RECONCILED");
+  assert.equal(full.serviceReconciliation.status, "WITH_DIFFERENCES");
+  assert.equal(full.serviceReconciliation.difference, 167.74);
+  assert.equal(dispatches.find(({ id }) => id === "empty").summary.serviceReconciliation, null);
 });
 
 test("la paginación conserva más de mil guías y todas las líneas", async () => {
