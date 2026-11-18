@@ -27,7 +27,7 @@ function Metric({ title, value, detail, icon, href }: { title: string; value: st
 }
 function Attention({ href, label, value, icon }: { href: string; label: string; value: number; icon: React.ReactNode }) { return <Link href={href} className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3 transition hover:border-brand/30 hover:bg-brand-soft/20"><span className="grid size-9 place-items-center rounded-lg bg-destructive-soft text-destructive">{icon}</span><span className="min-w-0 flex-1 text-sm font-medium text-foreground">{label}</span><strong className="text-lg text-destructive">{value}</strong><ArrowRight className="size-4 text-foreground-muted" /></Link>; }
 
-export function ProjectDashboard({ project, roleCodes, data }: { project: ProjectSummary; roleCodes: string[]; data: ProjectDashboardData }) {
+export function ProjectDashboard({ project, roleCodes, data, reinvoicing }: { project: ProjectSummary; roleCodes: string[]; data: ProjectDashboardData; reinvoicing?: React.ReactNode }) {
   const mode = focus(roleCodes);
   const supervisor = isSupervisorOnly(roleCodes);
   const href = (view: DashboardDetailView) => dashboardDetailHref(project.id, view);
@@ -48,6 +48,8 @@ export function ProjectDashboard({ project, roleCodes, data }: { project: Projec
       </MotionSection>
       {!supervisor && <MotionSection className="rounded-xl border border-border bg-surface p-4 sm:p-5 xl:col-span-5"><BatchReconciliationChart batches={data.batchReconciliation} projectId={project.id} /></MotionSection>}
     </div>
+
+    {reinvoicing && <MotionSection className="mt-4 min-w-0">{reinvoicing}</MotionSection>}
 
     <div className="mt-4 grid gap-4 lg:grid-cols-2">
       <MotionSection className="rounded-xl border border-border bg-surface p-4 sm:p-5"><div className="flex items-center gap-2">{attention ? <AlertTriangle className="size-4 text-destructive" /> : <CheckCircle2 className="size-4 text-success" />}<h2 className="font-semibold text-foreground">Requieren atención</h2></div><div className="mt-4 grid gap-2">{!attention ? <p className="rounded-lg bg-success-soft p-4 text-sm font-medium text-success">Sin alertas operativas importantes.</p> : <>{!supervisor && data.metrics.attention.reinvoicing > 0 && <Attention href={href("reinvoicing")} label="Pedidos en refacturación" value={data.metrics.attention.reinvoicing} icon={<RefreshCcw className="size-4" />} />}{data.metrics.attention.overdueProgramming > 0 && <Attention href={href("overdue")} label="Programaciones vencidas" value={data.metrics.attention.overdueProgramming} icon={<CalendarDays className="size-4" />} />}{!supervisor && data.metrics.attention.pendingInvoice > 0 && <Attention href={href("pendingInvoices")} label="Pedidos pendientes de factura" value={data.metrics.attention.pendingInvoice} icon={<ReceiptText className="size-4" />} />}</>}</div></MotionSection>

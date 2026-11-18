@@ -5,6 +5,7 @@ import test from "node:test";
 import ts from "typescript";
 import * as details from "../src/features/dashboard/details.ts";
 import * as formatters from "../src/features/dashboard/formatters.ts";
+import * as aging from "../src/features/dashboard/reinvoicing-aging.ts";
 
 const jsx = (type, props) => ({ type, props });
 const nodes = node => !node || typeof node !== "object" ? [] : Array.isArray(node) ? node.flatMap(nodes) : [node, ...nodes(node.props?.children)];
@@ -28,7 +29,7 @@ function component(path, extra = {}, reduced = false) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   const exports = {};
-  runInNewContext(compiled, { exports, Infinity, require(name) { assert.ok(Object.hasOwn(imports, name), `Missing import: ${name}`); return imports[name]; } });
+  runInNewContext(compiled, { exports, Infinity, requestAnimationFrame: (callback) => callback(), require(name) { assert.ok(Object.hasOwn(imports, name), `Missing import: ${name}`); return imports[name]; } });
   return Object.fromEntries(Object.entries(exports).map(([name, value]) => [name, typeof value === "function" ? (...args) => { cursor = 0; return value(...args); } : value]));
 }
 
@@ -78,6 +79,70 @@ test("las series diarias distinguen programaciones y guías con enlaces accesibl
     // Text links remain available for keyboard/touch users and zero-height bars.
     assert.ok(nodes(tree).some(node => node.type === "Link" && node.props.href === href));
   }
+});
+
+test("la antigüedad comienza en la hora de la solicitud y conserva casos anteriores al periodo", () => {
+  const asOf = Date.parse("2026-11-18T18:00:00Z");
+  const recent = asOf - 2.5 * aging.DAY_MS;
+  const points = aging.dispatchAgingSamples(asOf, 7, recent);
+  assert.equal(points[0].age, null);
+  assert.equal(points.find(({ time }) => time === recent).age, 0);
+  assert.equal(points.at(-1).age, 2.5);
+  const overview = aging.projectAgingSamples(asOf, 7, [
+    { startedAt: recent }, { startedAt: asOf - 48 * aging.DAY_MS }, { startedAt: null },
+  ]);
+  assert.deepEqual(overview[0], { time: asOf - 7 * aging.DAY_MS, average: 41, longest: 41 });
+  assert.deepEqual(overview.at(-1), { time: asOf, average: 25.25, longest: 48 });
+  assert.equal(aging.formatReinvoicingAge(2.5 * aging.DAY_MS), "2 d 12 h");
+  assert.equal(aging.formatReinvoicingAge(0), "Menos de 1 h");
+  assert.equal(aging.agingPlotLimit(asOf, [{ startedAt: null }]), 14);
+  assert.equal(aging.agingPlotLimit(asOf, [{ startedAt: asOf - 48 * aging.DAY_MS }]), 49);
+});
+
+test("la vista general incluye todos los casos, y la vista individual grafica solo el despacho seleccionado", () => {
+  const { ReinvoicingAgingChart } = component("features/dashboard/components/reinvoicing-aging-chart.tsx", {
+    recharts: Object.fromEntries(["Line", "LineChart", "CartesianGrid", "ReferenceLine", "ResponsiveContainer", "Tooltip", "XAxis", "YAxis"].map(name => [name, name])),
+    "./dashboard-charts.module.css": { __esModule: true, default: {} },
+    "../reinvoicing-aging": aging,
+  }, true);
+  const asOf = Date.parse("2026-11-18T18:00:00Z");
+  const cases = Array.from({ length: 10 }, (_, i) => ({
+    id: `id${i}`, code: `DSP-${i}`, programmingCode: "PRG-1", startedAt: i < 9 ? asOf - (10 - i) * aging.DAY_MS : null,
+    requests: [{ kind: "Servicio", startedAt: i < 9 ? asOf - (10 - i) * aging.DAY_MS : null }],
+  }));
+  const props = { data: { asOf, cases }, timezone: "America/Guatemala" };
+  let tree = ReinvoicingAgingChart(props);
+  assert.deepEqual(nodes(tree).filter(({ type }) => type === "Line").map(({ props }) => props.dataKey), ["average", "longest"]);
+  assert.equal(nodes(tree).find(({ type }) => type === "LineChart").props.data.at(-1).average, 6);
+  const marker = (id) => nodes(tree).find(({ props }) => props["aria-label"]?.startsWith(`Consultar punto de DSP-${id},`));
+  assert.equal(marker(3).props.style.left, "50%");
+  assert.match(marker(3).props.className, /text-destructive/u);
+  assert.doesNotMatch(marker(4).props.className, /text-destructive/u);
+  marker(3).props.onClick();
+  tree = ReinvoicingAgingChart(props);
+  assert.equal(marker(3).props["aria-pressed"], true);
+  assert.ok(nodes(tree).some(({ type, props }) => type === "Link" && props.href === "/dispatches/id3"));
+  assert.equal(nodes(tree).filter(({ type }) => type === "Line").length, 2);
+  const pagination = nodes(tree).find(({ type }) => type === "Pagination");
+  assert.equal(pagination.props.total, 10);
+  pagination.props.onPageChange(2);
+  tree = ReinvoicingAgingChart(props);
+  assert.equal(marker(9), undefined);
+  nodes(tree).find(({ props }) => props["aria-label"] === "Ver detalle de DSP-8").props.onClick();
+  tree = ReinvoicingAgingChart(props);
+  nodes(tree).find(({ type }) => type === "select").props.onChange({ target: { value: "7" } });
+  tree = ReinvoicingAgingChart(props);
+  const lines = nodes(tree).filter(({ type }) => type === "Line");
+  assert.deepEqual(lines.map(({ props }) => props.name), ["DSP-8"]);
+  assert.ok(lines.every(({ props }) => !props.isAnimationActive));
+  assert.equal(nodes(tree).find(({ type }) => type === "LineChart").props.data[0].time, asOf - 7 * aging.DAY_MS);
+  assert.ok(nodes(tree).some(({ type, props }) => type === "Link" && props.href === "/dispatches/id8"));
+  const selectDispatch = nodes(tree).filter(({ type }) => type === "select")[1];
+  assert.equal(nodes(selectDispatch).filter(({ type }) => type === "option").length, 10);
+  selectDispatch.props.onChange({ target: { value: "id9" } });
+  tree = ReinvoicingAgingChart(props);
+  assert.ok(nodes(tree).some(({ type, props }) => type === "Link" && props.href === "/dispatches/id9"));
+  assert.equal(nodes(tree).filter(({ type }) => type === "Line").length, 0);
 });
 
 test("Conciliación reutiliza la tabla, pagina de diez en diez y filtra Producto o Servicio", () => {
