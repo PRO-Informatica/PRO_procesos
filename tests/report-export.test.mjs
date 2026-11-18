@@ -69,7 +69,7 @@ function report(productInvoice, serviceInvoice, projectId = "project-a") {
 }
 
 test("Excel y ZIP reutilizan exactamente el mismo reporte filtrado", () => {
-  assert.match(route, /parseGuideReportFilters\(request\.nextUrl\.searchParams\)/u);
+  assert.match(route, /parseUniversalGuideReportFilters\(request\.nextUrl\.searchParams\)/u);
   assert.match(route, /const report = await getGuideReport\(/u);
   assert.match(route, /buildWorkbook\(report,/u);
   assert.match(route, /buildZip\(report,/u);

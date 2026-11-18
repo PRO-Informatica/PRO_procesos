@@ -1,0 +1,140 @@
+.root {
+  container-type: inline-size;
+  min-width: 0;
+  border-radius: 1rem;
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+.layout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem 1.5rem;
+  padding: 1rem 1.5rem;
+  font-size: 0.8125rem;
+}
+
+.summary {
+  flex: 1 1 12rem;
+  color: var(--foreground-muted);
+  text-wrap: balance;
+}
+
+.summary strong {
+  color: var(--foreground);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.control {
+  display: inline-flex;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  transition: background-color 150ms, color 150ms, box-shadow 150ms;
+}
+
+.control:hover {
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+}
+
+.arrow {
+  background: var(--muted);
+  color: var(--foreground-muted);
+}
+
+.arrow svg { width: 1.125rem; height: 1.125rem; }
+
+.control.active, .control.active:hover {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--brand) 22%, transparent);
+}
+
+.control:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+.control:focus-visible, .jump input:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+
+.jump {
+  display: flex;
+  flex: 1 1 9rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  white-space: nowrap;
+}
+
+.jump input {
+  width: 6rem;
+  min-width: 0;
+  height: 2.75rem;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  background: var(--muted);
+  color: var(--foreground);
+  padding: 0 0.875rem;
+  font: inherit;
+}
+
+.validation {
+  flex-basis: 100%;
+  color: var(--destructive);
+  font-size: 0.75rem;
+  text-align: right;
+  white-space: normal;
+}
+
+.jump input::placeholder { color: var(--foreground-muted); opacity: 0.75; }
+.jump input:disabled { opacity: 0.45; cursor: not-allowed; }
+
+@container (max-width: 760px) {
+  .summary { flex-basis: 100%; text-align: center; }
+  .jump { flex: 0 1 auto; }
+}
+
+@container (max-width: 480px) {
+  .layout { gap: 0.75rem; padding: 1rem; }
+  .controls { gap: 0.125rem; }
+  .control { width: 2.5rem; height: 2.5rem; }
+  .jump { flex-basis: 100%; justify-content: center; }
+  .jump input { height: 2.5rem; }
+  .validation { text-align: center; }
+}
+
+@container (max-width: 340px) {
+  .layout { padding: 0.75rem; }
+  .control { width: 2.125rem; height: 2.125rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .control { transition: none; }
+}

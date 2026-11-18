@@ -10,7 +10,7 @@ export function ReportSections({ universal = false, radar = false, concrete = fa
     <nav aria-label="Secciones de reportería" className="mt-4 inline-flex w-full max-w-full items-center gap-1 rounded-full bg-surface p-1.5 shadow-sm sm:w-auto">
       <Link href={universal ? "/reports/universal" : "/reports"} aria-current={general ? "page" : undefined} className={`${tabClassName} ${general ? activeClassName : inactiveClassName}`}>Reporte general</Link>
       <Link href={`/reports/radar${universal ? "?scope=universal" : ""}`} aria-current={radar ? "page" : undefined} className={`${tabClassName} ${radar ? activeClassName : inactiveClassName}`}>Radar de fundición</Link>
-      <Link href={`/reports/concrete-control${universal ? "?scope=universal" : ""}`} aria-current={concrete ? "page" : undefined} className={`${tabClassName} ${concrete ? activeClassName : inactiveClassName}`}>Control de concreto</Link>
+      <Link href={`/reports/concrete-control${universal ? "?scope=universal" : ""}`} aria-current={concrete ? "page" : undefined} className={`${tabClassName} ${concrete ? activeClassName : inactiveClassName}`}>Sistema de control</Link>
     </nav>
   );
 }

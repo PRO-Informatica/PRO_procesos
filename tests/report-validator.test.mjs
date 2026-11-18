@@ -14,13 +14,27 @@ const [querySource,routeSource,cardSource]=await Promise.all(['src/features/repo
 function load(source,imports){const exports={};const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;runInNewContext(compiled,{exports,require(name){assert.ok(Object.hasOwn(imports,name),name);return imports[name];},Date,Intl,Response});return exports;}
 const projects=[{id:'project-a',name:'ADO',code:'ADO-PRO',companyName:'Empresa',timezone:'America/Guatemala',billingLegalName:'Cliente'}];
 const base={project_id:'project-a',supplier_id:'supplier',programming_id:'program-a',status:'COMPLETED',result:'DISPATCHED',created_by:'registrar',created_at:'2026-10-27T13:00:00Z',order_number:'47',real_volume:7,real_unit_code:'M3',completed_by:'validator'};
-function fixture({labelsMissing=false,billingComplete=false}={}){
+function fixture({labelsMissing=false,billingComplete=false,supplierName="Mixto Listo",otherSupplier=false,reportProjects=projects,withoutDispatches=false}={}){
  const calls=[];
- const tables={programming:[{id:'program-a',project_id:'project-a',supplier_id:'supplier',created_by:'program-creator',status:'CONFIRMED',scheduled_at:'2026-10-27T13:00:00Z',requested_quantity:7,confirmed_quantity:7,unit_code:'M3'}],dispatches:[{...base,id:'completed'},{...base,id:'open',status:'IN_EXECUTION'},{...base,id:'legacy',completed_by:null},{...base,id:'foreign',programming_id:'program-b',project_id:'project-b'}],suppliers:[{id:'supplier',name:'Mixto Listo'}]};
+ const tables={programming:[{id:'program-a',project_id:'project-a',supplier_id:'supplier',created_by:'program-creator',status:'CONFIRMED',scheduled_at:'2026-10-27T13:00:00Z',requested_quantity:7,confirmed_quantity:7,unit_code:'M3'}],dispatches:[{...base,id:'completed'},{...base,id:'open',status:'IN_EXECUTION'},{...base,id:'legacy',completed_by:null},{...base,id:'foreign',programming_id:'program-b',project_id:'project-b'}],suppliers:[{id:'supplier',name:supplierName}]};
+ if(otherSupplier){tables.suppliers.push({id:'other',name:'Otro proveedor'});tables.programming.push({...tables.programming[0],id:'other-program',supplier_id:'other'});tables.dispatches.push({...base,id:'other-dispatch',programming_id:'other-program',supplier_id:'other'});}
+ if(withoutDispatches)tables.dispatches=[];
  const client={from(table){calls.push({table});const checks=[];const q={select(value){calls.push({table,select:value});return q;},in(key,values){checks.push(row=>values.includes(row[key]));return q;},eq(key,value){checks.push(row=>row[key]===value);return q;},gte(){return q;},lte(){return q;},order(){return q;},is(){return q;},then(resolve,reject){return Promise.resolve({data:(tables[table]??[]).filter(row=>checks.every(check=>check(row))),error:null}).then(resolve,reject);}};return q;},async rpc(name,args){calls.push({rpc:name,args});return {data:[{profile_id:'program-creator',display_label:'Creador de programación'},{profile_id:'registrar',display_label:'Registró Uno'},...(!labelsMissing?[{profile_id:'validator',display_label:'Validó Dos'}]:[]),{profile_id:'unrelated',display_label:'Otro proyecto'}],error:null};}};
- const {getGuideReport}=load(querySource,{'server-only':{},'@/features/dispatches/billing-completion-queries':{getDispatchBillingCompletion:async()=>({completed:billingComplete,legacy:false,open:false})},'@/lib/supabase/admin':{createAdminClient:()=>client},'@/lib/supabase/server':{createClient:async()=>client},'@/features/projects/queries':{},'@/features/projects/access-policy':{},'./guide-metadata':{guideReportMetadata}});
- return {calls,report:(filters={})=>getGuideReport(projects,{dateFrom:'2026-10-01',dateTo:'2026-10-31',...filters})};
+ const {getGuideReport}=load(querySource,{'server-only':{},'@/features/dispatches/billing-completion-queries':{getDispatchBillingCompletion:async(ids)=>{calls.push({billingProjects:Array.from(ids)});return {completed:billingComplete,legacy:false,open:false};}},'@/lib/supabase/admin':{createAdminClient:()=>client},'@/lib/supabase/server':{createClient:async()=>client},'@/features/projects/queries':{},'@/features/projects/access-policy':{},'./guide-metadata':{guideReportMetadata}});
+ return {calls,report:(filters={},settings={})=>getGuideReport(reportProjects,{dateFrom:'2026-10-01',dateTo:'2026-10-31',...filters},settings)};
 }
+test('el reporte consulta el cierre solo de proyectos con despachos visibles, sin incluir empresas vacías',async()=>{
+ const f=fixture({reportProjects:[...projects,{...projects[0],id:'empty-project',companyName:'Otra empresa'}]});
+ assert.equal((await f.report()).rows.length,3);
+ assert.deepEqual(f.calls.find(call=>call.billingProjects).billingProjects,['project-a']);
+});
+test('una programación sin despachos no solicita el cierre financiero de su proyecto',async()=>{
+ const f=fixture({withoutDispatches:true});
+ const report=await f.report();
+ assert.equal(report.rows.length,0);
+ assert.equal(report.programming.length,1);
+ assert.deepEqual(f.calls.find(call=>call.billingProjects).billingProjects,[]);
+});
 test('Reportería usa completed_by, distinto al registrador, sin atribuir validación a despachos abiertos',async()=>{
  const f=fixture(),report=await f.report();
  assert.equal(report.rows.length,3);
@@ -98,4 +112,36 @@ test('la conciliación completa solo incluye despachos autorizados y elimina pro
  const none=await fixture().report({billingStatus:'reconciled'});
  assert.equal(none.rows.length,0);
  assert.equal(none.programming.length,0);
+});
+
+
+test('el reporte universal fija Mixto Listo aunque la URL envíe otro proveedor o estado de programación',async()=>{
+ for(const supplierName of ['Mixto Listo','MEZCLADORA, S.A.']){
+  const f=fixture({supplierName,otherSupplier:true});
+  const report=await f.report({supplierId:'other',programmingStatus:'CANCELLED'},{mixtoListoOnly:true});
+  assert.equal(report.rows.length,3);
+  assert.ok(report.programming.every(row=>row.supplierName===supplierName));
+  assert.ok(!report.rows.some(row=>row.dispatchId==='other-dispatch'));
+  assert.deepEqual(Array.from(report.filters.projects,row=>row.label),['Empresa · ADO · ADO-PRO']);
+ }
+});
+test('sin Mixto Listo o con proyecto ajeno el reporte universal no devuelve datos de otro proveedor',async()=>{
+ const f=fixture({supplierName:'Otro proveedor'});
+ assert.equal((await f.report({},{mixtoListoOnly:true})).programming.length,0);
+ assert.ok(!f.calls.some(call=>call.table==='programming'));
+ const foreign=fixture();
+ assert.equal((await foreign.report({projectId:'project-b'},{mixtoListoOnly:true})).rows.length,0);
+ assert.ok(!foreign.calls.some(call=>call.table==='programming'));
+});
+test('los reportes universales conservan proyectos históricos y excluyen Residente y Supervisor',async()=>{
+ const scopes=[
+  {project:{id:'company-a-active',status:'ACTIVE'},roleCodes:['PURCHASING'],permissions:['dispatch.view']},
+  {project:{id:'company-b-history',status:'INACTIVE'},roleCodes:['COMPANY_ADMIN'],permissions:['dispatch.view']},
+  {project:{id:'platform-history',status:'CLOSED'},roleCodes:['PLATFORM_ADMIN'],permissions:['dispatch.view']},
+  {project:{id:'resident'},roleCodes:['RESIDENT'],permissions:['dispatch.view']},
+  {project:{id:'supervisor'},roleCodes:['SUPERVISOR'],permissions:['dispatch.view']},
+  {project:{id:'missing-permission'},roleCodes:['PURCHASING'],permissions:[]},
+ ];
+ const {getUniversalReportScopes}=load(querySource,{'server-only':{},'@/features/dispatches/billing-completion-queries':{},'@/lib/supabase/admin':{},'@/lib/supabase/server':{},'@/features/projects/queries':{getOperationalProjectAccess:async()=>scopes},'@/features/projects/access-policy':projectAccess,'./guide-metadata':{guideReportMetadata}});
+ assert.deepEqual(Array.from(await getUniversalReportScopes('user'),scope=>scope.project.id),['company-a-active','company-b-history','platform-history']);
 });

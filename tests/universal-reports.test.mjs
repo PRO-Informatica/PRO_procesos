@@ -10,10 +10,15 @@ const accessPolicy = await read("../src/features/projects/access-policy.ts");
 const reportView = await read("../src/features/reports/components/guide-report.tsx");
 const scopedLink = await read("../src/features/reports/components/project-scoped-report-link.tsx");
 const sidebar = await read("../src/components/layout/app-sidebar.tsx");
+const filtersView = await read("../src/features/reports/components/report-filters.tsx");
+const legacyPage = await read("../src/app/(dashboard)/reports/page.tsx");
+const scope = await read("../src/features/reports/report-scope.ts");
 const projectQueries = await read("../src/features/projects/queries.ts");
 
-test("Reportería Universal aparece como módulo adicional", () => {
-  assert.match(sidebar, /label: "Reportería"[\s\S]*href: "\/reports"[\s\S]*exact: true/u);
+test("Reportería Universal es el único módulo de reportes y la ruta anterior redirige", () => {
+  assert.doesNotMatch(sidebar, /href: "\/reports"/u);
+  assert.match(legacyPage, /redirect\(`/u);
+  assert.match(legacyPage, /reports\/universal/u);
   assert.match(sidebar, /label: "Reportería Universal"[\s\S]*href: "\/reports\/universal"/u);
 });
 
@@ -29,13 +34,17 @@ test("el acceso universal de lectura admite Compras, Company Admin o Platform Ad
 test("la vista consulta todos los proyectos autorizados y conserva el filtro por proyecto", () => {
   assert.match(page, /const projects = scopes\.map/u);
   assert.match(page, /billingLegalName: project\.billingLegalName/u);
-  assert.match(page, /getGuideReport\(projects, filters\)/u);
+  assert.match(page, /getGuideReport\(projects, filters, \{ mixtoListoOnly: true \}\)/u);
   assert.match(page, /<GuideReport[^>]*universal/u);
-  assert.match(reportView, /name="project" label="Proyecto"/u);
+  assert.match(filtersView, /name="project" label="Proyecto · compañía"/u);
+  assert.doesNotMatch(filtersView, /name="supplier"|name="programmingStatus"/u);
 });
 
 test("Excel y ZIP revalidan el alcance universal en servidor", () => {
-  assert.match(route, /searchParams\.get\("scope"\) === "universal"/u);
+  assert.match(route, /const universal = true/u);
+  assert.doesNotMatch(route, /getProjectContext|canAccessOperationalSection/u);
+  assert.match(scope, /getUniversalReportScopes\(userId\)/u);
+  assert.doesNotMatch(scope, /getProjectContext/u);
   assert.match(route, /await getUniversalReportScopes\(profile\.id\)/u);
   assert.match(route, /getGuideReport\(projects\.map/u);
   assert.match(route, /buildWorkbook\(report,/u);

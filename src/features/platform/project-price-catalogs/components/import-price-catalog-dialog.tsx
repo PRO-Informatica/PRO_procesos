@@ -153,7 +153,7 @@ export function ImportPriceCatalogDialog({
               />
               <p className="mt-2 text-xs text-foreground-muted">
                 Máximo 10 MiB y 10,000 registros. {catalogKind === "PRODUCT"
-                  ? "Columnas: codigo, referencia, precio."
+                  ? "Columnas: codigo, referencia, precio. Opcionales: Resistencia PSI (28 días) y Slump en obra (pulgadas). Si omites estas columnas al actualizar, se conservan sus valores; una celda vacía los borra."
                   : "Columnas: codigo, descripcion y precio. Unidad de medida y observaciones son opcionales. Una UM vacía o con guion se importa sin unidad. Se aceptan KM, M (metro lineal), M2 (m²), M3 (m³), U/UN (Unidad o Unitario), Servicio, Combo, Recargo o dosis/m3."}
               </p>
               <p className="mt-1 text-xs text-foreground-muted">

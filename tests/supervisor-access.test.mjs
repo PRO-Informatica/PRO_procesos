@@ -20,7 +20,7 @@ function load(path, imports) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   const exports = {};
-  runInNewContext(compiled, { exports, Date, Intl, File, Response, URL, require(name) {
+  runInNewContext(compiled, { exports, Date, Intl, File, Response, URL, URLSearchParams, require(name) {
     if (name === "@/features/dashboard/components/indicator-filter") return { IndicatorFilter: "IndicatorFilter" };
     if (name === "@/features/dashboard/list-scope") return { getDashboardListScope: async () => ({ status: "none" }) };
     assert.ok(Object.hasOwn(imports, name), `Missing import: ${name}`); return imports[name];
@@ -147,9 +147,9 @@ test("abrir las secciones por URL muestra Sin acceso sin consultar datos ni cerr
     "@/features/reconciliation/queries": { getGlobalReconciliation: deniedQuery }, "@/features/reconciliation/components/reconciliation-workspace": {},
     "@/features/documents/queries": { getGlobalDocuments: deniedQuery }, "@/features/documents/components/documents-workspace": {},
     "@/features/notifications/queries": { getOperationalNotifications: deniedQuery }, "@/features/notifications/components/notifications-center": {},
-    "@/features/reports/queries": { getGuideReport: deniedQuery }, "@/features/reports/filters": {}, "@/features/reports/components/guide-report": {},
+    "@/features/reports/queries": { getGuideReport: deniedQuery, getUniversalReportScopes: async () => [] }, "@/features/reports/filters": {}, "@/features/reports/components/guide-report": {},
   };
-  for (const path of ["batches", "batches/[id]", "invoices", "reconciliation", "documents", "notifications", "reports"]) {
+  for (const path of ["batches", "batches/[id]", "invoices", "reconciliation", "documents", "notifications", "reports/universal"]) {
     const tree = await load(`app/(dashboard)/${path}/page.tsx`, imports).default({ params: Promise.resolve({ id }), searchParams: Promise.resolve({}) });
     assert.ok(nodes(tree).some(n => n.type === "EmptyState" && n.props.title.startsWith("Sin acceso")), path);
   }
@@ -161,7 +161,7 @@ test("radar y acciones documentales/notificaciones bloquean accesos directos sin
     "./queries": { getUniversalReportScopes: async () => [] },
   };
   const scopes = load("features/reports/report-scope.ts", imports);
-  assert.deepEqual([...(await scopes.getRadarProjectScope("user", false))], []);
+  assert.deepEqual([...(await scopes.getRadarProjectScope("user"))], []);
   const docs = load("features/documents/actions.ts", { ...imports,
     "@/features/projects/queries": { getProjectContext: async () => ({ ...context, projects: [context.activeProject] }) } });
   assert.equal((await docs.getGlobalDocumentUrl(projectId, id)).status, "error");
@@ -223,7 +223,7 @@ test("el detalle financiero del dashboard rechaza a Supervisor antes de cargar d
 
 test("exportar Reportería por URL devuelve 403 antes de consultar datos o archivos", async () => {
   const imports = { ...base, exceljs: {},
-    "@/features/reports/queries": { getGuideReport: async () => { assert.fail("No debe generar reportes"); } },
+    "@/features/reports/queries": { getGuideReport: async () => { assert.fail("No debe generar reportes"); }, getUniversalReportScopes: async () => [] },
     "@/features/reports/export-utils": {}, "@/features/reports/archive-queries": {}, "@/features/reports/zip-archive": {},
     "@/features/reports/zip-response": {}, "@/features/reports/filters": {}, "@/features/reports/presentation": {},
     "@/features/reports/workbook-header": {}, "@/lib/status-labels": {}, "@/lib/supabase/admin": {}, "@/lib/supabase/server": {},

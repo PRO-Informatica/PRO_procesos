@@ -47,6 +47,14 @@ export function parseGuideReportFilters(params: ReportParams): GuideReportFilter
   };
 }
 
+/** Universal general reports use a fixed supplier and no programming-state filter. */
+export function parseUniversalGuideReportFilters(params: ReportParams): GuideReportFilters {
+  const filters = parseGuideReportFilters(params);
+  delete filters.supplierId;
+  delete filters.programmingStatus;
+  return filters;
+}
+
 export function reportSearchParams(filters: GuideReportFilters) {
   const params = new URLSearchParams({ from: filters.dateFrom, to: filters.dateTo });
   const values: Array<[string, string | undefined]> = [

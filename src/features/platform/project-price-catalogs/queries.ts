@@ -22,6 +22,8 @@ type ProductRow = {
   id: string;
   code: string;
   reference: string;
+  resistance_psi: number | null;
+  slump: string | null;
   price: string | number;
   updated_at: string;
 };
@@ -61,7 +63,7 @@ async function getProductCatalog(
 
   let rowsQuery = supabase
     .from("project_product_prices")
-    .select("id, code, reference, price, updated_at", { count: "exact" })
+    .select("id, code, reference, resistance_psi, slump, price, updated_at", { count: "exact" })
     .eq("project_id", projectId)
     .order("code")
     .order("reference")
@@ -101,6 +103,8 @@ async function getProductCatalog(
       id: row.id,
       code: row.code,
       reference: row.reference,
+      resistancePsi: row.resistance_psi ?? null,
+      slump: row.slump ?? null,
       price: String(row.price),
       updatedAt: row.updated_at,
     })),

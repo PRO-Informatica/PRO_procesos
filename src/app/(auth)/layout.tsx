@@ -18,7 +18,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
         <div className="relative z-10 my-auto max-w-lg py-14">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-brand">
-            Control de concreto
+            Sistema de control
           </p>
           <h2 className="mt-5 text-4xl font-semibold leading-tight tracking-tight xl:text-5xl">
             La operación y sus documentos, en un solo lugar.

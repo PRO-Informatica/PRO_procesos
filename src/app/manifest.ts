@@ -3,8 +3,8 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "PRO Procesos",
-    short_name: "PRO Procesos",
+    name: "Sistema de control",
+    short_name: "Sistema de control",
     start_url: "/",
     display: "browser",
     icons: [

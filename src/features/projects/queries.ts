@@ -528,8 +528,7 @@ export async function getProjectContext(userId: string): Promise<ProjectContextS
         item.permissions.includes("batch.view") &&
         hasUniversalOperationalViewRole(item.roleCodes),
       ),
-      hasUniversalReportAccess: accessByProject.some(({ project, access: item }) =>
-        project.status === "ACTIVE" &&
+      hasUniversalReportAccess: accessByProject.some(({ access: item }) =>
         item.permissions.includes("dispatch.view") &&
         hasUniversalOperationalViewRole(item.roleCodes),
       ),

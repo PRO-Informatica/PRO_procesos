@@ -4,7 +4,6 @@ import { hasExactCorporateDomain } from "@/features/auth/security";
 
 import {
   Bell,
-  BarChart3,
   Building2,
   CalendarDays,
   ChevronLeft,
@@ -99,7 +98,6 @@ const navigation: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "Reportería",
     items: [
-      { label: "Reportería", icon: BarChart3, href: "/reports", permission: "dispatch.view", exact: true },
       {
         label: "Reportería Universal",
         icon: Globe2,
@@ -223,7 +221,9 @@ export function AppSidebar({
                   {section.items.map((item) => {
                     const Icon = item.icon;
                     const active =
-                      item.href === "/" || item.exact
+                      item.universalReportsOnly
+                        ? pathname === "/reports" || pathname.startsWith("/reports/")
+                        : item.href === "/" || item.exact
                         ? pathname === item.href
                         : Boolean(item.href && pathname.startsWith(item.href));
                     const sharedClass = `flex min-h-11 w-full items-center rounded-lg text-sm transition-colors ${

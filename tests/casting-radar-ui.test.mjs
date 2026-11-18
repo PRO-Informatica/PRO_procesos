@@ -25,10 +25,12 @@ function fixture(count = 10, report = "radar") {
     "react/jsx-runtime": { jsx, jsxs: jsx },
     react: { useState(initial) { const index = cursor++; if (!(index in state)) state[index] = initial; return [state[index], (value) => { state[index] = typeof value === "function" ? value(state[index]) : value; }]; } },
     "next/link": { default: link }, "lucide-react": {},
+    "@/components/ui/pagination": { Pagination: "Pagination" },
     "@/components/feedback/empty-state": {}, "@/components/feedback/loading-button": { LoadingButton: button },
     "@/components/motion/motion-page": {}, "@/components/motion/motion-section": {},
     "@/lib/notify": { notify: { error: (...args) => notifications.push(args), success: (...args) => notifications.push(args) } },
     "../radar": radar, "@/features/dispatches/casting-elements": { CASTING_ELEMENTS },
+    "./report-filters": { DispatchReportFilters: "DispatchReportFilters" },
     "./dispatch-report-card": { DispatchReportCard: card }, "./report-sections": {},
   };
   const exports = {};
@@ -52,15 +54,17 @@ test("la vista muestra tarjetas de despacho y todos los filtros solicitados", ()
   const f = fixture(), tree = f.render();
   assert.equal(tree.filter((node) => node.type === f.card).length, 8);
   assert.equal(tree.filter((node) => node.type === "table").length, 0);
-  assert.ok(tree.some((node) => node.type === "h2" && text(node) === "Filtros por despacho"));
-  for (const name of ["from", "to", "guide", "dispatch", "truck", "concrete", "laboratory", "castingElement", "project", "billing"]) assert.ok(tree.some((node) => node.props?.name === name), name);
+  const panel = tree.find((node) => node.type === "DispatchReportFilters");
+  assert.equal(panel.props.filters, filters);
+  assert.equal(panel.props.route, "/reports/radar");
+  assert.deepEqual(Array.from(panel.props.projects), []);
   assert.equal(tree.find((node) => node.type === f.button).props.disabled, true);
 });
 
 test("la selección conserva despachos entre páginas y descarga exactamente dos hojas", async () => {
   const f = fixture();
   for (const id of ["DSP-0", "DSP-1"]) f.render().find((node) => node.props?.["aria-label"] === `Seleccionar ${id}`).props.onChange({ target: { checked: true } });
-  f.render().find((node) => node.type === "button" && text(node).includes("Siguiente")).props.onClick();
+  f.render().find((node) => node.type === "Pagination").props.onPageChange(2);
   let tree = f.render();
   assert.equal(tree.filter((node) => node.type === f.card).length, 2);
   assert.ok(tree.some((node) => text(node) === "10 despacho(s) · 2 seleccionado(s)"));
@@ -83,17 +87,17 @@ test("la selección conserva despachos entre páginas y descarga exactamente dos
 test("seleccionar todos respeta el límite de cien despachos y avisa al excederlo", () => {
   const f = fixture(101);
   f.render().find((node) => node.type === "button" && text(node) === "Seleccionar primeros 100").props.onClick();
-  for (let page = 1; page < 13; page++) f.render().find((node) => node.type === "button" && text(node).includes("Siguiente")).props.onClick();
+  f.render().find((node) => node.type === "Pagination").props.onPageChange(13);
   f.render().find((node) => node.props?.["aria-label"] === "Seleccionar DSP-100").props.onChange({ target: { checked: true } });
   assert.ok(f.notifications.some(([title]) => title === "Límite de selección"));
   assert.ok(f.render().some((node) => text(node) === "101 despacho(s) · 100 seleccionado(s)"));
 });
 
-test("control de concreto conserva filtros y selección entre páginas y exporta todos en una sola hoja", async () => {
+test("Sistema de control conserva filtros y selección entre páginas y exporta todos en una sola hoja", async () => {
   const f = fixture(10, "concrete");
-  assert.ok(f.render().some((node) => node.type === "h1" && text(node) === "Control de concreto"));
+  assert.ok(f.render().some((node) => node.type === "h1" && text(node) === "Sistema de control"));
   f.render().find((node) => node.props?.["aria-label"] === "Seleccionar DSP-0").props.onChange({ target: { checked: true } });
-  f.render().find((node) => node.type === "button" && text(node).includes("Siguiente")).props.onClick();
+  f.render().find((node) => node.type === "Pagination").props.onPageChange(2);
   f.render().find((node) => node.props?.["aria-label"] === "Seleccionar DSP-9").props.onChange({ target: { checked: true } });
   await f.render().find((node) => node.type === f.button).props.onClick();
   assert.ok(f.calls[0].url.startsWith("/reports/concrete-control/export?"));
@@ -104,9 +108,9 @@ test("control de concreto conserva filtros y selección entre páginas y exporta
   assert.equal(query.get("billing"), "reconciled");
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(f.downloaded());
-  assert.deepEqual(workbook.worksheets.map(({ name }) => name), ["Control de concreto"]);
-  assert.equal(workbook.worksheets[0].getCell("C6").value, "0000");
-  assert.equal(workbook.worksheets[0].getCell("C7").value, "0009");
-  assert.ok(f.render().some((node) => text(node) === "Selecciona uno o varios despachos y descarga un Excel con todas sus guías en una sola hoja."));
+  assert.deepEqual(workbook.worksheets.map(({ name }) => name), ["Sistema de control"]);
+  assert.equal(workbook.worksheets[0].getCell("B6").value, "DSP-0");
+  assert.equal(workbook.worksheets[0].getCell("B7").value, "DSP-9");
+  assert.ok(f.render().some((node) => text(node) === "Exporta una fila por despacho con su programación, productos, servicios y facturas."));
   assert.ok(f.notifications.some(([, message]) => message === "2 despacho(s) en una sola hoja."));
 });

@@ -13,7 +13,7 @@ const COLUMNS = [
   { header: "Slump (Plg)", key: "slump", width: 16 },
   { header: 'LABORATORIO\n(4 CILINDROS POR MUESTRA 6X12")', key: "laboratory", width: 38 },
 ];
-const DOCUMENT_TYPES: Record<string, string> = { DISPATCH_GUIDE: "Guía de despacho", MIXTO_OPERATION: "Control operación · Mixto Listo", PANEXUS_OPERATION: "Control operación · Panexus" };
+const DOCUMENT_TYPES: Record<string, string> = { DISPATCH_GUIDE: "Guía de despacho", MIXTO_OPERATION: "Control operación · Mixto Listo", PANEXUS_OPERATION: "Control operación servicios varios" };
 const FIRST_GUIDE_ROW = 8;
 const border: ExcelJS.Border = { style: "thin", color: { argb: "FF343434" } };
 
@@ -51,7 +51,7 @@ export function buildRadarWorkbook(dispatches: RadarDispatch[]) {
     sheet.getCell("A2").value = `Proyecto: ${dispatch.projectName} · Proveedor: ${dispatch.supplierName}`;
     sheet.getCell("A3").value = `Programación: ${dispatch.programmingCode} · Pedido: ${dispatch.orderNumber || "Sin registrar"} · Fecha del despacho: ${radarDate(radarLocalDate(dispatch.scheduledAt, dispatch.timezone))}`;
     sheet.getCell("A4").value = `Elemento a fundir: ${dispatch.summary.castingElementLabel}. Amarillo: guía con laboratorio aplicado. Horarios en ${dispatch.timezone}; se indica la fecha si cambia de día.`;
-    sheet.getCell("A5").value = "Temperatura, slump y detalle de muestreo: celdas vacías cuando no están registrados.";
+    sheet.getCell("A5").value = "Slump solo en guías con laboratorio: dato registrado o, si falta, cotización del concreto de la guía o programación. Temperatura y muestreo vacíos si no están registrados.";
     for (let row = 2; row <= 5; row++) {
       sheet.getRow(row).height = row === 4 ? 30 : 24;
       sheet.getCell(row, 1).alignment = { wrapText: true, vertical: "middle" };
@@ -85,7 +85,7 @@ export function buildRadarWorkbook(dispatches: RadarDispatch[]) {
         row.getCell("quantity").value = guide.concreteQuantity;
         row.getCell("concrete").value = guide.concrete;
         row.getCell("temperature").value = guide.temperature;
-        row.getCell("slump").value = guide.slump || null;
+        row.getCell("slump").value = guide.laboratory === true ? guide.slump || null : null;
         row.getCell("laboratory").value = guide.laboratoryNotes || (guide.laboratory === null ? "Sin registrar" : guide.laboratory ? "Sí" : null);
         clockCell(row.getCell("loading"), guide.loadingTime, guide, dispatch.timezone);
         clockCell(row.getCell("arrival"), guide.arrivalAt, guide, dispatch.timezone);

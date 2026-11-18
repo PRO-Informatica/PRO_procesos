@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   const profile = await requireActiveProfile();
-  const projects = await getRadarProjectScope(profile.id, request.nextUrl.searchParams.get("scope") === "universal");
+  const projects = await getRadarProjectScope(profile.id);
   if (!projects.length) return NextResponse.json({ message: "No tienes acceso a este reporte." }, { status: 403 });
   let requested: unknown;
   try {
