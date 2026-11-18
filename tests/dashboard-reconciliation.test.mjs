@@ -45,6 +45,7 @@ const source = await readFile(new URL("../src/features/dashboard/queries.ts", im
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 
 const reconciliationCompiled = ts.transpileModule(await readFile(new URL("../src/features/reconciliation/queries.ts", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const agingCompiled = ts.transpileModule(await readFile(new URL("../src/features/dashboard/reinvoicing-aging-queries.ts", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 
 function fixture({ count = 4, complete = false, direct = false, errorTable, rpcError = false, duplicate = false } = {}) {
   const calls = [];
@@ -64,12 +65,18 @@ function fixture({ count = 4, complete = false, direct = false, errorTable, rpcE
     ] }],
   };
   const client = { from(table) {
-    const call = { table, eq: [] }, checks = [], orders = [];
+    const call = { table, eq: [], in: [] }, checks = [], orders = [];
     let bounds, limit, single = false;
     const query = {
       select(value) { call.select = value; return query; },
       is(key, value) { checks.push(row => row[key] === value); return query; },
       eq(key, value) { call.eq.push([key, value]); checks.push(row => row[key] === value); return query; },
+      in(key, values) { call.in.push([key, [...values]]); checks.push(row => values.includes(row[key])); return query; },
+      or(filters) {
+        const comparisons = filters.split(",").map((filter) => filter.split(".eq."));
+        checks.push(row => comparisons.some(([key, value]) => row[key] === value));
+        return query;
+      },
       gte(key, value) { checks.push(row => row[key] >= value); return query; },
       lte(key, value) { checks.push(row => row[key] <= value); return query; },
       lt(key, value) { checks.push(row => row[key] < value); return query; },
@@ -90,7 +97,7 @@ function fixture({ count = 4, complete = false, direct = false, errorTable, rpcE
   } };
   const exports = {};
   const imports = {
-    "server-only": {}, "@/lib/supabase/server": { createClient: async () => client },
+    "server-only": {}, "@/lib/supabase/server": { createClient: async () => client }, "@/lib/supabase/admin": { createAdminClient: () => client },
     "./reconciliation": { dashboardBillingStatus },
     "@/features/dashboard/reconciliation": { dashboardBillingStatus },
     "@/features/invoices/service-reconciliation": { serviceReconciliationSummary },
@@ -103,12 +110,49 @@ function fixture({ count = 4, complete = false, direct = false, errorTable, rpcE
       return Object.fromEntries(dispatches.map(row => [row.id, complete || direct]));
     } },
   };
-  class DashboardDate extends Date { constructor(value) { super(value ?? "2026-11-17T16:00:00Z"); } }
+  class DashboardDate extends Date {
+    constructor(value) { super(value ?? "2026-11-17T16:00:00Z"); }
+    static now() { return Date.parse("2026-11-17T16:00:00Z"); }
+  }
   runInNewContext(compiled, { exports, Date: DashboardDate, Intl, require(name) { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; } });
   const listExports = {};
   runInNewContext(reconciliationCompiled, { exports: listExports, require: name => { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; } });
-  return { calls, tables, run: () => exports.getProjectDashboard("project-a", "America/Guatemala"), list: () => listExports.getGlobalReconciliation("project-a") };
+  const agingExports = {};
+  runInNewContext(agingCompiled, { exports: agingExports, Date: DashboardDate, require: name => { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; } });
+  return { calls, tables, run: () => exports.getProjectDashboard("project-a", "America/Guatemala"), list: () => listExports.getGlobalReconciliation("project-a"), aging: () => agingExports.getReinvoicingAging("project-a") };
 }
+
+test("la antigüedad usa la solicitud de la factura vigente y excluye diferencias, otros proyectos y fechas sin evidencia", async () => {
+  const f = fixture();
+  const [, both, missing, recipient] = f.tables.dispatch_reconciliations;
+  both.id = "recon-both";
+  both.status = "PENDING_REINVOICING";
+  both.current_service_invoice_id = "service-current";
+  missing.id = "recon-missing";
+  missing.current_service_invoice_id = "service-missing";
+  recipient.id = "recon-recipient";
+  recipient.current_service_invoice_id = "service-recipient";
+  f.tables.dispatch_reconciliations.at(-1).status = "PENDING_REINVOICING";
+  f.tables.invoices = ["product", "service-current", "service-missing", "service-recipient"].map(id => ({ id, project_id: "project-a", created_at: "2026-11-03T00:00:00Z" }));
+  f.tables.invoice_recipient_exceptions = [{ invoice_id: "service-recipient", project_id: "project-a", status: "REINVOICE_REQUESTED", decided_at: "2026-11-08T00:00:00Z" }];
+  f.tables.audit_events = [
+    ["DISPATCH_REINVOICING_REQUESTED", null, "2026-11-05", "project-a"],
+    ["DISPATCH_REINVOICING_REQUESTED", null, "2026-10-28", "project-a"],
+    ["DISPATCH_SERVICE_REINVOICING_REQUESTED", "service-old", "2026-11-14", "project-a"],
+    ["DISPATCH_SERVICE_REINVOICING_REQUESTED", "service-current", "2026-11-06", "project-a"],
+    ["DISPATCH_SERVICE_REINVOICING_REQUESTED", "service-current", "2026-11-10", "project-b"],
+  ].map(([action, invoice_id, date, project_id], index) => ({ id: String(index), action, invoice_id, created_at: `${date}T00:00:00Z`, project_id, entity_type: "dispatch_reconciliation", entity_id: both.id }));
+
+  const { cases } = await f.aging();
+  assert.deepEqual(Array.from(cases, ({ id, startedAt }) => [id, startedAt]), [
+    [both.dispatch_id, Date.parse("2026-11-05")], [recipient.dispatch_id, Date.parse("2026-11-08")], [missing.dispatch_id, null],
+  ]);
+  assert.deepEqual(Array.from(cases[0].requests, ({ kind, startedAt }) => [kind, startedAt]), [["Producto", Date.parse("2026-11-05")], ["Servicio", Date.parse("2026-11-06")]]);
+  const audit = f.calls.find(({ table }) => table === "audit_events");
+  assert.ok(audit.eq.some(([field, value]) => field === "project_id" && value === "project-a"));
+  assert.deepEqual(audit.in.find(([field]) => field === "entity_id")[1], [both.id, missing.id, recipient.id]);
+  assert.doesNotMatch(audit.select, /reason/u);
+});
 
 test("regresión del lote: cuatro productos conciliados con Servicio pendiente no son cuatro conciliados", async () => {
   const f = fixture(), dashboard = await f.run(), batch = dashboard.batchReconciliation[0];

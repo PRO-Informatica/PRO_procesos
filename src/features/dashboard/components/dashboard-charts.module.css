@@ -6,6 +6,58 @@
   filter: brightness(1.06);
 }
 .barSheen { pointer-events: none; }
+
+.aging {
+  --aging-blue: #2259aa;
+}
+
+:global(.dark) .aging {
+  --aging-blue: #87b5ff;
+}
+
+.dotCell {
+  position: relative;
+}
+
+.dotTrack {
+  position: absolute;
+  inset: 0 1rem;
+}
+
+.dotThreshold {
+  position: absolute;
+  inset-block: 0;
+  border-inline-start: 1px dashed var(--destructive);
+  pointer-events: none;
+}
+
+.dotButton {
+  position: absolute;
+  inset-block-start: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.dotButton:is(:focus-visible, [aria-pressed="true"]) {
+  outline: 2px solid currentColor;
+  outline-offset: -5px;
+}
+
+.dot {
+  display: block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 1px currentColor;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .barSheen { display: none; }
   .barBody { transition: none; }
