@@ -208,7 +208,7 @@ test("ordena Panexus y conserva las observaciones manuscritas del OCR", () => {
   assert.equal(parsed.observations, "Durante la fundición se respetó el nivel");
 });
 
-test("reconstruye fecha y campos Panexus aunque Vision altere el orden de lectura", () => {
+test("reconstruye fecha y texto explícito sin asignar un No. suelto al equipo", () => {
   const raw = [
     "PEDIDO/CONTROL OPERACION R-3",
     "GUATEMALA, 18",
@@ -224,7 +224,7 @@ test("reconstruye fecha y campos Panexus aunque Vision altere el orden de lectur
   const parsed = parsePanexusOperationWords([], raw);
   assert.equal(parsed.date, "18/09/2026");
   assert.equal(parsed.pumpingStartTime, "9:75");
-  assert.equal(parsed.equipmentNumber, "59");
+  assert.equal(parsed.equipmentNumber, null); // No: 59 alone has no field identity.
   assert.equal(parsed.concreteType, "CONF 5007- CON 400");
 });
 

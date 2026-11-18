@@ -1,7 +1,6 @@
+import { Pagination } from "@/components/ui/pagination";
 import {
   CalendarDays,
-  ChevronLeft,
-  ChevronRight,
   Clock3,
   Filter,
   History,
@@ -303,34 +302,7 @@ export function AuditList({
       )}
 
       {result.totalPages > 1 && (
-        <nav
-          className="mt-5 flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3"
-          aria-label="Paginación de auditoría"
-        >
-          <p className="text-xs text-foreground-muted">
-            Página {result.page} de {result.totalPages}
-          </p>
-          <div className="flex gap-2">
-            {result.page > 1 ? (
-              <Link
-                href={auditHref(filters, result.page - 1)}
-                className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground-muted hover:bg-muted hover:text-foreground"
-              >
-                <ChevronLeft aria-hidden="true" className="size-4" />
-                Anterior
-              </Link>
-            ) : null}
-            {result.page < result.totalPages ? (
-              <Link
-                href={auditHref(filters, result.page + 1)}
-                className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground-muted hover:bg-muted hover:text-foreground"
-              >
-                Siguiente
-                <ChevronRight aria-hidden="true" className="size-4" />
-              </Link>
-            ) : null}
-          </div>
-        </nav>
+        <Pagination page={result.page} pageSize={result.pageSize} total={result.total} href={auditHref(filters, result.page)} ariaLabel="Paginación de auditoría" className="mt-5 border border-border" />
       )}
     </div>
   );
