@@ -15,6 +15,7 @@ function component(path, extra = {}, reduced = false) {
     react: { useState: initial => { const i = cursor++; if (!(i in states)) states[i] = typeof initial === "function" ? initial() : initial; return [states[i], value => { states[i] = value; }]; }, useMemo: fn => fn(), useId: () => "test-id", useRef: value => ({ current: value }) },
     "next/link": { __esModule: true, default: "Link" },
     "lucide-react": {},
+    "@/components/ui/pagination": { Pagination: "Pagination" },
     "motion/react": { motion: new Proxy({}, { get: (_, key) => `motion.${key}` }), useReducedMotion: () => reduced, useInView: () => true },
     "@/lib/motion/tokens": { motionTokens: { duration: { progress: 1, route: 0.2 }, ease: "easeOut" } },
     "../details": details, "../formatters": formatters,
@@ -94,11 +95,14 @@ test("Conciliación reutiliza la tabla, pagina de diez en diez y filtra Producto
   let tree = ReconciliationWorkspace(props);
   const rows = () => nodes(tree).filter(node => node.type === "tr" && node.props.className);
   assert.equal(rows().length, 10);
-  assert.equal(nodes(tree).find(node => node.props?.["aria-label"] === "Página anterior").props.disabled, true);
-  nodes(tree).find(node => node.props?.["aria-label"] === "Página siguiente").props.onClick();
+  const pagination = () => nodes(tree).find(node => node.type === "Pagination").props;
+  assert.equal(pagination().page, 1);
+  assert.equal(pagination().pageSize, 10);
+  assert.equal(pagination().total, 14);
+  pagination().onPageChange(2);
   tree = ReconciliationWorkspace(props);
   assert.equal(rows().length, 4);
-  assert.equal(nodes(tree).find(node => node.props?.["aria-label"] === "Página siguiente").props.disabled, true);
+  assert.equal(pagination().page, 2);
   nodes(tree).find(node => node.props?.["aria-label"] === "Filtrar por estado del despacho").props.onChange({ target: { value: "reconciled" } });
   tree = ReconciliationWorkspace(props);
   assert.equal(rows().length, 1);

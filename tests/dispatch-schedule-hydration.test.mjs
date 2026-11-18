@@ -31,7 +31,8 @@ function renderSchedule(intl, value, timezone) {
   const formatters = load("features/dispatches/formatters.ts", { "@/lib/status-labels": {}, "./catalog-estimates": {} }, intl);
   const jsx = (type, props) => ({ type, props });
   const { DispatchesWorkspace } = load("features/dispatches/components/dispatches-workspace.tsx", {
-    "react/jsx-runtime": { jsx, jsxs: jsx }, "lucide-react": {}, "next/link": {},
+    "react/jsx-runtime": { jsx, jsxs: jsx }, "lucide-react": {},
+    "@/components/ui/pagination": { Pagination: "Pagination" }, "next/link": {},
     react: { useMemo: fn => fn(), useState: initial => [initial, () => {}] },
     "../formatters": formatters,
     "@/features/programming/formatters": { formatProgrammingStatus: String, programmingStatusTone: () => "" },

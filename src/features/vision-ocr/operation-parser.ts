@@ -1,4 +1,6 @@
 import type { GoogleVisionResponse } from "./vision-ocr.ts";
+import { orientedGuideWords } from "./complete-guide-parser.ts";
+import { readServicesControlFields } from "./services-control-parser.ts";
 import {
   cleanDetectedValue,
   extractVisionLayoutWords,
@@ -25,7 +27,7 @@ export type ParsedMixtoOperation = {
   warnings: string[];
 };
 
-export type ParsedPanexusOperation = {
+export type ParsedServicesOperation = {
   templateType: "PANEXUS_OPERATION";
   date: string | null;
   code: string | null;
@@ -38,6 +40,8 @@ export type ParsedPanexusOperation = {
   observations: string | null;
   warnings: string[];
 };
+// Compatibility for existing readers and historical extraction payloads.
+export type ParsedPanexusOperation = ParsedServicesOperation;
 
 function regionLines(words: VisionLayoutWord[], xStart: number, xEnd: number, yStart: number, yEnd: number) {
   return groupOcrLines(wordsInOcrRegion(words, xStart, xEnd, yStart, yEnd));
@@ -148,7 +152,6 @@ function missingWarnings(fields: Array<[unknown, string]>) {
 
 function parseOperationNumber(
   words: VisionLayoutWord[],
-  templateType: "MIXTO_OPERATION" | "PANEXUS_OPERATION",
   rawText = "",
 ) {
   const rawNumber = rawText.match(/(?:^|\n)No\s*:\s*(\d+)/u)?.[1];
@@ -159,14 +162,13 @@ function parseOperationNumber(
   if (labeled) return labeled;
   return compactNumber(regionText(
     words,
-    templateType === "PANEXUS_OPERATION" ? [0.36, 0.55, 0.29, 0.38] : [0.35, 0.55, 0.36, 0.46],
+    [0.35, 0.55, 0.36, 0.46],
     ["NO", "CANT", "VIBRADORES"],
   ));
 }
 
 function parseConcreteType(
   words: VisionLayoutWord[],
-  templateType: "MIXTO_OPERATION" | "PANEXUS_OPERATION",
   rawText = "",
 ) {
   const rawValue = cleanDetectedValue(rawText.match(/(?:TIPO|TPO)\s+DE\s+CONCRETO\s*:?[ \t]*([^\n]+)/iu)?.[1] ?? "");
@@ -177,7 +179,7 @@ function parseConcreteType(
   if (labeled) return labeled;
   return regionText(
     words,
-    templateType === "PANEXUS_OPERATION" ? [0.62, 0.99, 0.32, 0.43] : [0.62, 0.99, 0.38, 0.49],
+    [0.62, 0.99, 0.38, 0.49],
     ["TIPO", "TPO", "DE", "CONCRETO", "ML", "CORTE"],
   );
 }
@@ -200,8 +202,8 @@ export function parseMixtoOperationWords(
     ?.replace(/\s+R\.?\s*C\.?\s*#.*$/iu, "")
     .trim() || null;
   const orderNumber = compactNumber(labeledRegionValue(words, [0.66, 0.99, 0.17, 0.31], "PEDIDO NO", ["NIT"], 2));
-  const equipmentNumber = parseOperationNumber(words, "MIXTO_OPERATION", rawText);
-  const concreteType = parseConcreteType(words, "MIXTO_OPERATION", rawText);
+  const equipmentNumber = parseOperationNumber(words, rawText);
+  const concreteType = parseConcreteType(words, rawText);
   const estimatedVolume = parseEstimatedVolume(words);
   const realVolume = parseRealVolume(words);
   const warnings = missingWarnings([
@@ -229,27 +231,19 @@ export function parseMixtoOperationWords(
   };
 }
 
-export function parsePanexusOperationWords(words: VisionLayoutWord[], rawText = ""): ParsedPanexusOperation {
-  const date = parseOperationDate(words, rawText);
-  const code = compactNumber(labeledRegionValue(words, [0.67, 0.99, 0.10, 0.25], "CODIGO", ["NO FACTURA", "NIT"], 2));
-  const pumpingStartLines = regionLines(words, 0.02, 0.47, 0.20, 0.45);
-  const pumpingStartTime = cleanDetectedValue(rawText.match(/HORA\s+DE\s+INICIO(?:\s+DE)?\s+BOMBEO\s*:?[ \t]*([^\n]+)/iu)?.[1] ?? "")
-    ?? readOcrLabeledValue(pumpingStartLines, "HORA DE INICIO BOMBEO", ["EQUIPO"], 1)
-    ?? readOcrLabeledValue(pumpingStartLines, "HORA DE INICIO DE BOMBEO", ["EQUIPO"], 1);
-  const pumpingEndTime = readOcrLabeledValue(regionLines(words, 0.43, 0.99, 0.20, 0.45), "HORA FINALIZACION BOMBEO", ["CANT VIBRADORES"], 1);
-  const equipmentNumber = parseOperationNumber(words, "PANEXUS_OPERATION", rawText);
-  const concreteType = parseConcreteType(words, "PANEXUS_OPERATION", rawText);
-  const estimatedVolume = parseEstimatedVolume(words);
-  const realVolume = parseRealVolume(words);
-  const observations = readOcrLabeledValue(
-    regionLines(words, 0.015, 0.99, 0.55, 0.88),
-    "OBSERVACIONES",
-    ["RECIBI CONFORME"],
-    10,
-  );
+function servicesOperation(fields: ReturnType<typeof readServicesControlFields>): ParsedServicesOperation {
+  const date = fields.guideDate ? fields.guideDate.split("-").reverse().join("/") : null;
+  const code = fields.orderNumber || null;
+  const pumpingStartTime = fields.pumpingStartTime || null;
+  const pumpingEndTime = fields.pumpingEndTime || null;
+  const equipmentNumber = fields.equipmentNumber || null;
+  const concreteType = fields.concreteType || null;
+  const estimatedVolume = fields.estimatedVolume || null;
+  const realVolume = fields.realVolume || null;
+  const observations = fields.observations.replace(/\s+/gu, " ").trim() || null;
   const warnings = missingWarnings([
     [date, "fecha"],
-    [code, "código"],
+    [code, "número de pedido"],
     [pumpingStartTime, "hora de inicio de bombeo"],
     [pumpingEndTime, "hora de finalización de bombeo"],
     [equipmentNumber, "No. de equipo"],
@@ -274,6 +268,15 @@ export function parsePanexusOperationWords(words: VisionLayoutWord[], rawText = 
   };
 }
 
+export function parseServicesOperationWords(words: VisionLayoutWord[], rawText = ""): ParsedServicesOperation {
+  return servicesOperation(readServicesControlFields(words.map((word) => ({
+    text: word.text, x: word.xStart, y: word.yStart, w: word.xEnd - word.xStart, h: word.yEnd - word.yStart,
+    confidence: null, paragraph: 0,
+  })), rawText));
+}
+
+export const parsePanexusOperationWords = parseServicesOperationWords;
+
 export function parseMixtoOperation(response: GoogleVisionResponse, curedByMixto: boolean | null) {
   return parseMixtoOperationWords(
     extractVisionLayoutWords(response),
@@ -282,9 +285,8 @@ export function parseMixtoOperation(response: GoogleVisionResponse, curedByMixto
   );
 }
 
-export function parsePanexusOperation(response: GoogleVisionResponse) {
-  return parsePanexusOperationWords(
-    extractVisionLayoutWords(response),
-    response.responses?.[0]?.fullTextAnnotation?.text ?? "",
-  );
+export function parseServicesOperation(response: GoogleVisionResponse) {
+  return servicesOperation(readServicesControlFields(orientedGuideWords(response), response.responses?.[0]?.fullTextAnnotation?.text ?? ""));
 }
+
+export const parsePanexusOperation = parseServicesOperation;

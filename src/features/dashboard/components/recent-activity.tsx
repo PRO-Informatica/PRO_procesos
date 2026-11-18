@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowRight, ChevronLeft, ChevronRight, History } from "lucide-react";
+import { Pagination } from "@/components/ui/pagination";
+import { ArrowRight, History } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -28,7 +29,8 @@ export function RecentActivity({
 }) {
   const [page, setPage] = useState(0);
   const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
-  const visibleItems = items.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  const currentPage = Math.min(page, pageCount - 1);
+  const visibleItems = items.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
 
   return (
     <section className="overflow-hidden rounded-xl border border-border bg-surface">
@@ -38,7 +40,7 @@ export function RecentActivity({
       </header>
 
       <div className="overflow-hidden">
-        <MotionSwap motionKey={page} className="divide-y divide-border">
+        <MotionSwap motionKey={currentPage} className="divide-y divide-border">
           {visibleItems.length ? (
             visibleItems.map((item) => (
                 <Link
@@ -67,31 +69,7 @@ export function RecentActivity({
       </div>
 
       {items.length > PAGE_SIZE && (
-        <footer className="flex items-center justify-between border-t border-border px-4 py-3">
-          <span className="text-[11px] font-medium text-foreground-muted">
-            Página {page + 1} de {pageCount}
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setPage((current) => Math.max(0, current - 1))}
-              disabled={page === 0}
-              className="grid size-9 place-items-center rounded-lg border border-border text-foreground-muted transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
-              aria-label="Ver actividades anteriores"
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
-              disabled={page >= pageCount - 1}
-              className="grid size-9 place-items-center rounded-lg border border-border text-foreground-muted transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
-              aria-label="Ver más actividades"
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
-        </footer>
+        <Pagination page={currentPage + 1} pageSize={PAGE_SIZE} total={items.length} onPageChange={(next) => setPage(next - 1)} itemLabel="actividades" ariaLabel="Paginación de actividad reciente" className="border-t border-border" />
       )}
     </section>
   );

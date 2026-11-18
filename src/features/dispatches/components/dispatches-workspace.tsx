@@ -1,9 +1,7 @@
 "use client";
 
-import { formatProgrammingStatus, programmingStatusTone } from "@/features/programming/formatters";
-import { getProgrammingDisplayStatus } from "@/features/programming/status-presentation";
-
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, Search, Truck, X } from "lucide-react";
+import { Pagination } from "@/components/ui/pagination";
+import { CalendarDays, ChevronRight, Plus, Search, Truck, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -25,7 +23,6 @@ import type {
   DispatchEstimate,
   DispatchPageData,
   ProgrammingDispatchItem,
-  ProgrammingDispatchStatus,
 } from "../types";
 import { DispatchStatusBadge } from "./dispatch-badges";
 import { DispatchGuideDialog } from "./dispatch-guide-dialog";
@@ -126,7 +123,6 @@ export function DispatchesWorkspace({
   residentView?: boolean;
   dashboardScope?: DashboardListScope;
 }) {
-  const [programmingStatus, setProgrammingStatus] = useState<ProgrammingDispatchStatus | "">("");
   const [dispatchStatus, setDispatchStatus] = useState<DispatchFilter>("");
   const [dateMode, setDateMode] = useState<DateMode>("day");
   const [date, setDate] = useState("");
@@ -142,12 +138,11 @@ export function DispatchesWorkspace({
     const statusMatches = dispatchStatus === ""
       || (dispatchStatus === "NOT_STARTED" ? !item.dispatchId : item.dispatchStatus === dispatchStatus);
     return (
-      (!programmingStatus || getProgrammingDisplayStatus(item.programmingStatus, residentView) === getProgrammingDisplayStatus(programmingStatus, residentView))
-      && statusMatches
+      statusMatches
       && (!code || item.programmingCode.toLowerCase().includes(code.trim().toLowerCase()))
       && matchesPeriod(itemDate, date, dateMode)
     );
-  }), [code, data.items, date, dateMode, dispatchStatus, programmingStatus, project.timezone, residentView, dashboardScope]);
+  }), [code, data.items, date, dateMode, dispatchStatus, project.timezone, dashboardScope]);
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const firstItem = (currentPage - 1) * PAGE_SIZE;
@@ -157,9 +152,8 @@ export function DispatchesWorkspace({
     setSelectedId(null);
   };
   const selected = data.items.find((item) => item.programmingId === selectedId) ?? null;
-  const hasFilters = Boolean(programmingStatus || dispatchStatus || date || code);
+  const hasFilters = Boolean(dispatchStatus || date || code);
   const clearFilters = () => {
-    setProgrammingStatus("");
     setDispatchStatus("");
     setDate("");
     setCode("");
@@ -177,8 +171,7 @@ export function DispatchesWorkspace({
 
       <MotionSection className="dispatches-filters rounded-xl border border-border bg-surface p-4 shadow-[0_1px_2px_rgba(16,24,40,0.02)]">
         <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">Filtros</p>{hasFilters && <button type="button" onClick={clearFilters} className="secondary-button min-h-9 gap-1.5 px-3 text-xs"><X className="size-3.5" /> Limpiar</button>}</div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_0.8fr_1fr_1.2fr]">
-          <select aria-label="Estado programación" value={programmingStatus} onChange={(event) => { setProgrammingStatus(event.target.value as ProgrammingDispatchStatus | ""); setPage(1); }} className="form-input"><option value="">Estado programación</option><option value="CONFIRMED">Confirmada</option><option value="IN_EXECUTION">En ejecución</option><option value="DISPATCH_COMPLETED">{formatProgrammingStatus("DISPATCH_COMPLETED", residentView)}</option>{!residentView && <option value="COMPLETED">{formatProgrammingStatus("COMPLETED")}</option>}</select>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_0.8fr_1fr_1.2fr]">
           <select aria-label="Estado despacho" value={dispatchStatus} onChange={(event) => { setDispatchStatus(event.target.value as DispatchFilter); setPage(1); }} className="form-input"><option value="">Estado despacho</option><option value="NOT_STARTED">Sin iniciar</option><option value="IN_EXECUTION">En ejecución</option><option value="COMPLETED">{residentView ? "Despacho completo" : "Operación finalizada"}</option></select>
           <select aria-label="Periodo de fecha" value={dateMode} onChange={(event) => { setDateMode(event.target.value as DateMode); setPage(1); }} className="form-input"><option value="day">Día</option><option value="week">Semana</option><option value="month">Mes</option></select>
           <div className="relative"><CalendarDays className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" /><input aria-label="Fecha" type="date" value={date} onChange={(event) => { setDate(event.target.value); setPage(1); }} className="form-input pl-10" /></div>
@@ -191,11 +184,21 @@ export function DispatchesWorkspace({
         {!filtered.length ? <div className="p-6"><EmptyState icon={Truck} title="No hay programaciones disponibles" description={hasFilters ? "Ajusta los filtros para ver otros resultados." : "Las programaciones confirmadas aparecerán aquí."} /></div> : (
           <>
             <div className="dispatches-table-layout">
-              <table className="dispatches-table w-full table-auto text-center text-xs">
+              <table className="dispatches-table w-full table-fixed text-center text-xs">
+                <colgroup>
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "12%" }} />
+                  <col style={{ width: "6%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "13%" }} />
+                </colgroup>
                 <thead className="bg-muted/60 text-[10px] uppercase tracking-[0.08em] text-foreground-muted">
                   <tr>
                     <th className="px-5 py-3">Código programación</th>
-                    <th className="px-5 py-3">Estado programación</th>
                     <th className="px-5 py-3">Proveedor</th>
                     <th className="px-5 py-3">No. de pedido</th>
                     <th className="px-5 py-3">Tipo de concreto</th>
@@ -214,7 +217,6 @@ export function DispatchesWorkspace({
                       className={`cursor-pointer hover:bg-muted/35 ${selectedId === item.programmingId ? "bg-brand-soft/35" : ""}`}
                     >
                       <td className="dispatches-code px-5 py-4 font-mono text-xs font-semibold text-brand-strong">{item.programmingCode}</td>
-                      <td className="px-5 py-4"><span className={`dispatches-programming-status inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.programmingStatus, residentView)}`}>{formatProgrammingStatus(item.programmingStatus, residentView)}</span></td>
                       <td className="px-5 py-4 font-medium">{item.supplierName}</td>
                       <td className="px-5 py-4 font-medium">{item.orderNumber ?? "—"}</td>
                       <td className="max-w-64 px-5 py-4 text-foreground-muted">
@@ -250,7 +252,6 @@ export function DispatchesWorkspace({
                     <div className="col-span-2 min-[420px]:col-span-1"><dt className="font-medium text-foreground-muted">Fecha programada</dt><dd className="mt-1 font-semibold text-foreground">{formatDispatchDateTime(item.scheduledAt, project.timezone)}</dd></div>
                     <div><dt className="font-medium text-foreground-muted">No. de pedido</dt><dd className="mt-1 break-words font-semibold text-foreground">{item.orderNumber ?? "—"}</dd></div>
                     <div><dt className="font-medium text-foreground-muted">Tipo de concreto</dt><dd className="mt-1 break-words font-semibold text-foreground">{concreteTypeLabel(item.concreteTypes)}</dd></div>
-                    <div><dt className="font-medium text-foreground-muted">Programación</dt><dd className="mt-1 font-semibold text-foreground"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${programmingStatusTone(item.programmingStatus, residentView)}`}>{formatProgrammingStatus(item.programmingStatus, residentView)}</span></dd></div>
                     <div><dt className="font-medium text-foreground-muted">Despacho</dt><dd className="mt-1 font-semibold text-foreground">{item.dispatchStatus ? formatDispatchStatus(item.dispatchStatus, residentView) : "Sin iniciar"}</dd></div>
                     <div><dt className="font-medium text-foreground-muted">Estimado productos</dt><dd className="mt-1 text-foreground"><EstimateValue estimate={item.productEstimate} /></dd></div>
                     <div><dt className="font-medium text-foreground-muted">Estimado servicios</dt><dd className="mt-1 text-foreground"><EstimateValue estimate={item.serviceEstimate} /></dd></div>
@@ -260,16 +261,7 @@ export function DispatchesWorkspace({
               ))}
             </div>
             {filtered.length > PAGE_SIZE && (
-              <nav aria-label="Paginación de despachos" className="flex flex-col items-center justify-between gap-3 border-t border-border px-4 py-3 sm:flex-row sm:px-5">
-                <p className="text-center text-xs text-foreground-muted" aria-live="polite">
-                  Mostrando <strong className="font-semibold text-foreground">{firstItem + 1}–{Math.min(firstItem + PAGE_SIZE, filtered.length)}</strong> de {filtered.length} registros
-                </p>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-medium text-foreground-muted">Página {currentPage} de {pageCount}</span>
-                  <button type="button" aria-label="Ver página anterior" disabled={currentPage === 1} onClick={() => changePage(currentPage - 1)} className="grid size-10 place-items-center rounded-lg border border-border text-foreground-muted transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 disabled:pointer-events-none disabled:opacity-35"><ChevronLeft aria-hidden="true" className="size-4" /></button>
-                  <button type="button" aria-label="Ver página siguiente" disabled={currentPage === pageCount} onClick={() => changePage(currentPage + 1)} className="grid size-10 place-items-center rounded-lg border border-border text-foreground-muted transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 disabled:pointer-events-none disabled:opacity-35"><ChevronRight aria-hidden="true" className="size-4" /></button>
-                </div>
-              </nav>
+              <Pagination page={currentPage} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={changePage} ariaLabel="Paginación de despachos" className="border-t border-border" />
             )}
           </>
         )}

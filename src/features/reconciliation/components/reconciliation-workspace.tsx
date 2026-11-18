@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Scale, Search } from "lucide-react";
+import { Pagination } from "@/components/ui/pagination";
+import { Scale, Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -127,13 +128,7 @@ export function ReconciliationWorkspace({ project, data, dashboardScope }: {
           </dl><div className="mt-3"><ReconciliationAction item={item} batch={batch} /></div>
         </article>)}</div>
       </> : <div className="p-4 sm:p-6"><EmptyState icon={Scale} title="Sin conciliaciones" description="No hay despachos que coincidan con los filtros seleccionados." /></div>}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4 text-xs text-foreground-muted">
-        <p>Mostrando {filtered.length ? start + 1 : 0}–{Math.min(start + PAGE_SIZE, filtered.length)} de {filtered.length} registros</p>
-        <div className="flex items-center gap-2"><span>Página {currentPage} de {pages}</span>
-          <button type="button" aria-label="Página anterior" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} className="secondary-button min-h-10 px-3"><ChevronLeft className="size-4" /></button>
-          <button type="button" aria-label="Página siguiente" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)} className="secondary-button min-h-10 px-3"><ChevronRight className="size-4" /></button>
-        </div>
-      </div>
+      <Pagination page={currentPage} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} ariaLabel="Paginación de conciliaciones" className="border-t border-border" />
     </MotionSection>
   </MotionPage>;
 }

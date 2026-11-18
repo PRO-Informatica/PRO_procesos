@@ -29,7 +29,7 @@ const text = node => node == null || typeof node === "boolean" ? "" : typeof nod
 const presentation = load("features/programming/status-presentation.ts", { "../projects/access-policy": projectAccess, "./types": programmingTypes });
 const programmingFormatters = load("features/programming/formatters.ts", { "@/lib/status-labels": labels, "./status-presentation": presentation });
 const dispatchFormatters = load("features/dispatches/formatters.ts", { "@/lib/status-labels": labels, "./catalog-estimates": { formatDispatchMoney: String } });
-const baseImports = { "react/jsx-runtime": runtime, "lucide-react": {}, "next/link": { __esModule: true, default: "Link" } };
+const baseImports = { "@/components/ui/pagination": { Pagination: "Pagination" }, "react/jsx-runtime": runtime, "lucide-react": {}, "next/link": { __esModule: true, default: "Link" } };
 
 test("Correo y el indicador se ocultan para cuentas no corporativas aunque tengan permiso o sean administradores", () => {
   for (const email of ["usuario@gmail.com", "usuario@pro.com.gt", " USUARIO@PRO.COM.GT ", "usuario@pro.com.gt.example", ""]) {
@@ -125,7 +125,7 @@ test("Despacho completo conserva el mismo verde para Residente antes y después 
   assert.equal(DispatchStatusBadge({ status: "IN_EXECUTION", residentView: true }).props.label, "En ejecución");
 });
 
-test("el filtro y las tarjetas de Despachos reúnen las dos etapas solo para Residente y mantienen los registros originales", () => {
+test("Despachos muestra y filtra solo el estado del despacho para ambos perfiles sin alterar las programaciones", () => {
   for (const residentView of [true, false]) {
     let index = 0;
     const state = [];
@@ -145,12 +145,15 @@ test("el filtro y las tarjetas de Despachos reúnen las dos etapas solo para Res
     });
     const render = () => { index = 0; return DispatchesWorkspace({ data, residentView, canCreate: true, canModify: false, receiverName: "Usuario", project: { id: "project", timezone: "America/Guatemala" } }); };
     let tree = render();
-    const filter = nodes(tree).find(n => n.type === "select" && n.props["aria-label"] === "Estado programación");
-    assert.equal(nodes(filter).some(n => n.type === "option" && n.props.value === "COMPLETED"), !residentView);
-    filter.props.onChange({ target: { value: "DISPATCH_COMPLETED" } });
+    assert.equal(nodes(tree).some(n => n.props?.["aria-label"] === "Estado programación"), false);
+    assert.equal(nodes(tree).some(n => n.type === "th" && text(n) === "Estado programación"), false);
+    assert.equal(nodes(tree).some(n => n.type === "dt" && text(n) === "Programación"), false);
+    const filter = nodes(tree).find(n => n.type === "select" && n.props["aria-label"] === "Estado despacho");
+    assert.ok(nodes(filter).some(n => n.type === "option" && n.props.value === "COMPLETED"));
+    filter.props.onChange({ target: { value: "COMPLETED" } });
     tree = render();
     const rows = nodes(tree).filter(n => n.type === "tr" && typeof n.props.onClick === "function");
-    assert.equal(rows.length, residentView ? 2 : 1);
+    assert.equal(rows.length, 2);
     assert.equal(nodes(tree).filter(n => n.type === "article").length, rows.length);
     assert.equal(nodes(tree).filter(n => n.type === "DispatchStatusBadge").every(n => n.props.residentView === residentView), true);
     if (residentView) assert.doesNotMatch(text(tree), /Pendiente de conciliación|Completado/u);
@@ -221,9 +224,8 @@ function paginationFixture(count) {
     render, data, all: () => nodes(tree),
     rows: () => nodes(tree).filter(n => n.type === "tr" && n.props.onClick),
     cards: () => nodes(tree).filter(n => n.type === "article"),
-    nav: () => nodes(tree).find(n => n.type === "nav" && n.props["aria-label"] === "Paginación de despachos"),
-    control: label => nodes(tree).find(n => n.props?.["aria-label"] === label),
-    clickPage(label) { nodes(tree).find(n => n.props?.["aria-label"] === label).props.onClick(); render(); },
+    nav: () => nodes(tree).find(n => n.type === "Pagination"),
+    clickPage(label) { const p = nodes(tree).find(n => n.type === "Pagination").props; p.onPageChange(p.page + (label.includes("siguiente") ? 1 : -1)); render(); },
     filter(label, value) { nodes(tree).find(n => n.props?.["aria-label"] === label).props.onChange({ target: { value } }); render(); },
     clear() { nodes(tree).find(n => n.type === "button" && text(n).includes("Limpiar")).props.onClick(); render(); },
   };
@@ -239,14 +241,14 @@ test("Despachos pagina de diez en diez sin duplicar ni omitir registros en tabla
     const codes = rows.map(row => text(row.props.children[0]));
     cards.forEach((card, i) => assert.ok(text(card).includes(codes[i])));
     seen.push(...codes);
-    assert.ok(text(f.nav()).includes(`Página ${page} de 3`));
-    assert.equal(f.control("Ver página anterior").props.disabled, page === 1);
-    assert.equal(f.control("Ver página siguiente").props.disabled, page === 3);
+    assert.equal(f.nav().props.page, page);
+    assert.equal(f.nav().props.pageSize, 10);
+    assert.equal(f.nav().props.total, 25);
     if (page < 3) f.clickPage("Ver página siguiente");
   }
   assert.equal(new Set(seen).size, 25);
   assert.deepEqual(seen, f.data.items.map(item => item.programmingCode));
-  assert.ok(text(f.nav()).includes("Mostrando 21–25 de 25 registros"));
+  assert.equal(f.nav().props.page, 3);
   f.rows()[0].props.onClick(); f.render();
   assert.ok(f.all().some(n => n.type === "h2" && text(n) === "Despacho PRG-021"));
   f.clickPage("Ver página anterior");
@@ -259,10 +261,10 @@ test("Despachos pagina de diez en diez sin duplicar ni omitir registros en tabla
 test("los filtros se aplican antes de paginar y vuelven a la primera página", () => {
   const f = paginationFixture(25);
   f.clickPage("Ver página siguiente"); f.clickPage("Ver página siguiente");
-  f.filter("Estado programación", "DISPATCH_COMPLETED");
+  f.filter("Estado despacho", "COMPLETED");
   assert.equal(f.rows().length, 10);
-  assert.ok(text(f.nav()).includes("Página 1 de 2"));
-  assert.ok(text(f.nav()).includes("de 16 registros"));
+  assert.equal(f.nav().props.page, 1);
+  assert.equal(f.nav().props.total, 16);
   f.clickPage("Ver página siguiente");
   assert.equal(f.rows().length, 6);
   f.filter("Código programación", "PRG-024");
@@ -271,10 +273,10 @@ test("los filtros se aplican antes de paginar y vuelven a la primera página", (
   assert.equal(text(f.rows()[0].props.children[0]), "PRG-024");
   f.clear();
   assert.equal(f.rows().length, 10);
-  assert.ok(text(f.nav()).includes("Página 1 de 3"));
+  assert.equal(f.nav().props.page, 1);
   f.clickPage("Ver página siguiente");
   f.filter("Fecha", "2026-11-03");
-  assert.ok(text(f.nav()).includes("Página 1 de 3"));
+  assert.equal(f.nav().props.page, 1);
   f.filter("Código programación", "NO-EXISTE");
   assert.equal(f.rows().length, 0);
   assert.equal(f.cards().length, 0);
@@ -289,13 +291,14 @@ test("la paginación respeta los límites de diez registros y ajusta una página
     if (count === 11) {
       f.clickPage("Ver página siguiente");
       assert.equal(f.rows().length, 1);
-      assert.ok(text(f.nav()).includes("Mostrando 11–11 de 11 registros"));
+      assert.equal(f.nav().props.page, 2);
+      assert.equal(f.nav().props.total, 11);
     }
   }
   const f = paginationFixture(25);
   f.clickPage("Ver página siguiente"); f.clickPage("Ver página siguiente");
   f.data.items = f.data.items.slice(0, 11); f.render();
-  assert.ok(text(f.nav()).includes("Página 2 de 2"));
+  assert.equal(f.nav().props.page, 2);
   assert.equal(f.rows().length, 1);
-  assert.equal(f.control("Ver página siguiente").props.disabled, true);
+  assert.equal(f.nav().props.total, 11);
 });

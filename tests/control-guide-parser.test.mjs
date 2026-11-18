@@ -41,7 +41,8 @@ test('campos ausentes o ilegibles no se sustituyen por volumen estimado, equipo,
 test('se pueden elegir los tres formularios usando la misma respuesta OCR',()=>{
  const v=parseGuideVariants(fixture());assert.deepEqual(Object.keys(v),['DISPATCH_GUIDE','MIXTO_OPERATION','PANEXUS_OPERATION']);
  assert.equal(v.MIXTO_OPERATION.details.documentType,'MIXTO_OPERATION');assert.equal(v.PANEXUS_OPERATION.details.documentType,'PANEXUS_OPERATION');
- assert.equal(v.PANEXUS_OPERATION.details.orderNumber,'');
+ // Servicios varios also accepts the explicit Pedido No. label.
+ assert.equal(v.PANEXUS_OPERATION.details.orderNumber,'88');
 });
 test('volumen precargado no inventa un codigo o precio; el residente ingresa codigo y horarios antes de guardar',()=>{
  const d={...parseControlGuide(fixture(),'MIXTO_OPERATION'),resident:{castingElement:'PILES_AND_COLUMNS',laboratoryApplied:false}};

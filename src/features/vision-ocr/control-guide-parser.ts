@@ -3,6 +3,7 @@ import { findGuideLabels, orientedGuideWords, parseCompleteGuide } from "./compl
 import { normalizeOcrText } from "./guide-parser.ts";
 import { emptyGuideDetails, normalizeGuideDate, type GuideOcrDraft } from "./guide-draft.ts";
 import type { VisionTemplateType } from "./template-classifier.ts";
+import { parseServicesControlGuide } from "./services-control-parser.ts";
 
 type Word = ReturnType<typeof orientedGuideWords>[number];
 const cx = (w: Word) => w.x + w.w / 2;
@@ -23,10 +24,11 @@ function monthNumber(raw: string) {
 }
 
 export function parseControlGuide(response: GoogleVisionResponse, documentType: "MIXTO_OPERATION" | "PANEXUS_OPERATION"): GuideOcrDraft {
+  if (documentType === "PANEXUS_OPERATION") return parseServicesControlGuide(response);
   const words = orientedGuideWords(response);
   const labels = findGuideLabels(words, {
     heading: ["CONTROL OPERACION"], day: ["DIA"], month: ["MES"], year: ["ANO"],
-    order: documentType === "MIXTO_OPERATION" ? ["PEDIDO NO"] : ["CODIGO"],
+    order: ["PEDIDO NO"],
     real: ["VOLUMEN REAL"], observations: ["OBSERVACIONES"], signature: ["RECIBI CONFORME", "RECIBI"],
   });
   const label = (name: string) => labels.find((l) => l.name === name);

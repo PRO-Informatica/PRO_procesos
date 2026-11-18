@@ -1,4 +1,5 @@
-import { ChevronLeft, ChevronRight, Eye, Plus, Search } from "lucide-react";
+import { Pagination } from "@/components/ui/pagination";
+import { Eye, Plus, Search } from "lucide-react";
 import Link from "next/link";
 
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -225,44 +226,7 @@ export function CompaniesList({
       )}
 
       {result.totalPages > 1 && (
-        <nav
-          className="mt-5 flex flex-col gap-3 rounded-xl border border-border bg-surface px-4 py-3 min-[390px]:flex-row min-[390px]:items-center min-[390px]:justify-between"
-          aria-label="Paginación de empresas"
-        >
-          <p className="text-xs text-foreground-muted">
-            Página {result.page} de {result.totalPages}
-          </p>
-          <div className="grid w-full grid-cols-2 gap-2 min-[390px]:w-auto">
-            {result.page > 1 ? (
-              <Link
-                href={pageHref(filters, result.page - 1)}
-                className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground-muted hover:bg-muted hover:text-foreground"
-              >
-                <ChevronLeft aria-hidden="true" className="size-4" />
-                Anterior
-              </Link>
-            ) : (
-              <span className="inline-flex cursor-not-allowed items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground-muted opacity-40">
-                <ChevronLeft aria-hidden="true" className="size-4" />
-                Anterior
-              </span>
-            )}
-            {result.page < result.totalPages ? (
-              <Link
-                href={pageHref(filters, result.page + 1)}
-                className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground-muted hover:bg-muted hover:text-foreground"
-              >
-                Siguiente
-                <ChevronRight aria-hidden="true" className="size-4" />
-              </Link>
-            ) : (
-              <span className="inline-flex cursor-not-allowed items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground-muted opacity-40">
-                Siguiente
-                <ChevronRight aria-hidden="true" className="size-4" />
-              </span>
-            )}
-          </div>
-        </nav>
+        <Pagination page={result.page} pageSize={result.pageSize} total={result.total} href={pageHref(filters, result.page)} ariaLabel="Paginación de empresas" className="mt-5 border border-border" />
       )}
     </div>
   );

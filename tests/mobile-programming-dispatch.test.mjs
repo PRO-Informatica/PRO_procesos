@@ -19,7 +19,7 @@ test("Despachos separa la tabla de escritorio de las tarjetas móviles de guías
   assert.match(dispatchWorkspace, /hidden overflow-x-auto sm:block/u);
   assert.match(dispatchWorkspace, /divide-y divide-border sm:hidden/u);
   assert.match(dispatchWorkspace, /Fecha programada/u);
-  assert.match(dispatchWorkspace, /Programación/u);
+  assert.match(dispatchWorkspace, /Estado despacho/u);
   assert.match(dispatchWorkspace, /Despacho/u);
 });
 

@@ -4,7 +4,6 @@ import { hasExactCorporateDomain } from "@/features/auth/security";
 
 import {
   Bell,
-  Building2,
   CalendarDays,
   ChevronLeft,
   Files,
@@ -14,9 +13,7 @@ import {
   Mail,
   ReceiptText,
   Scale,
-  Settings,
   Truck,
-  Users,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -112,15 +109,6 @@ const navigation: Array<{ label: string; items: NavigationItem[] }> = [
       { label: "Correo", icon: Mail, href: "/mail", permission: "gmail.mailbox.view" },
       { label: "Documentos", icon: Files, href: "/documents", anyPermission: ["document.view", "dispatch.view", "invoice.view"] },
       { label: "Notificaciones", icon: Bell, href: "/notifications" },
-    ],
-  },
-  {
-    label: "Administración",
-    items: [
-      { label: "Proyectos", icon: FolderKanban, companyAdminOnly: true },
-      { label: "Usuarios", icon: Users, permission: "project.manage_members" },
-      { label: "Proveedores", icon: Building2, permission: "project.manage_suppliers" },
-      { label: "Configuración", icon: Settings, companyAdminOnly: true },
     ],
   },
 ];

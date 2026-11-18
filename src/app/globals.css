@@ -840,6 +840,13 @@ details[open] > .menu-popover {
 
 .dispatches-table {
   --dispatch-action-width: 9rem;
+  table-layout: fixed;
+}
+
+/* Reserve room for the two stacked actions on every page. Rows may still
+   grow for longer content, without changing type size or column widths. */
+.dispatches-table tbody tr {
+  height: 5.75rem;
 }
 
 .dispatches-table td {
@@ -854,16 +861,6 @@ details[open] > .menu-popover {
 .dispatches-table .dispatches-code {
   white-space: nowrap;
   font-size: 0.6875rem;
-}
-
-.dispatches-table .dispatches-programming-status {
-  width: fit-content;
-  min-width: 0;
-  max-width: 100%;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.6875rem;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
 }
 
 .dispatches-table .dispatches-dispatch-status > span {
@@ -899,8 +896,8 @@ details[open] > .menu-popover {
 
 .dispatches-table .dispatches-actions {
   display: grid;
-  grid-template-columns: var(--dispatch-action-width);
-  width: max-content;
+  grid-template-columns: minmax(0, 1fr);
+  width: var(--dispatch-action-width);
   max-width: 100%;
   margin-inline: auto;
   justify-content: center;
