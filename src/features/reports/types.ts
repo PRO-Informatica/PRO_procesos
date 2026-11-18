@@ -1,3 +1,5 @@
+import type { ServiceReconciliationSummary } from "@/features/invoices/service-reconciliation";
+
 export type GuideReportFilters = {
   projectId?: string;
   supplierId?: string;
@@ -50,6 +52,7 @@ export type GuideReportRow = {
   supplierId: string;
   supplierName: string;
   programmingCode: string;
+  scheduledAt: string;
   orderNumber: string | null;
   batchId: string | null;
   batchCode: string | null;
@@ -74,6 +77,7 @@ export type GuideReportRow = {
   orderStatus: string;
   reinvoicingRequired: boolean;
   reconciliationStatus: string;
+  serviceReconciliation: ServiceReconciliationSummary | null;
   productInvoicedQuantity: number;
   difference: number;
   invoiceCount: number;
@@ -82,10 +86,11 @@ export type GuideReportRow = {
 };
 
 export type DispatchReportSummary = Pick<GuideReportRow,
-  "dispatchId" | "dispatchCode" | "projectId" | "orderNumber" | "batchCode" |
+  "dispatchId" | "dispatchCode" | "projectId" | "projectName" | "companyName" | "supplierName" |
+  "programmingCode" | "scheduledAt" | "timezone" | "orderNumber" | "batchCode" |
   "receivedQuantity" | "unitCode" | "guideCount" | "incidentCount" |
   "castingElements" | "castingElementLabel" | "trucks" | "laboratoryLabel" |
-  "completedByName" | "dispatchStatus" | "billingComplete" | "reconciliationStatus" | "difference"
+  "completedByName" | "dispatchStatus" | "billingComplete" | "reconciliationStatus" | "serviceReconciliation" | "difference"
 > & {
   productInvoice: Pick<ReportInvoice, "number" | "total" | "currency" | "extractionStatus"> | null;
   serviceInvoice: Pick<ReportInvoice, "number" | "total" | "currency" | "extractionStatus"> | null;

@@ -13,11 +13,13 @@ export function ProjectScopedReportLink({
   projectId,
   href,
   className,
+  title,
   children,
 }: {
   projectId: string;
   href: string;
   className?: string;
+  title?: string;
   children: React.ReactNode;
 }) {
   const context = useProjectContext();
@@ -30,14 +32,14 @@ export function ProjectScopedReportLink({
   );
 
   if (!needsProjectSwitch) {
-    return <Link href={href} className={className}>{children}</Link>;
+    return <Link href={href} className={className} title={title}>{children}</Link>;
   }
 
   return (
     <form action={action} className="contents">
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="returnTo" value={href} />
-      <button type="submit" className={className} disabled={pending}>
+      <button type="submit" className={className} title={title} disabled={pending}>
         {children}
       </button>
       {state.status === "error" && <span className="sr-only" role="alert">{state.message}</span>}

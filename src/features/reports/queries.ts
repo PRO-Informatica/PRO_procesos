@@ -1,5 +1,7 @@
 import "server-only";
 import { getDispatchBillingCompletion } from "@/features/dispatches/billing-completion-queries";
+import { serviceReconciliationSummary } from "@/features/invoices/service-reconciliation";
+import { requiresServiceInvoice } from "@/features/programming/invoice-policy";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -59,7 +61,7 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
     if (!supplierIdsForReport.length) return blank;
   }
 
-  let programmingQuery = supabase.from("programming").select("id, project_id, supplier_id, scheduled_at, requested_quantity, confirmed_quantity, unit_code, status, created_by, casting_element").in("project_id", projectIds).gte("scheduled_at", `${filters.dateFrom}T00:00:00`).lte("scheduled_at", `${filters.dateTo}T23:59:59.999`).order("scheduled_at");
+  let programmingQuery = supabase.from("programming").select("id, project_id, supplier_id, scheduled_at, requested_quantity, confirmed_quantity, unit_code, status, created_by, casting_element, delivery_modes").in("project_id", projectIds).gte("scheduled_at", `${filters.dateFrom}T00:00:00`).lte("scheduled_at", `${filters.dateTo}T23:59:59.999`).order("scheduled_at");
   if (supplierIdsForReport) programmingQuery = programmingQuery.in("supplier_id", supplierIdsForReport);
   if (!mixtoListoOnly && filters.supplierId) programmingQuery = programmingQuery.eq("supplier_id", filters.supplierId);
   if (!mixtoListoOnly && filters.programmingStatus) programmingQuery = programmingQuery.eq("status", filters.programmingStatus);
@@ -80,7 +82,7 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
     dispatchIds.length ? supabase.from("dispatch_guides").select("id, dispatch_id, quantity, unit_code, details, casting_element, laboratory_applied").in("dispatch_id", dispatchIds) : empty<Row>(),
     dispatchIds.length ? supabase.from("dispatch_incidents").select("id, dispatch_id").in("dispatch_id", dispatchIds) : empty<{ id: string; dispatch_id: string }>(),
     dispatchIds.length ? supabase.from("batch_dispatches").select("dispatch_id, batch_id").in("dispatch_id", dispatchIds).is("removed_at", null) : empty<{ dispatch_id: string; batch_id: string }>(),
-    dispatchIds.length ? supabase.from("dispatch_reconciliations").select("dispatch_id, status, current_product_invoice_id, current_service_invoice_id").in("dispatch_id", dispatchIds) : empty<{ dispatch_id: string; status: string; current_product_invoice_id: string | null; current_service_invoice_id: string | null }>(),
+    dispatchIds.length ? supabase.from("dispatch_reconciliations").select("dispatch_id, status, current_product_invoice_id, current_service_invoice_id, service_status, service_comparison").in("dispatch_id", dispatchIds) : empty<{ dispatch_id: string; status: string; current_product_invoice_id: string | null; current_service_invoice_id: string | null; service_status: string | null; service_comparison: unknown }>(),
     dispatchIds.length ? supabase.from("invoices").select("id, dispatch_id, invoice_type, invoice_number, invoice_date, status, subtotal, total, currency, order_number, pca_original, invoiced_quantity, invoiced_unit_code, created_at").in("dispatch_id", dispatchIds) : empty<Row>(),
     dispatchIds.length ? supabase.from("dispatch_reconciliation_attempts").select("dispatch_id, difference, executed_at").in("dispatch_id", dispatchIds).order("executed_at", { ascending: false }) : empty<Row>(),
     getDispatchBillingCompletion(dispatchProjectIds),
@@ -164,6 +166,8 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
 
   let programming: ProgrammingReportItem[] = programs.map((program) => {
     const project = projectMap.get(String(program.project_id));
+    const scheduledAt = String(program.scheduled_at);
+    const serviceRequired = requiresServiceInvoice(Array.isArray(program.delivery_modes) ? program.delivery_modes : null);
     let children: GuideReportRow[] = (dispatchByProgram.get(String(program.id)) ?? []).map((dispatch) => {
       const id = String(dispatch.id);
       const dispatchGuides = guidesByDispatch.get(id) ?? [];
@@ -176,6 +180,7 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
       return {
         dispatchId: id, dispatchCode: dispatchCode(id), projectId: String(program.project_id), projectName: project?.name ?? "Proyecto", projectCode: project?.code ?? "", projectBillingLegalName: project?.billingLegalName ?? null, companyName: project?.companyName ?? "Empresa", timezone: project?.timezone ?? "America/Guatemala",
         supplierId: String(dispatch.supplier_id), supplierName: supplierMap.get(String(dispatch.supplier_id)) ?? "Proveedor no disponible", programmingCode: programmingCode(String(program.id)),
+        scheduledAt,
         orderNumber: optionalText(dispatch.order_number), batchId, batchCode: batchId ? batchMap.get(batchId) ?? null : null, guideCount: dispatchGuides.length,
         ...guideReportMetadata(dispatchGuides, program.casting_element),
         documentedQuantity: dispatchGuides.reduce((sum, guide) => sum + numeric(guide.quantity), 0), unitCode: String(dispatch.real_unit_code ?? program.unit_code ?? ""), receivedQuantity: numeric(dispatch.real_volume),
@@ -184,6 +189,7 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
         billingComplete: billingCompletion[id] === true,
         incidentCount: incidentList.length, documentCount: dispatchGuides.reduce((sum, guide) => sum + (guideDocCount.get(String(guide.id)) ?? 0), 0) + incidentList.reduce((sum, incidentId) => sum + (incidentDocCount.get(incidentId) ?? 0), 0),
         orderStatus: reconciliation?.status ?? "NOT_STARTED", reinvoicingRequired: reconciliation?.status === "PENDING_REINVOICING", reconciliationStatus: reconciliation?.status ?? "NOT_STARTED",
+        serviceReconciliation: serviceRequired || reconciliation?.current_service_invoice_id ? serviceReconciliationSummary(reconciliation ?? {}) : null,
         productInvoicedQuantity: productInvoice?.invoicedQuantity ?? 0, difference: numeric(latestAttemptByDispatch.get(id)?.difference), invoiceCount: [productInvoice, serviceInvoice].filter(Boolean).length, productInvoice, serviceInvoice,
       };
     });
@@ -194,7 +200,7 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
     if (filters.reconciliationStatus) children = children.filter((row) => row.reconciliationStatus === filters.reconciliationStatus);
     if (filters.billingStatus) children = children.filter((row) => row.billingComplete === (filters.billingStatus === "reconciled"));
     if (filters.withIncidents) children = children.filter((row) => filters.withIncidents === "yes" ? row.incidentCount > 0 : row.incidentCount === 0);
-    return { id: String(program.id), code: programmingCode(String(program.id)), projectId: String(program.project_id), projectName: project?.name ?? "Proyecto", projectCode: project?.code ?? "", projectBillingLegalName: project?.billingLegalName ?? null, companyName: project?.companyName ?? "Empresa", timezone: project?.timezone ?? "America/Guatemala", supplierId: String(program.supplier_id), supplierName: supplierMap.get(String(program.supplier_id)) ?? "Proveedor no disponible", scheduledAt: String(program.scheduled_at), requestedQuantity: numeric(program.requested_quantity), confirmedQuantity: program.confirmed_quantity === null ? null : numeric(program.confirmed_quantity), unitCode: String(program.unit_code), status: String(program.status), castingElementLabel: guideReportMetadata([], program.casting_element).castingElementLabel, createdById: String(program.created_by), createdByName: profileMap.get(String(program.created_by)) ?? "Usuario no disponible", dispatches: children };
+    return { id: String(program.id), code: programmingCode(String(program.id)), projectId: String(program.project_id), projectName: project?.name ?? "Proyecto", projectCode: project?.code ?? "", projectBillingLegalName: project?.billingLegalName ?? null, companyName: project?.companyName ?? "Empresa", timezone: project?.timezone ?? "America/Guatemala", supplierId: String(program.supplier_id), supplierName: supplierMap.get(String(program.supplier_id)) ?? "Proveedor no disponible", scheduledAt, requestedQuantity: numeric(program.requested_quantity), confirmedQuantity: program.confirmed_quantity === null ? null : numeric(program.confirmed_quantity), unitCode: String(program.unit_code), status: String(program.status), castingElementLabel: guideReportMetadata([], program.casting_element).castingElementLabel, createdById: String(program.created_by), createdByName: profileMap.get(String(program.created_by)) ?? "Usuario no disponible", dispatches: children };
   });
   if (filters.castingElement) programming = programming.filter((program) => program.dispatches.length > 0 || (!(dispatchByProgram.get(program.id)?.length) && guideReportMetadata([], programById.get(program.id)?.casting_element).castingElements.some((element) => element === filters.castingElement)));
   if (hasDispatchFilters(filters)) programming = programming.filter((program) => program.dispatches.length > 0);
