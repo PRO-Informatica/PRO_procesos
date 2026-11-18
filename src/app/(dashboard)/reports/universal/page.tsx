@@ -1,7 +1,7 @@
 import { EmptyState } from "@/components/feedback/empty-state";
 import { requireActiveProfile } from "@/features/auth/queries";
 import { GuideReport } from "@/features/reports/components/guide-report";
-import { parseGuideReportFilters } from "@/features/reports/filters";
+import { parseUniversalGuideReportFilters } from "@/features/reports/filters";
 import { getGuideReport, getUniversalReportScopes } from "@/features/reports/queries";
 
 export default async function UniversalReportsPage({
@@ -22,7 +22,7 @@ export default async function UniversalReportsPage({
     );
   }
 
-  const filters = parseGuideReportFilters(await searchParams);
+  const filters = parseUniversalGuideReportFilters(await searchParams);
   const projects = scopes.map(({ project }) => ({
     id: project.id,
     name: project.name,
@@ -31,6 +31,6 @@ export default async function UniversalReportsPage({
     companyName: project.companyName,
     timezone: project.timezone,
   }));
-  const data = await getGuideReport(projects, filters);
+  const data = await getGuideReport(projects, filters, { mixtoListoOnly: true });
   return <GuideReport data={data} filters={filters} universal projectCount={projects.length} />;
 }

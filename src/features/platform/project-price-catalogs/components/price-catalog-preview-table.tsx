@@ -1,8 +1,7 @@
 "use client";
 
+import { Pagination } from "@/components/ui/pagination";
 import { useState } from "react";
-
-import { Button } from "@/components/ui/button";
 
 import type { PriceCatalogPreview } from "../types";
 
@@ -24,7 +23,9 @@ export function PriceCatalogPreviewTable({
   const pageRows = rows.slice(start, start + PAGE_SIZE);
   const label = preview.catalogKind === "PRODUCT" ? "productos" : "servicios";
   const serviceCatalog = preview.catalogKind === "SERVICE";
-  const columnWidths = serviceCatalog ? ["6%", "11%", "22%", "22%", "8%", "10%", "21%"] : ["9%", "17%", "28%", "17%", "29%"];
+  const columnWidths = serviceCatalog
+    ? ["6%", "11%", "22%", "22%", "8%", "10%", "21%"]
+    : ["6%", "13%", "18%", "11%", "14%", "13%", "25%"];
   const headerClass = "sticky top-0 z-10 border-b border-border bg-muted px-4 py-3 align-top leading-5 [overflow-wrap:anywhere]";
 
   return (
@@ -44,13 +45,19 @@ export function PriceCatalogPreviewTable({
         </label>
       )}
       <div className="relative isolate max-h-[min(55dvh,34rem)] overflow-auto" role="region" aria-label={`Filas de vista previa de ${label}`} tabIndex={0}>
-        <table className={`w-full table-fixed border-separate border-spacing-0 text-left text-sm ${serviceCatalog ? "min-w-[68rem]" : "min-w-[46rem]"}`} aria-label={`Vista previa de ${label}`}>
+        <table className={`w-full table-fixed border-separate border-spacing-0 text-left text-sm ${serviceCatalog ? "min-w-[68rem]" : "min-w-[62rem]"}`} aria-label={`Vista previa de ${label}`}>
           <colgroup>{columnWidths.map((width, index) => <col key={index} style={{ width }} />)}</colgroup>
           <thead className="text-xs uppercase tracking-wide text-foreground-muted">
             <tr>
               <th scope="col" className={headerClass}>Fila</th>
               <th scope="col" className={headerClass}>Código</th>
-              {!serviceCatalog && <th scope="col" className={headerClass}>Referencia</th>}
+              {!serviceCatalog && (
+                <>
+                  <th scope="col" className={headerClass}>Referencia</th>
+                  <th scope="col" className={headerClass}>Resistencia PSI</th>
+                  <th scope="col" className={headerClass}>Slump en obra (plg)</th>
+                </>
+              )}
               {serviceCatalog && <><th scope="col" className={headerClass}>Descripción</th><th scope="col" className={headerClass}>Observaciones</th><th scope="col" className={headerClass}>UM</th></>}
               <th scope="col" className={`${headerClass} text-right`}>Precio</th>
               <th scope="col" className={headerClass}>Validación</th>
@@ -61,7 +68,13 @@ export function PriceCatalogPreviewTable({
               <tr key={row.rowNumber}>
                 <td className="px-4 py-3 text-foreground-muted">{row.rowNumber}</td>
                 <td className="px-4 py-3 font-mono">{row.code || "—"}</td>
-                {preview.catalogKind === "PRODUCT" && <td className="px-4 py-3 font-mono">{row.reference || "—"}</td>}
+                {!serviceCatalog && (
+                  <>
+                    <td className="px-4 py-3 font-mono">{row.reference || "—"}</td>
+                    <td className="px-4 py-3">{row.resistancePsi === undefined ? "No incluido" : row.resistancePsi ?? "—"}</td>
+                    <td className="px-4 py-3">{row.slump === undefined ? "No incluido" : row.slump || "—"}</td>
+                  </>
+                )}
                 {serviceCatalog && <><td className="px-4 py-3">{row.description || "—"}</td><td className="px-4 py-3">{row.observations || "—"}</td><td className="px-4 py-3">{row.unitCode || row.rawUnitCode || "Sin UM"}</td></>}
                 <td className="px-4 py-3 text-right">{row.price || "—"}</td>
                 <td className="px-4 py-3">
@@ -76,41 +89,7 @@ export function PriceCatalogPreviewTable({
           </tbody>
         </table>
       </div>
-      <nav
-        aria-label={`Paginación de vista previa de ${label}`}
-        className="flex flex-col gap-3 border-t border-border px-4 py-3 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
-      >
-        <p role="status" className="text-xs text-foreground-muted">
-          Mostrando {rows.length ? start + 1 : 0}–{Math.min(start + PAGE_SIZE, rows.length)} de {rows.length} registros
-          {errorsOnly ? " con errores" : ""}.
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" disabled={disabled || page === 1} onClick={() => setPage(page - 1)}>
-            Anterior
-          </Button>
-          <label className="flex items-center gap-2 text-xs text-foreground-muted">
-            <span className="whitespace-nowrap">Página</span>
-            <select
-              aria-label={`Página de vista previa de ${label}`}
-              className="form-input w-auto"
-              value={page}
-              disabled={disabled || totalPages === 1}
-              onChange={(event) => {
-                const next = Number(event.target.value);
-                if (Number.isInteger(next) && next >= 1 && next <= totalPages) setPage(next);
-              }}
-            >
-              {Array.from({ length: totalPages }, (_, index) => (
-                <option key={index + 1} value={index + 1}>{index + 1}</option>
-              ))}
-            </select>
-            <span className="whitespace-nowrap">de {totalPages}</span>
-          </label>
-          <Button variant="secondary" disabled={disabled || page === totalPages} onClick={() => setPage(page + 1)}>
-            Siguiente
-          </Button>
-        </div>
-      </nav>
+      <Pagination page={page} pageSize={PAGE_SIZE} total={rows.length} onPageChange={setPage} disabled={disabled} itemLabel={errorsOnly ? "registros con errores" : "registros"} ariaLabel={`Paginación de vista previa de ${label}`} className="border-t border-border" />
     </div>
   );
 }

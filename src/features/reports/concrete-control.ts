@@ -1,30 +1,17 @@
-import type { RadarDispatch, RadarGuide, RadarLine } from "./radar.ts";
+import type { RadarDispatch, RadarLine } from "./radar.ts";
 
 export const CONCRETE_STRENGTHS = [4000, 5000, 6000, 7000, 8000] as const;
 export type ConcreteCategory = "concrete" | "pumping" | "surcharge" | "finishing" | "other";
 export type ControlAmount = { value: number | null; known: number; pending: number };
-export type ConcreteStrength = { label: string; quantity: number; unitPrice: number | null; amount: ControlAmount };
-export type ConcreteControlRow = {
-  guide: RadarGuide;
-  strengths: ConcreteStrength[];
-  concreteVolume: number;
-  concrete: ControlAmount;
-  pumpingVolume: number | null;
-  pumping: ControlAmount;
-  consumedVolume: number | null;
-  surcharge: ControlAmount;
-  finishing: ControlAmount;
-  other: ControlAmount;
-  total: ControlAmount;
-  warnings: string[];
-};
+type ConcreteStrength = { quantity: number; unitPrice: number | null; amount: ControlAmount };
 
 export const controlRound = (value: number, decimals = 4) => Math.round((value + Number.EPSILON) * 10 ** decimals) / 10 ** decimals;
 function normalized(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/gu, "").toUpperCase(); }
 export function isConcreteVolume(line: RadarLine) { return line.type === "PRODUCT" && /^m[3³]$/iu.test(line.unit.trim()); }
 
-// Strength is taken from explicit PSI text, never guessed from a numeric product code.
+// Quoted PSI takes priority; explicit guide text remains a fallback for legacy catalogs.
 export function concreteStrength(line: RadarLine) {
+  if (Number.isInteger(line.resistancePsi) && line.resistancePsi! > 0 && line.resistancePsi! <= 99999) return line.resistancePsi!;
   const match = /\b(\d{1,2}(?:[,. ]\d{3})|\d{4,5})\s*PSI\b/iu.exec(`${line.description} ${line.reference}`);
   return match ? Number(match[1].replace(/[,. ]/gu, "")) : null;
 }
@@ -39,13 +26,37 @@ export function controlLineCategory(line: RadarLine): ConcreteCategory {
   return "other";
 }
 
+export function groupControlLines<Key>(lines: RadarLine[], keyFor: (line: RadarLine) => Key) {
+  const groups = new Map<Key, RadarLine[]>();
+  for (const line of lines) {
+    const key = keyFor(line);
+    const group = groups.get(key);
+    if (group) group.push(line);
+    else groups.set(key, [line]);
+  }
+  return groups;
+}
+
+const finitePrice = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+
+// Resolve report pricing without replacing the commercial snapshot in the guide.
+// Product quotations are in GTQ; an explicit foreign currency is never converted.
+export function controlLinePricing(line: RadarLine) {
+  const currency = line.currency?.trim().toUpperCase() || null;
+  const hasSubtotal = finitePrice(line.estimatedSubtotal), hasPrice = finitePrice(line.unitPrice);
+  const fromQuotation = isConcreteVolume(line) && !hasSubtotal && !hasPrice
+    && (!currency || currency === "GTQ") && finitePrice(line.quotationUnitPrice) && line.quotationUnitPrice >= 0;
+  const unitPrice = fromQuotation ? line.quotationUnitPrice! : hasPrice ? line.unitPrice! : null;
+  const resolvedCurrency = fromQuotation ? "GTQ" : currency;
+  const subtotalInCurrency = line.quantity === 0 ? 0
+    : hasSubtotal ? controlRound(line.estimatedSubtotal!, 2)
+    : unitPrice === null ? null : controlRound(line.quantity * unitPrice, 2);
+  const subtotal = line.quantity === 0 || resolvedCurrency === "GTQ" ? subtotalInCurrency : null;
+  return { unitPrice, currency: resolvedCurrency, subtotal, subtotalInCurrency, fromQuotation };
+}
+
 export function controlLineSubtotal(line: RadarLine): number | null {
-  if (line.quantity === 0) return 0;
-  // An absent currency is not silently treated as GTQ. Historical prices stay untouched.
-  if (line.currency?.trim().toUpperCase() !== "GTQ") return null;
-  if (typeof line.estimatedSubtotal === "number" && Number.isFinite(line.estimatedSubtotal)) return controlRound(line.estimatedSubtotal, 2);
-  if (typeof line.unitPrice === "number" && Number.isFinite(line.unitPrice)) return controlRound(line.quantity * line.unitPrice, 2);
-  return null;
+  return controlLinePricing(line).subtotal;
 }
 
 function amount(lines: RadarLine[]): ControlAmount {
@@ -79,44 +90,49 @@ function pumpingVolume(input: RadarLine[], warnings: string[]) {
   return sum(pumping.length ? pumping : placement);
 }
 
-export function makeConcreteControlRow(guide: RadarGuide): ConcreteControlRow {
-  const warnings: string[] = [];
-  const concreteLines = guide.lines.filter(isConcreteVolume);
-  const strengthKeys = [...CONCRETE_STRENGTHS.map(String), ...new Set(concreteLines.map((line) => String(concreteStrength(line) ?? "unknown")))];
-  const strengths = [...new Set(strengthKeys)].map((key): ConcreteStrength => {
-    const lines = concreteLines.filter((line) => String(concreteStrength(line) ?? "unknown") === key);
-    const quantity = controlRound(lines.reduce((sum, line) => sum + line.quantity, 0));
-    const subtotal = amount(lines);
-    return { label: key === "unknown" ? "Sin resistencia identificada" : `${key} PSI`, quantity, unitPrice: quantity && subtotal.value !== null ? controlRound(subtotal.value / quantity) : null, amount: subtotal };
-  });
-  if (concreteLines.some((line) => concreteStrength(line) === null)) warnings.push("Hay concreto sin resistencia PSI identificada; se incluye en el volumen y el subtotal.");
-  const category = (name: ConcreteCategory) => guide.lines.filter((line) => controlLineCategory(line) === name);
-  const concreteVolume = controlRound(concreteLines.reduce((sum, line) => sum + line.quantity, 0));
-  const pumpVolume = pumpingVolume(category("pumping"), warnings);
-  const total = amount(guide.lines);
-  if (!guide.lines.length) warnings.push("Guía sin líneas registradas.");
-  if (total.pending) warnings.push(`${total.pending} línea(s) con precio pendiente o moneda distinta de GTQ; total pendiente.`);
-  return {
-    guide, strengths, concreteVolume, concrete: amount(concreteLines),
-    pumpingVolume: pumpVolume, pumping: amount(category("pumping")),
-    consumedVolume: pumpVolume === null ? null : controlRound((concreteVolume + pumpVolume) / 2),
-    surcharge: amount(category("surcharge")), finishing: amount(category("finishing")), other: amount(category("other")), total, warnings,
-  };
-}
-
-export function concreteControlTotals(rows: ConcreteControlRow[]) {
-  const volume = (key: "concreteVolume" | "pumpingVolume" | "consumedVolume") => rows.some((row) => row[key] === null) ? null : controlRound(rows.reduce((sum, row) => sum + (row[key] ?? 0), 0));
-  return {
-    concreteVolume: volume("concreteVolume")!, pumpingVolume: volume("pumpingVolume"), consumedVolume: volume("consumedVolume"),
-    concrete: addAmounts(rows.map((row) => row.concrete)), pumping: addAmounts(rows.map((row) => row.pumping)),
-    surcharge: addAmounts(rows.map((row) => row.surcharge)), finishing: addAmounts(rows.map((row) => row.finishing)),
-    other: addAmounts(rows.map((row) => row.other)), total: addAmounts(rows.map((row) => row.total)),
-  };
-}
-
 export function buildConcreteControl(dispatch: RadarDispatch) {
-  const rows = dispatch.guides.map(makeConcreteControlRow);
-  return { rows, totals: concreteControlTotals(rows) };
+  const lines = dispatch.guides.flatMap((guide) => guide.lines);
+  const categories = groupControlLines(lines, controlLineCategory);
+  const concreteLines = categories.get("concrete") ?? [];
+  const otherLines = categories.get("other") ?? [];
+  const otherProducts = otherLines.filter((line) => line.type === "PRODUCT");
+  const otherServices = otherLines.filter((line) => line.type === "SERVICE");
+  const pumpingLines = categories.get("pumping") ?? [];
+  const warnings: string[] = [];
+  const strengths = new Map<number | null, ConcreteStrength>();
+  for (const [psi, group] of groupControlLines(concreteLines, concreteStrength)) {
+    const quantity = controlRound(group.reduce((sum, line) => sum + line.quantity, 0));
+    const subtotal = amount(group);
+    const prices = new Set(group.filter((line) => line.quantity !== 0).map((line) => controlLinePricing(line).unitPrice));
+    // Preserve a single recorded price. Different prices use the dispatched-volume weighted cost.
+    const price = prices.size === 1 ? [...prices][0] : null;
+    const unitPrice = quantity && subtotal.value !== null ? price ?? subtotal.value / quantity : null;
+    strengths.set(psi, { quantity, unitPrice, amount: subtotal });
+  }
+  if (strengths.has(null)) warnings.push("Hay concreto sin resistencia PSI identificada; se incluye en el volumen y el subtotal.");
+  if (concreteLines.some((line) => controlLinePricing(line).fromQuotation)) warnings.push("Se utilizó el precio de cotización del proyecto para concreto sin precio guardado.");
+  const concreteVolume = controlRound(concreteLines.reduce((sum, line) => sum + line.quantity, 0));
+  const pumpVolume = pumpingVolume(pumpingLines, warnings);
+  const total = amount(lines);
+  const emptyGuides = dispatch.guides.filter((guide) => !guide.lines.length).length;
+  if (!dispatch.guides.length) warnings.push("Despacho sin guías registradas.");
+  if (emptyGuides) warnings.push(`${emptyGuides} guía(s) sin líneas registradas.`);
+  if (total.pending) warnings.push(`${total.pending} línea(s) con precio pendiente o moneda distinta de GTQ; total pendiente.`);
+  const surcharge = amount(categories.get("surcharge") ?? []);
+  const finishing = amount(categories.get("finishing") ?? []);
+  const pumping = amount(pumpingLines);
+  const otherService = amount(otherServices);
+  const concrete = amount(concreteLines);
+  const otherProduct = amount(otherProducts);
+  return {
+    hasLines: lines.length > 0,
+    strengths, concreteVolume, concrete, otherProduct, product: addAmounts([concrete, otherProduct]),
+    pumpingVolume: pumpVolume, pumping, surcharge, finishing, otherService,
+    service: addAmounts([pumping, surcharge, finishing, otherService]),
+    consumedVolume: pumpVolume === null ? null : controlRound((concreteVolume + pumpVolume) / 2),
+    additionalLines: lines.filter((line) => !isConcreteVolume(line)),
+    total, warnings,
+  };
 }
 
 // Fixed separators avoid Intl whitespace differences between server and browser hydration.
@@ -125,4 +141,3 @@ export function controlNumber(value: number | null, decimals = 2) {
   const [whole, fraction] = value.toFixed(decimals).split(".");
   return `${whole.replace(/\B(?=(\d{3})+(?!\d))/gu, ",")}${fraction ? `.${fraction}` : ""}`;
 }
-export function controlMoney(value: number | null) { return value === null ? "Pendiente" : `Q ${controlNumber(value)}`; }

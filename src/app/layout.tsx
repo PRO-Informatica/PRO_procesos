@@ -20,8 +20,8 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "PRO Procesos",
-  description: "Control operativo y documental de concreto",
+  title: "Sistema de control | PRO Procesos",
+  description: "Sistema de control operativo y documental por empresa y proyecto",
   icons: {
     icon: "/pro-logo.png",
     apple: {

@@ -3,6 +3,7 @@ import { getDispatchBillingCompletion } from "@/features/dispatches/billing-comp
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { withQuotationSpecifications } from "./quotation-specifications";
 import { guideReportMetadata } from "./guide-metadata";
 import type { ReportProjectInput } from "./queries";
 import { filterRadarDispatches, makeRadarGuide, radarQueryDateRange, type RadarData, type RadarDispatch, type RadarFilters } from "./radar";
@@ -33,7 +34,7 @@ async function readRows(query: (from: number, to: number) => PromiseLike<{ data:
 }
 
 export async function getCastingRadar(projects: ReportProjectInput[], filters: RadarFilters): Promise<RadarData> {
-  const data: RadarData = { dispatches: [], projects: projects.map((project) => ({ value: project.id, label: `${project.name} · ${project.code}` })) };
+  const data: RadarData = { dispatches: [], projects: projects.map((project) => ({ value: project.id, label: `${project.companyName} · ${project.name} · ${project.code}` })) };
   const allowedIds = new Set(projects.map((project) => project.id));
   const projectIds = filters.projectId ? allowedIds.has(filters.projectId) ? [filters.projectId] : [] : [...allowedIds];
   if (!projectIds.length) return data;
@@ -60,14 +61,19 @@ export async function getCastingRadar(projects: ReportProjectInput[], filters: R
     ]);
     guides.push(...results[0]); incidents.push(...results[1]); relations.push(...results[2]); reconciliations.push(...results[3]); attempts.push(...results[4]);
   }
-  const [suppliers, batches, lines, invoiceRows, actors, billingCompletion] = await Promise.all([
+  const [suppliers, batches, lines, invoiceRows, actors, billingCompletion, programmingLines] = await Promise.all([
     Promise.all(chunks(ids(dispatches, "supplier_id")).map((batch) => readRows((from, to) => supabase.from("suppliers").select("id, name").in("id", batch).order("id").range(from, to)))).then((rows) => rows.flat()),
     Promise.all(chunks(ids(relations, "batch_id")).map((batch) => readRows((from, to) => supabase.from("batches").select("id, code").in("id", batch).in("project_id", projectIds).order("id").range(from, to)))).then((rows) => rows.flat()),
-    Promise.all(chunks(ids(guides, "id")).map((batch) => readRows((from, to) => supabase.from("dispatch_guide_lines").select("id, guide_id, position, product_code, product_description, quantity, unit_code, catalog_type, catalog_reference, unit_price, estimated_subtotal, currency").in("guide_id", batch).in("project_id", projectIds).order("id").range(from, to)))).then((rows) => rows.flat()),
+    Promise.all(chunks(ids(guides, "id")).map((batch) => readRows((from, to) => supabase.from("dispatch_guide_lines").select("id, project_id, guide_id, product_price_id, position, product_code, product_description, quantity, unit_code, catalog_type, catalog_reference, unit_price, estimated_subtotal, currency").in("guide_id", batch).in("project_id", projectIds).order("id").range(from, to)))).then((rows) => rows.flat()),
     Promise.all(chunks([...new Set([...ids(reconciliations, "current_product_invoice_id"), ...ids(reconciliations, "current_service_invoice_id")])]).map((batch) => readRows((from, to) => supabase.from("invoices").select("id, invoice_number, total, currency").in("id", batch).in("project_id", projectIds).order("id").range(from, to)))).then((rows) => rows.flat()),
     ids(dispatches, "completed_by").length ? supabase.rpc("get_report_actor_labels", { p_project_ids: projectIds }) : Promise.resolve({ data: [], error: null }),
-    getDispatchBillingCompletion(projectIds),
+    getDispatchBillingCompletion(ids(dispatches, "project_id")),
+    Promise.all(chunks(ids(dispatches, "programming_id")).map((batch) => readRows((from, to) => supabase.from("programming_lines").select("id, programming_id, concrete_type, unit_code").in("programming_id", batch).order("id").range(from, to)))).then((rows) => rows.flat()),
   ]);
+  const quotedProducts: Row[] = [];
+  for (const batch of chunks(ids(lines.filter((line) => line.catalog_type !== "SERVICE"), "project_id"))) {
+    quotedProducts.push(...await readRows((from, to) => supabase.from("project_product_prices").select("id, project_id, code, reference, resistance_psi, slump, price").in("project_id", batch.filter((id) => allowedIds.has(id))).order("id").range(from, to)));
+  }
   if (actors.error) throw new Error("No fue posible resolver los responsables de los despachos.");
   // Restrict privileged extraction reads to invoices from authorized dispatches.
   const extractions: Row[] = [];
@@ -80,7 +86,15 @@ export async function getCastingRadar(projects: ReportProjectInput[], filters: R
   const projectMap = new Map(projects.map((project) => [project.id, project]));
   const programMap = index(programs), supplierMap = index(suppliers), batchMap = index(batches), invoiceMap = index(invoiceRows);
   const actorsMap = new Map<string, string>((actors.data ?? []).map((actor: { profile_id: string; display_label: string }) => [actor.profile_id, actor.display_label]));
-  const guidesByDispatch = group(guides, "dispatch_id"), linesByGuide = group(lines, "guide_id"), incidentsByDispatch = group(incidents, "dispatch_id");
+  const dispatchMap = index(dispatches), programmingLinesByProgram = group(programmingLines, "programming_id");
+  const concreteTypesByGuide = new Map(guides.map((guide): [string, string[]] => {
+    const dispatch = dispatchMap.get(String(guide.dispatch_id));
+    const types = (programmingLinesByProgram.get(String(dispatch?.programming_id)) ?? [])
+      .filter((line) => /^m[3³]$/iu.test(String(line.unit_code ?? "")))
+      .map((line) => String(line.concrete_type ?? ""));
+    return [String(guide.id), types];
+  }));
+  const guidesByDispatch = group(guides, "dispatch_id"), linesByGuide = group(withQuotationSpecifications(lines, quotedProducts, concreteTypesByGuide), "guide_id"), incidentsByDispatch = group(incidents, "dispatch_id");
   const reconciliationMap = new Map(reconciliations.map((row) => [String(row.dispatch_id), row]));
   const relationMap = new Map(relations.map((row) => [String(row.dispatch_id), row]));
   const attemptsByDispatch = group(attempts, "dispatch_id"), extractionsByInvoice = group(extractions, "invoice_id");
@@ -92,6 +106,7 @@ export async function getCastingRadar(projects: ReportProjectInput[], filters: R
     const project = projectMap.get(String(dispatch.project_id)), program = programMap.get(String(dispatch.programming_id));
     if (!project || !program || program.project_id !== project.id) return [];
     const id = String(dispatch.id), code = `DSP-${id.slice(0, 8).toUpperCase()}`;
+    const unitCode = String(dispatch.real_unit_code ?? program.unit_code ?? "");
     const dispatchGuides = guidesByDispatch.get(id) ?? [], reconciliation = reconciliationMap.get(id);
     const completed = dispatch.status === "COMPLETED" && dispatch.completed_by;
     return [{
@@ -101,7 +116,7 @@ export async function getCastingRadar(projects: ReportProjectInput[], filters: R
       summary: {
         dispatchId: id, dispatchCode: code, projectId: project.id, orderNumber: String(dispatch.order_number ?? "") || null,
         batchCode: String(batchMap.get(String(relationMap.get(id)?.batch_id))?.code ?? "") || null,
-        receivedQuantity: numeric(dispatch.real_volume), unitCode: String(dispatch.real_unit_code ?? program.unit_code ?? ""),
+        receivedQuantity: numeric(dispatch.real_volume), unitCode,
         guideCount: dispatchGuides.length, incidentCount: incidentsByDispatch.get(id)?.length ?? 0,
         ...guideReportMetadata(dispatchGuides, program.casting_element), dispatchStatus: String(dispatch.status),
         completedByName: completed ? actorsMap.get(String(dispatch.completed_by)) ?? "Usuario no disponible" : null,
@@ -109,7 +124,7 @@ export async function getCastingRadar(projects: ReportProjectInput[], filters: R
         reconciliationStatus: String(reconciliation?.status ?? "NOT_STARTED"), difference: numeric(attemptsByDispatch.get(id)?.[0]?.difference),
         productInvoice: invoice(reconciliation?.current_product_invoice_id), serviceInvoice: invoice(reconciliation?.current_service_invoice_id),
       },
-      guides: dispatchGuides.map((guide) => makeRadarGuide(guide, linesByGuide.get(String(guide.id)) ?? [], program.casting_element)).sort((a, b) => a.date.localeCompare(b.date) || (a.arrivalAt ?? "").localeCompare(b.arrivalAt ?? "") || a.number.localeCompare(b.number)),
+      guides: dispatchGuides.map((guide) => makeRadarGuide(guide, linesByGuide.get(String(guide.id)) ?? [], program.casting_element, unitCode)).sort((a, b) => a.date.localeCompare(b.date) || (a.arrivalAt ?? "").localeCompare(b.arrivalAt ?? "") || a.number.localeCompare(b.number)),
     }];
   });
   data.dispatches = filterRadarDispatches(mapped, filters).sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt) || a.code.localeCompare(b.code));

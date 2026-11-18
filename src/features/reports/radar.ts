@@ -22,9 +22,14 @@ export type RadarLine = {
   reference: string;
   quantity: number;
   unit: string;
+  resistancePsi?: number | null;
+  slump?: string | null;
   unitPrice?: number | null;
   estimatedSubtotal?: number | null;
   currency?: string | null;
+  quotationUnitPrice?: number | null;
+  quotationReference?: string | null;
+  quotationFromProgramming?: boolean;
 };
 
 export type RadarGuide = {
@@ -150,14 +155,24 @@ function text(value: unknown) { return typeof value === "string" ? value.trim() 
 function number(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
 function nullableNumber(value: unknown) { return value !== null && value !== undefined && String(value).trim() !== "" && Number.isFinite(Number(value)) ? Number(value) : null; }
 
-export function makeRadarGuide(row: Row, lineRows: Row[], programmingCasting?: unknown): RadarGuide {
+export function makeRadarGuide(row: Row, lineRows: Row[], programmingCasting?: unknown, dispatchUnit?: string): RadarGuide {
   const details = row.details && typeof row.details === "object" && !Array.isArray(row.details) ? row.details as Row : {};
-  const lines: RadarLine[] = [...lineRows].sort((a, b) => number(a.position) - number(b.position)).map((line) => ({
-    type: line.catalog_type === "SERVICE" ? "SERVICE" : "PRODUCT",
-    code: text(line.product_code), description: text(line.product_description), reference: text(line.catalog_reference),
-    quantity: number(line.quantity), unit: text(line.unit_code),
-    unitPrice: nullableNumber(line.unit_price), estimatedSubtotal: nullableNumber(line.estimated_subtotal), currency: text(line.currency) || null,
-  }));
+  const dispatchUsesCubicMeters = /^m[³3]$/iu.test(text(dispatchUnit));
+  const lines = [...lineRows].sort((a, b) => number(a.position) - number(b.position)).map((line): RadarLine => {
+    const type = line.catalog_type === "SERVICE" ? "SERVICE" : "PRODUCT";
+    const resistancePsi = nullableNumber(line.resistance_psi);
+    // An identified concrete can omit its unit in the guide. Use the dispatch unit for reporting.
+    const concreteVolumeUnit = type === "PRODUCT" && resistancePsi !== null && resistancePsi > 0 && dispatchUsesCubicMeters;
+    return {
+      type,
+      code: text(line.product_code), description: text(line.product_description), reference: text(line.catalog_reference),
+      quantity: number(line.quantity), unit: text(line.unit_code) || (concreteVolumeUnit ? "M3" : ""),
+      resistancePsi, slump: text(line.slump) || null,
+      unitPrice: nullableNumber(line.unit_price), estimatedSubtotal: nullableNumber(line.estimated_subtotal), currency: text(line.currency) || null,
+      quotationUnitPrice: nullableNumber(line.quotation_unit_price), quotationReference: text(line.quotation_reference) || null,
+      quotationFromProgramming: line.quotation_from_programming === true,
+    };
+  });
   const products = lines.filter((line) => line.type === "PRODUCT");
   const element = normalizeCastingElement(text(row.casting_element) || text(programmingCasting));
   return {
@@ -170,9 +185,12 @@ export function makeRadarGuide(row: Row, lineRows: Row[], programmingCasting?: u
     pilot: text(details.pilot), operator: text(details.operator), observations: text(details.observations),
     castingElementObservations: text(details.castingElementObservations),
     temperature: details.temperature !== null && details.temperature !== undefined && String(details.temperature).trim() !== "" && Number.isFinite(Number(details.temperature)) ? Number(details.temperature) : null,
-    slump: text(details.slump), laboratoryNotes: text(details.laboratoryNotes),
+    slump: row.laboratory_applied === true && products.some((line) => /^m[³3]$/iu.test(line.unit.trim())) ? text(details.slump) || (() => {
+      const quoted = [...new Set(products.filter((line) => /^m[³3]$/iu.test(line.unit.trim())).map((line) => line.slump).filter(Boolean))].join(" / ");
+      return quoted ? `Cotización: ${quoted}` : "";
+    })() : "", laboratoryNotes: text(details.laboratoryNotes),
     concreteQuantity: Math.round(products.filter((line) => /^m[³3]$/iu.test(line.unit)).reduce((total, line) => total + line.quantity, 0) * 10000) / 10000,
-    concrete: products.length ? [...new Set(products.map((line) => line.reference || line.description || line.code))].join(" / ") : lines.length ? "Servicio" : "Sin líneas",
+    concrete: products.length ? [...new Set(products.map((line) => { const label = line.reference || line.quotationReference || line.description || line.code; return line.resistancePsi && !/\bPSI\b/iu.test(label) ? `${label} · ${line.resistancePsi} PSI` : label; }))].join(" / ") : lines.length ? "Servicio" : "Sin líneas",
     lines,
   };
 }

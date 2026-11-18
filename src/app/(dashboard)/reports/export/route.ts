@@ -2,13 +2,11 @@ import { Workbook, type Worksheet } from "exceljs";
 import type { NextRequest } from "next/server";
 
 import { requireActiveProfile } from "@/features/auth/queries";
-import { getProjectContext } from "@/features/projects/queries";
-import { canAccessOperationalSection } from "@/features/projects/access-policy";
 import { reportArchiveItems, sanitizeArchiveSegment } from "@/features/reports/export-utils";
 import { archiveIdChunks, getReportEvidence, readArchiveRows } from "@/features/reports/archive-queries";
 import { createReportZip, ReportArchiveTooLargeError } from "@/features/reports/zip-archive";
 import { reportZipResponse } from "@/features/reports/zip-response";
-import { parseGuideReportFilters } from "@/features/reports/filters";
+import { parseUniversalGuideReportFilters } from "@/features/reports/filters";
 import { getGuideReport, getUniversalReportScopes } from "@/features/reports/queries";
 import { reportDispatchProcessStatus } from "@/features/reports/presentation";
 import type { GuideReportData, ProgrammingReportItem, ReportInvoice } from "@/features/reports/types";
@@ -257,21 +255,14 @@ export async function GET(request: NextRequest) {
   const profile = await requireActiveProfile();
 
   try {
-    const universal = request.nextUrl.searchParams.get("scope") === "universal";
-    const context = universal ? null : await getProjectContext(profile.id);
-    const projects = universal
-      ? (await getUniversalReportScopes(profile.id)).map(({ project }) => project)
-      : context?.status === "ready" && context.activeProject && canAccessOperationalSection(context.roleCodes, "/reports") && context.permissions.includes("dispatch.view")
-        ? context.isCompanyAdmin
-          ? context.projects.filter((project) => project.companyId === context.activeProject?.companyId)
-          : [context.activeProject]
-        : [];
+    const universal = true;
+    const projects = (await getUniversalReportScopes(profile.id)).map(({ project }) => project);
     if (!projects.length) {
       return Response.json({ message: `No tienes acceso a Reportería${universal ? " Universal" : ""}.` }, { status: 403 });
     }
 
-    const filters = parseGuideReportFilters(request.nextUrl.searchParams);
-    const report = await getGuideReport(projects.map(({ id, name, code, billingLegalName, companyName, timezone }) => ({ id, name, code, billingLegalName, companyName, timezone })), filters);
+    const filters = parseUniversalGuideReportFilters(request.nextUrl.searchParams);
+    const report = await getGuideReport(projects.map(({ id, name, code, billingLegalName, companyName, timezone }) => ({ id, name, code, billingLegalName, companyName, timezone })), filters, { mixtoListoOnly: true });
     const selectedProject = filters.projectId ? projects.find((project) => project.id === filters.projectId) : null;
     const reportProject = selectedProject ?? (projects.length === 1 ? projects[0] : null);
     const projectLabel = reportProject?.name ?? `${universal ? "Reportería Universal" : "Todos los proyectos"} (${projects.length})`;

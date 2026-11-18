@@ -1,3 +1,4 @@
+import { Pagination } from "@/components/ui/pagination";
 import { ArrowLeft, Boxes, Search, Wrench } from "lucide-react";
 import Link from "next/link";
 
@@ -10,6 +11,7 @@ import type {
   ProjectProductPrice,
   ProjectServicePrice,
 } from "../types";
+import { ProductSpecificationsDialog } from "./product-specifications-dialog";
 import { ImportPriceCatalogDialog } from "./import-price-catalog-dialog";
 
 function money(value: string) {
@@ -182,22 +184,24 @@ function CatalogSection({
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className={`w-full text-left text-sm ${kind === "PRODUCT" ? "min-w-[960px]" : "min-w-[720px]"}`}>
             <thead className="bg-muted/80 text-[11px] font-semibold uppercase tracking-[0.1em] text-foreground-muted">
               <tr>
                 <th className="px-6 py-3.5 sm:px-8">Código</th>
-                {kind === "PRODUCT" && <th className="px-4 py-3.5">Referencia</th>}
+                {kind === "PRODUCT" && <><th className="px-4 py-3.5">Referencia</th><th className="px-4 py-3.5">Resistencia PSI</th><th className="px-4 py-3.5">Slump en obra (plg)</th></>}
                 {kind === "SERVICE" && <><th className="px-4 py-3.5">Descripción</th><th className="px-4 py-3.5">Observaciones</th><th className="px-4 py-3.5">Unidad de medida</th></>}
                 <th className="px-6 py-3.5 text-right sm:px-8">Precio unitario</th>
+                {kind === "PRODUCT" && <th className="px-4 py-3.5 text-right">Acciones</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {catalog.items.map((item) => (
                 <tr key={item.id}>
                   <td className="px-6 py-4 font-mono font-semibold sm:px-8">{item.code}</td>
-                  {kind === "PRODUCT" && <td className="px-4 py-4 font-mono">{(item as ProjectProductPrice).reference}</td>}
+                  {kind === "PRODUCT" && <><td className="px-4 py-4 font-mono">{(item as ProjectProductPrice).reference}</td><td className="px-4 py-4">{(item as ProjectProductPrice).resistancePsi ?? "—"}</td><td className="max-w-60 px-4 py-4 [overflow-wrap:anywhere]">{(item as ProjectProductPrice).slump || "—"}</td></>}
                   {kind === "SERVICE" && <><td className="px-4 py-4">{(item as ProjectServicePrice).description || "Sin descripción"}</td><td className="max-w-xs break-words px-4 py-4">{(item as ProjectServicePrice).observations || "—"}</td><td className="px-4 py-4">{(item as ProjectServicePrice).unitCode || "Sin UM"}</td></>}
                   <td className="px-6 py-4 text-right font-semibold sm:px-8">{money(item.price)}</td>
+                  {kind === "PRODUCT" && <td className="px-4 py-4 text-right"><ProductSpecificationsDialog companyId={companyId} projectId={projectId} product={item as ProjectProductPrice} /></td>}
                 </tr>
               ))}
             </tbody>
@@ -205,13 +209,7 @@ function CatalogSection({
         </div>
       )}
       {catalog.totalPages > 1 && (
-        <div className="flex items-center justify-between border-t border-border px-6 py-4 text-sm sm:px-8">
-          <span className="text-foreground-muted">Página {catalog.page} de {catalog.totalPages}</span>
-          <div className="flex gap-2">
-            {catalog.page > 1 && <Link className="secondary-button" href={pageHref(data, kind === "PRODUCT" ? "product" : "service", catalog.page - 1)}>Anterior</Link>}
-            {catalog.page < catalog.totalPages && <Link className="secondary-button" href={pageHref(data, kind === "PRODUCT" ? "product" : "service", catalog.page + 1)}>Siguiente</Link>}
-          </div>
-        </div>
+        <Pagination page={catalog.page} pageSize={25} total={catalog.total} href={pageHref(data, kind === "PRODUCT" ? "product" : "service", catalog.page)} pageParam={kind === "PRODUCT" ? "productPage" : "servicePage"} ariaLabel={`Paginación de cotización de ${kind === "PRODUCT" ? "productos" : "servicios"}`} className="border-t border-border" />
       )}
     </MotionSection>
   );

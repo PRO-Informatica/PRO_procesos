@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   const profile = await requireActiveProfile();
-  const projects = await getRadarProjectScope(profile.id, request.nextUrl.searchParams.get("scope") === "universal");
+  const projects = await getRadarProjectScope(profile.id);
   if (!projects.length) return NextResponse.json({ message: "No tienes acceso a este reporte." }, { status: 403 });
   let requested: unknown;
   try {
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
   const buffer = await buildConcreteControlWorkbook(selected).xlsx.writeBuffer();
   return new NextResponse(new Uint8Array(buffer), { headers: {
     "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "Content-Disposition": `attachment; filename="control-concreto-${filters.dateFrom}-${filters.dateTo}.xlsx"`,
+    "Content-Disposition": `attachment; filename="sistema-de-control-${filters.dateFrom}-${filters.dateTo}.xlsx"`,
     "Cache-Control": "private, no-store",
   } });
 }

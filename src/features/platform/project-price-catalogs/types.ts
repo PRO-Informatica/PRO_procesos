@@ -9,6 +9,8 @@ export type PriceCatalogPreviewRow = {
   observations: string | null;
   unitCode: string | null;
   rawUnitCode: string | null;
+  resistancePsi?: number | null;
+  slump?: string | null;
   price: string;
   errors: string[];
 };
@@ -40,6 +42,8 @@ export type ProjectProductPrice = {
   id: string;
   code: string;
   reference: string;
+  resistancePsi: number | null;
+  slump: string | null;
   price: string;
   updatedAt: string;
 };

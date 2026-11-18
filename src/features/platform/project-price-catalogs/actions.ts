@@ -6,6 +6,7 @@ import { isPlatformAdmin } from "@/features/platform/queries";
 import { createClient } from "@/lib/supabase/server";
 
 import { parseProjectPriceCatalog } from "./parser";
+import { productSpecifications } from "./specifications";
 import type {
   PriceCatalogActionResult,
   PriceCatalogImportMode,
@@ -107,7 +108,7 @@ export async function importProjectPriceCatalogAction(
     const rows = preview.rows.map((row) => ({
       code: row.code,
       ...(catalogKind === "PRODUCT"
-        ? { reference: row.reference }
+        ? { reference: row.reference, ...(row.resistancePsi !== undefined ? { resistance_psi: row.resistancePsi } : {}), ...(row.slump !== undefined ? { slump: row.slump } : {}) }
         : { description: row.description, observations: row.observations, unit_code: row.unitCode }),
       price: row.price,
     }));
@@ -131,6 +132,7 @@ export async function importProjectPriceCatalogAction(
     const totalCount = Number(result?.total_count ?? 0);
     revalidatePath(catalogPath(companyId, projectId));
     revalidatePath(`/platform/companies/${companyId}`);
+    revalidatePath("/reports", "layout");
     return {
       status: "success",
       message: mode === "REPLACE" ? "Cotización reemplazada correctamente." : "Cotización actualizada correctamente.",
@@ -148,4 +150,25 @@ export async function importProjectPriceCatalogAction(
     }
     return { status: "error", message: "No fue posible importar la cotización. No se guardó ningún cambio." };
   }
+}
+
+export async function updateProductSpecificationsAction(formData: FormData): Promise<{ status: "success" | "error"; message: string }> {
+  const companyId = textValue(formData, "companyId"), projectId = textValue(formData, "projectId"), productId = textValue(formData, "productId");
+  const specs = productSpecifications(textValue(formData, "resistancePsi"), textValue(formData, "slump"));
+  if (!UUID.test(productId) || specs.error) return { status: "error", message: specs.error || "Producto no válido." };
+  const supabase = await authorizeAndValidateProject(companyId, projectId);
+  if (!supabase) return { status: "error", message: "No tienes autorización para editar esta cotización." };
+  try {
+    const { error } = await supabase.rpc("platform_update_product_specifications", {
+      p_company_id: companyId, p_project_id: projectId, p_product_id: productId,
+      p_resistance_psi: specs.resistancePsi, p_slump: specs.slump,
+      p_expected_updated_at: textValue(formData, "updatedAt"),
+    });
+    if (error) return { status: "error", message: error.message.includes("CATALOG_CONFLICT") ? "El producto cambió. Actualiza la página antes de editarlo." : "No fue posible guardar las especificaciones." };
+    revalidatePath(catalogPath(companyId, projectId));
+    revalidatePath("/reports", "layout");
+  } catch {
+    return { status: "error", message: "No fue posible guardar las especificaciones. Inténtalo de nuevo." };
+  }
+  return { status: "success", message: "Especificaciones guardadas." };
 }

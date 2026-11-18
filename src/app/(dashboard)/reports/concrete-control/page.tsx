@@ -8,9 +8,9 @@ import { getRadarProjectScope } from "@/features/reports/report-scope";
 export default async function ConcreteControlPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const profile = await requireActiveProfile();
   const params = await searchParams;
-  const universal = params.scope === "universal";
-  const projects = await getRadarProjectScope(profile.id, universal);
-  if (!projects.length) return <EmptyState title="Sin acceso al control de concreto" description="Selecciona un proyecto con acceso de consulta a Despachos y Guías." />;
+  const universal = true;
+  const projects = await getRadarProjectScope(profile.id);
+  if (!projects.length) return <EmptyState title="Sin acceso al sistema de control" description="Esta sección está disponible para administradores y Compras con acceso al proyecto." />;
   const filters = parseRadarFilters(params);
   const data = await getCastingRadar(projects, filters);
   return <CastingRadar key={JSON.stringify(filters) + String(universal)} data={data} filters={filters} universal={universal} report="concrete" />;

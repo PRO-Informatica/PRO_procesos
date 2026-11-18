@@ -1,20 +1,9 @@
-import { EmptyState } from "@/components/feedback/empty-state";
-import { requireActiveProfile } from "@/features/auth/queries";
-import { getProjectContext } from "@/features/projects/queries";
-import { canAccessOperationalSection } from "@/features/projects/access-policy";
-import { GuideReport } from "@/features/reports/components/guide-report";
-import { parseGuideReportFilters } from "@/features/reports/filters";
-import { getGuideReport } from "@/features/reports/queries";
+import { redirect } from "next/navigation";
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const profile = await requireActiveProfile();
-  const context = await getProjectContext(profile.id);
-  if (context.status === "error") throw new Error(context.message);
-  if (!canAccessOperationalSection(context.roleCodes, "/reports")) return <EmptyState title="Sin acceso a Reportería" description="Esta sección no está disponible para tu rol." />;
-  if (!context.activeProject) return <EmptyState title="Sin proyecto operacional" description="Selecciona un proyecto para consultar Reportería." />;
-  if (!context.permissions.includes("dispatch.view")) return <EmptyState title="Sin acceso a Reportería" description="Tu rol necesita acceso de consulta a Despachos y Guías." />;
-  const filters = parseGuideReportFilters(await searchParams);
-  const projects = context.isCompanyAdmin ? context.projects.filter((project) => project.companyId === context.activeProject?.companyId) : [context.activeProject];
-  const data = await getGuideReport(projects.map(({ id, name, code, billingLegalName, companyName, timezone }) => ({ id, name, code, billingLegalName, companyName, timezone })), filters);
-  return <GuideReport data={data} filters={filters} />;
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(await searchParams)) {
+    if (typeof value === "string") query.set(key, value);
+  }
+  redirect(`/reports/universal${query.size ? `?${query}` : ""}`);
 }

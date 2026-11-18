@@ -33,25 +33,36 @@ function options(values: Array<[string, string]>): ReportOption[] { return [...n
 function hasDispatchFilters(filters: GuideReportFilters) { return Boolean(filters.orderNumber || filters.batchId || filters.dispatchStatus || filters.reconciliationStatus || filters.billingStatus || filters.withIncidents); }
 
 export async function getUniversalReportScopes(userId: string): Promise<ProjectAccessScope[]> {
-  return (await getOperationalProjectAccess(userId)).filter(({ project, roleCodes, permissions }) =>
-    project.status === "ACTIVE" &&
+  return (await getOperationalProjectAccess(userId)).filter(({ roleCodes, permissions }) =>
     permissions.includes("dispatch.view") &&
     hasUniversalOperationalViewRole(roleCodes),
   );
 }
 
-export async function getGuideReport(projects: ReportProjectInput[], filters: GuideReportFilters): Promise<GuideReportData> {
+export async function getGuideReport(projects: ReportProjectInput[], filters: GuideReportFilters, { mixtoListoOnly = false }: { mixtoListoOnly?: boolean } = {}): Promise<GuideReportData> {
   const supabase = await createClient();
   const admin = createAdminClient();
   const allowed = new Set(projects.map((project) => project.id));
   const projectIds = filters.projectId ? allowed.has(filters.projectId) ? [filters.projectId] : [] : projects.map((project) => project.id);
   const projectMap = new Map(projects.map((project) => [project.id, project]));
-  const blank: GuideReportData = { rows: [], programming: [], filters: { projects: options(projects.map((project) => [project.id, `${project.name} · ${project.code}`])), suppliers: [], users: [], batches: [] } };
+  const blank: GuideReportData = { rows: [], programming: [], filters: { projects: options(projects.map((project) => [project.id, `${project.companyName} · ${project.name} · ${project.code}`])), suppliers: [], users: [], batches: [] } };
   if (!projectIds.length) return blank;
 
+  let supplierIdsForReport: string[] | undefined;
+  if (mixtoListoOnly) {
+    const suppliers = await supabase.from("suppliers").select("id, name");
+    if (suppliers.error) throw new Error("No fue posible resolver el proveedor Mixto Listo.");
+    supplierIdsForReport = (suppliers.data ?? []).filter((supplier) => {
+      const name = String(supplier.name).normalize("NFD").replace(/[\u0300-\u036f]/gu, "").toUpperCase().replace(/[^A-Z0-9]/gu, "");
+      return /^(?:MIXTOLISTO(?:SA)?|MEZCLADORA(?:SA|SOCIEDADANONIMA)?)$/u.test(name);
+    }).map((supplier) => String(supplier.id));
+    if (!supplierIdsForReport.length) return blank;
+  }
+
   let programmingQuery = supabase.from("programming").select("id, project_id, supplier_id, scheduled_at, requested_quantity, confirmed_quantity, unit_code, status, created_by, casting_element").in("project_id", projectIds).gte("scheduled_at", `${filters.dateFrom}T00:00:00`).lte("scheduled_at", `${filters.dateTo}T23:59:59.999`).order("scheduled_at");
-  if (filters.supplierId) programmingQuery = programmingQuery.eq("supplier_id", filters.supplierId);
-  if (filters.programmingStatus) programmingQuery = programmingQuery.eq("status", filters.programmingStatus);
+  if (supplierIdsForReport) programmingQuery = programmingQuery.in("supplier_id", supplierIdsForReport);
+  if (!mixtoListoOnly && filters.supplierId) programmingQuery = programmingQuery.eq("supplier_id", filters.supplierId);
+  if (!mixtoListoOnly && filters.programmingStatus) programmingQuery = programmingQuery.eq("status", filters.programmingStatus);
   const programmingResult = await programmingQuery;
   if (programmingResult.error) throw new Error(`No fue posible cargar las programaciones. ${programmingResult.error.message}`);
   const programs = (programmingResult.data ?? []) as Row[];
@@ -63,6 +74,7 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
   if (dispatchesResult.error) throw new Error(`No fue posible cargar los despachos. ${dispatchesResult.error.message}`);
   const dispatches = (dispatchesResult.data ?? []) as Row[];
   const dispatchIds = dispatches.map((dispatch) => String(dispatch.id));
+  const dispatchProjectIds = [...new Set(dispatches.map((dispatch) => String(dispatch.project_id)))];
 
   const [guidesResult, incidentsResult, relationsResult, reconciliationsResult, invoicesResult, attemptsResult, billingCompletion] = await Promise.all([
     dispatchIds.length ? supabase.from("dispatch_guides").select("id, dispatch_id, quantity, unit_code, details, casting_element, laboratory_applied").in("dispatch_id", dispatchIds) : empty<Row>(),
@@ -71,7 +83,7 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
     dispatchIds.length ? supabase.from("dispatch_reconciliations").select("dispatch_id, status, current_product_invoice_id, current_service_invoice_id").in("dispatch_id", dispatchIds) : empty<{ dispatch_id: string; status: string; current_product_invoice_id: string | null; current_service_invoice_id: string | null }>(),
     dispatchIds.length ? supabase.from("invoices").select("id, dispatch_id, invoice_type, invoice_number, invoice_date, status, subtotal, total, currency, order_number, pca_original, invoiced_quantity, invoiced_unit_code, created_at").in("dispatch_id", dispatchIds) : empty<Row>(),
     dispatchIds.length ? supabase.from("dispatch_reconciliation_attempts").select("dispatch_id, difference, executed_at").in("dispatch_id", dispatchIds).order("executed_at", { ascending: false }) : empty<Row>(),
-    getDispatchBillingCompletion(projectIds),
+    getDispatchBillingCompletion(dispatchProjectIds),
   ]);
   const relatedError = guidesResult.error ?? incidentsResult.error ?? relationsResult.error ?? reconciliationsResult.error ?? invoicesResult.error ?? attemptsResult.error;
   if (relatedError) throw new Error(`No fue posible completar la reportería. ${relatedError.message}`);
@@ -187,5 +199,5 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
   if (filters.castingElement) programming = programming.filter((program) => program.dispatches.length > 0 || (!(dispatchByProgram.get(program.id)?.length) && guideReportMetadata([], programById.get(program.id)?.casting_element).castingElements.some((element) => element === filters.castingElement)));
   if (hasDispatchFilters(filters)) programming = programming.filter((program) => program.dispatches.length > 0);
   if (filters.userId) programming = programming.filter((program) => program.createdById === filters.userId || program.dispatches.some((dispatch) => dispatch.registeredById === filters.userId));
-  return { rows: programming.flatMap((program) => program.dispatches), programming, filters: { projects: options(projects.map((project) => [project.id, `${project.name} · ${project.code}`])), suppliers: options([...supplierMap.entries()]), users: options([...profileMap.entries()].filter(([id]) => creatorIds.includes(id))), batches: options((batches.data ?? []).map((batch) => [batch.id, batch.code])) } };
+  return { rows: programming.flatMap((program) => program.dispatches), programming, filters: { projects: options(projects.map((project) => [project.id, `${project.companyName} · ${project.name} · ${project.code}`])), suppliers: options([...supplierMap.entries()]), users: options([...profileMap.entries()].filter(([id]) => creatorIds.includes(id))), batches: options((batches.data ?? []).map((batch) => [batch.id, batch.code])) } };
 }

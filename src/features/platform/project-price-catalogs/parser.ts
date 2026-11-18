@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import type { Cell, CellValue, Worksheet } from "exceljs";
 import JSZip from "jszip";
+import { productSpecifications } from "./specifications.ts";
 import { isEmptyServiceUnit, normalizeServiceUnit, SERVICE_UNIT_ERROR } from "./service-units.ts";
 
 import type {
@@ -153,10 +154,12 @@ function findHeaderColumns(sheet: Worksheet, kind: PriceCatalogKind) {
     const columns = new Map<string, number>();
     sheet.getRow(rowNumber).eachCell({ includeEmpty: false }, (cell, columnNumber) => {
       const rawHeader = normalizeHeader(valueText(cell.value));
-      const header = rawHeader === "um" || rawHeader === "unidad" ? "unidad de medida"
+      const header = /^(?:resistencia(?: psi)?(?: 28 dias)?|psi)$/u.test(rawHeader) ? "resistencia psi"
+        : /^(?:slump(?: en obra)?(?: plg| pulgadas)?)$/u.test(rawHeader) ? "slump"
+        : rawHeader === "um" || rawHeader === "unidad" ? "unidad de medida"
         : rawHeader === "precio incluye iva" ? "precio"
         : rawHeader === "observacion" ? "observaciones" : rawHeader;
-      if ((required.includes(header) || (kind === "SERVICE" && ["observaciones", "unidad de medida"].includes(header))) && !columns.has(header)) columns.set(header, columnNumber);
+      if ((required.includes(header) || (kind === "SERVICE" && ["observaciones", "unidad de medida"].includes(header)) || (kind === "PRODUCT" && ["resistencia psi", "slump"].includes(header))) && !columns.has(header)) columns.set(header, columnNumber);
     });
     if (required.every((header) => columns.has(header))) {
       return { rowNumber, columns };
@@ -218,8 +221,14 @@ function parseRows(
     const code = identifierText(codeCell).trim();
     const reference = referenceCell ? identifierText(referenceCell).trim() : null;
     const rawPrice = valueText(priceCell.value);
+    const psiColumn = kind === "PRODUCT" ? header.columns.get("resistencia psi") : undefined;
+    const slumpColumn = kind === "PRODUCT" ? header.columns.get("slump") : undefined;
+    const psiCell = psiColumn ? row.getCell(psiColumn) : null;
+    const slumpCell = slumpColumn ? row.getCell(slumpColumn) : null;
+    const rawPsi = psiCell ? valueText(psiCell.value) : "";
+    const rawSlump = slumpCell ? valueText(slumpCell.value) : "";
 
-    if (!code && !reference && !rawPrice && !description && !rawUnit && !observations) {
+    if (!code && !reference && !rawPrice && !description && !rawUnit && !observations && !rawPsi && !rawSlump) {
       consecutiveEmptyRows += 1;
       if (consecutiveEmptyRows >= 20 && rows.length > 0) break;
       continue;
@@ -227,6 +236,9 @@ function parseRows(
     consecutiveEmptyRows = 0;
 
     const errors: string[] = [];
+    const specs = productSpecifications(rawPsi, rawSlump);
+    if (specs.error) errors.push(specs.error);
+    if ((psiCell && isFormula(psiCell.value)) || (slumpCell && isFormula(slumpCell.value))) errors.push("La resistencia y el slump no pueden ser fórmulas.");
     if (!code) errors.push("El código es obligatorio.");
     else if (code.length > 120 || /[\u0000-\u001f\u007f]/u.test(code)) {
       errors.push("El código no es válido.");
@@ -277,6 +289,8 @@ function parseRows(
       description,
       observations,
       unitCode,
+      ...(psiColumn ? { resistancePsi: specs.resistancePsi } : {}),
+      ...(slumpColumn ? { slump: specs.slump } : {}),
       rawUnitCode: kind === "SERVICE" && !isEmptyServiceUnit(rawUnit) ? rawUnit : null,
       price: price ?? rawPrice,
       errors,
