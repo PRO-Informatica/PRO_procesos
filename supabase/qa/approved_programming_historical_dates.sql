@@ -40,7 +40,7 @@ begin
   select array_agg(value::uuid) into v_ids from jsonb_array_elements_text(v_result->'programming_ids');
   if cardinality(v_ids)<>3 or (select count(*) from public.programming where id=any(v_ids) and status='CONFIRMED' and delivery_modes=array['PUMP'])<>3
     or (select scheduled_at from public.programming where id=v_ids[1])<>v_past then raise exception 'QA_HISTORICAL_BATCH_FAILED'; end if;
-  if (select count(*) from public.audit_events where entity_id=any(v_ids) and action='PROGRAMMING_CONFIRMED' and new_values->>'confirmation_source'='APPROVED_MIXTO_WORKBOOK')<>3 then raise exception 'QA_APPROVAL_AUDIT_MISSING'; end if;
+  if (select count(*) from public.audit_events where entity_id=any(v_ids) and action='PROGRAMMING_CREATED' and new_values->>'status'='CONFIRMED')<>3 then raise exception 'QA_APPROVAL_AUDIT_MISSING'; end if;
   if nullif(current_setting('app.programming_confirmation_source',true),'') is not null then raise exception 'QA_APPROVAL_FLAG_LEAKED'; end if;
   execute 'set local role authenticated';
   v_dispatch := public.start_dispatch(v_ids[1],v_past,'QA historical receiver');
@@ -48,20 +48,16 @@ begin
   if not exists(select 1 from public.dispatches where id=v_dispatch and programming_id=v_ids[1] and order_number=v_item->>'order_number')
     or not exists(select 1 from public.programming where id=v_ids[1] and status='IN_EXECUTION' and scheduled_at=v_past) then raise exception 'QA_HISTORICAL_DISPATCH_FAILED'; end if;
 
-  -- Manual creation cannot inherit the workbook's temporary exception.
+  -- Manual creation accepts the same historical day and confirms immediately.
   execute 'set local role authenticated';
+  v_manual := public.create_programming_with_details(v_project,v_supplier,v_past,v_lines,'QA manual past');
   begin
-    perform public.create_programming_with_details(v_project,v_supplier,v_past,v_lines,'QA manual past');
-    raise exception 'QA_MANUAL_PAST_ALLOWED';
-  exception when raise_exception then if sqlerrm<>'PROGRAMMING_SCHEDULE_DATE_IN_PAST' then raise; end if; end;
-  -- Manual confirmation still requires a future time, even on the current day.
-  v_manual := public.create_programming_with_details(v_project,v_supplier,
-    (v_today+time '00:00') at time zone v_timezone,v_lines,'QA manual today');
-  begin
-    perform public.confirm_programming(v_manual,7,1);
-    raise exception 'QA_MANUAL_CONFIRMATION_ALLOWED';
-  exception when raise_exception then if sqlerrm<>'PROGRAMMING_SCHEDULE_MUST_BE_FUTURE' then raise; end if; end;
+    perform public.create_programming_with_details(v_project,v_supplier,'infinity',v_lines,'QA invalid date');
+    raise exception 'QA_INVALID_MANUAL_DATE_ALLOWED';
+  exception when raise_exception then if sqlerrm<>'PROGRAMMING_SCHEDULE_REQUIRED' then raise; end if; end;
   execute 'reset role';
+  if not exists(select 1 from public.programming where id=v_manual and status='CONFIRMED' and scheduled_at=v_past
+    and confirmed_quantity=7 and confirmed_by=v_actor) then raise exception 'QA_MANUAL_HISTORICAL_FAILED'; end if;
   -- Invalid rows cannot partially create their preceding valid row.
   select count(*) into v_count from public.programming;
   foreach v_bad in array array[
@@ -83,7 +79,7 @@ begin
   end loop;
   -- Backdating an existing manual row also remains guarded.
   begin
-    update public.programming set scheduled_at=v_past where id=v_manual;
+    update public.programming set scheduled_at=v_past-interval '1 day' where id=v_manual;
     raise exception 'QA_MANUAL_RESCHEDULE_ALLOWED';
   exception when raise_exception then if sqlerrm<>'PROGRAMMING_SCHEDULE_DATE_IN_PAST' then raise; end if; end;
   select p.id into v_other from public.profiles p where p.active and p.id<>v_actor
@@ -98,6 +94,10 @@ begin
     perform public.create_programming_batch(v_project,jsonb_build_array(v_item));
     raise exception 'QA_PERMISSION_BYPASSED';
   exception when raise_exception then if sqlerrm<>'PERMISSION_DENIED' then raise; end if; end;
+  begin
+    perform public.create_programming_with_details(v_project,v_supplier,v_past,v_lines,'QA unauthorized');
+    raise exception 'QA_MANUAL_PERMISSION_BYPASSED';
+  exception when raise_exception then if sqlerrm<>'PERMISSION_DENIED' then raise; end if; end;
   execute 'reset role';
   perform set_config('request.jwt.claim.sub','',true);
   execute 'set local role authenticated';
@@ -106,7 +106,7 @@ begin
     raise exception 'QA_AUTH_BYPASSED';
   exception when raise_exception then if sqlerrm<>'AUTH_REQUIRED' then raise; end if; end;
   execute 'reset role';
-  raise notice 'PASS: historical/today/future approved import, audit, historical dispatch, manual guards, atomicity, finite dates, supplier, modalities, quantity, permission and authentication';
+  raise notice 'PASS: historical manual and bulk creation, automatic confirmation, date preservation, permissions, validation, and atomicity';
 end;
 $$;
 rollback;

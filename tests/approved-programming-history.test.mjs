@@ -43,7 +43,7 @@ function fixture({permission=true,permissions=['programming.create'],activeProje
     'next/cache':{revalidatePath:p=>paths.push(p)},
     '@/features/auth/queries':{requireActiveProfile:async()=>({id:projectId})},
     '@/features/projects/queries':{getProjectContext:async()=>({status:'ready',activeProject:{id:activeProjectId,code:'QA',name:'QA',timezone:'America/Guatemala',billingLegalName:'QA, S.A.',address:'QA Address'},projects:[],permissions:permission?permissions:[]})},
-    '@/lib/supabase/server':{createClient:async()=>({from(){return{select(){return this;},eq(){return this;},maybeSingle:async()=>({data:{timezone:'America/Guatemala'},error:null})};},rpc:async(name,args)=>{calls.push({name,args});return{data:{programming_ids:[projectId]},error:rpcError};}})},
+    '@/lib/supabase/server':{createClient:async()=>({from(){return{select(){return this;},eq(){return this;},maybeSingle:async()=>({data:{timezone:'America/Guatemala'},error:null})};},rpc:async(name,args)=>{calls.push({name,args});return{data:name==='create_programming_with_details'?projectId:{programming_ids:[projectId]},error:rpcError};}})},
     './queries':{getProgrammingCatalogs:async()=>({suppliers:[{id:supplierId,code:'MIXTO',name:'Mixto Listo'}],units:m3?[{code:'M3'}]:[]})},
     './invoice-policy':{isDeliveryMode},'./types':{},
     './mixto-listo-workbook':{MIXTO_WORKBOOK_ERROR:'Invalid workbook',isValidApprovedProgrammingDateTime,extractMixtoProgrammingWorkbook:async(file,project)=>{extracts.push({file,project});if(parserError)throw Error(parserError);return{rows,warnings:[]};}},
@@ -71,6 +71,27 @@ test('el lote guarda la fecha histórica corregida y relee pedido, concreto y vo
   assert.equal(item.casting_element,'PILES');assert.equal(item.order_number,'106');assert.equal(item.lines[0].quantity,24);
   assert.equal(item.lines[0].concrete_type,'CONF4001');assert.equal(item.lines[0].unit_code,'M3');
   assert.deepEqual(Array.from(item.delivery_modes),['PUMP','PLACEMENT']);assert.ok(f.paths.includes('/programming'));
+});
+
+test('la creación manual acepta una fecha histórica válida y envía la hora del proyecto', async () => {
+  const form = new FormData();
+  for (const [key, value] of Object.entries({ projectId, supplierId, scheduledAt: '2020-10-24T07:15', orderNumber: '106',
+    lineQuantity: '7', lineUnitCode: 'M3', lineConcreteType: 'CONF4001', deliveryModes: 'DIRECT' })) form.set(key, value);
+  const f = fixture();
+  const saved = await f.actions.createProgrammingAction({}, form);
+  assert.equal(saved.status, 'success');
+  assert.equal(f.calls[0].name, 'create_programming_with_details');
+  assert.equal(f.calls[0].args.p_scheduled_at, '2020-10-24T13:15:00.000Z');
+
+  const forbidden = fixture({ permission: false });
+  assert.equal((await forbidden.actions.createProgrammingAction({}, form)).status, 'error');
+  assert.equal(forbidden.calls.length, 0);
+  for (const value of ['2020-02-30T07:15', '2020-10-24T24:00', '2020-10-24T07:15:60']) {
+    form.set('scheduledAt', value);
+    const invalid = fixture();
+    assert.match((await invalid.actions.createProgrammingAction({}, form)).message, /fecha y hora.*válidas/u);
+    assert.equal(invalid.calls.length, 0);
+  }
 });
 test('el servidor conserva validaciones de autorización, proyecto, Excel original y campos',async()=>{
   for(const options of [{permission:false},{activeProjectId:supplierId}]) {

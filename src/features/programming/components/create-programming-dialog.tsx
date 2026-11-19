@@ -23,15 +23,6 @@ function splitScheduledAt(value: string) {
   return { date, time: time.slice(0, 5) };
 }
 
-function todayInTimezone(timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric", month: "2-digit", day: "2-digit", timeZone: timezone,
-  }).formatToParts(new Date());
-  const get = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? "";
-  return `${get("year")}-${get("month")}-${get("day")}`;
-}
-
 export function CreateProgrammingDialog({
   open,
   projectId,
@@ -120,7 +111,6 @@ export function CreateProgrammingDialog({
                       id="programming-scheduled-date"
                       type="date"
                       required
-                      min={todayInTimezone(timezone)}
                       value={scheduledDate}
                       onChange={(event) => setScheduledDate(event.target.value)}
                       className="form-input"
