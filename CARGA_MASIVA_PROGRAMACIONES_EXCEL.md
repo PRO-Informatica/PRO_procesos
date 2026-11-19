@@ -98,13 +98,12 @@ Cada fila se procesa de manera independiente, pero el lote se acepta o rechaza c
 
 1. tiene día y hora programados;
 2. ambos forman una fecha real;
-3. el día programado sea igual o posterior al día actual del proyecto;
-4. tiene `Pedido No.`;
-5. tiene tipo de concreto;
-6. el volumen es mayor que cero;
-7. tiene elemento a fundir;
-8. existe el proveedor seleccionado y continúa autorizado para el proyecto;
-9. existe la unidad activa `M3`.
+3. tiene `Pedido No.`;
+4. tiene tipo de concreto;
+5. el volumen es mayor que cero;
+6. tiene elemento a fundir;
+7. existe el proveedor seleccionado y continúa autorizado para el proyecto;
+8. existe la unidad activa `M3`.
 
 Los errores indican la fila original del Excel para facilitar su corrección. Tres filas vacías consecutivas después de haber encontrado datos terminan la lectura, y los encabezados repetidos dentro del cuerpo no se importan.
 
@@ -141,13 +140,11 @@ Cuando el lote es aceptado, cada programación:
 - se crea con su pedido y línea de producto;
 - queda en estado `CONFIRMED`;
 - registra `confirmed_at` y `confirmed_by`;
-- incrementa su versión mediante la misma lógica central de confirmación;
-- genera snapshot de revisión;
-- genera evento de auditoría con origen `APPROVED_MIXTO_WORKBOOK`.
+- genera una revisión y un evento de auditoría de creación.
 
 La función de base de datos valida el lote completo antes de insertar y se ejecuta dentro de una sola transacción. Un error provoca rollback total.
 
-La migración `101_approved_programming_same_day.sql` permite que una carga aprobada confirme una hora anterior del día actual. La comparación utiliza el día local y la zona horaria del proyecto. El flujo manual conserva la regla anterior que impide confirmar una hora ya pasada.
+La carga masiva acepta fechas anteriores y conserva el día y la hora aprobados en la zona horaria del proyecto.
 
 ## Creación manual
 
@@ -156,7 +153,7 @@ El formulario **Nueva programación** también requiere:
 - número de pedido en la programación;
 - tipo de concreto en cada línea.
 
-La creación manual conserva su comportamiento: inicia en `PENDING_CONFIRMATION` y debe confirmarse posteriormente. Al confirmar, la base de datos vuelve a exigir pedido y tipo de concreto.
+La creación manual admite fechas pasadas y deja la programación en estado **Confirmada**, con la fecha y hora que se ingresaron en la zona horaria del proyecto.
 
 ## Uso en Despachos
 

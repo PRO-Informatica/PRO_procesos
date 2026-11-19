@@ -59,14 +59,10 @@ function localDateTimeToIso(value: string, timezone: string) {
   );
   if (!match) return null;
   const [, year, month, day, hour, minute, second = "00"] = match;
-  const desired = Date.UTC(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour),
-    Number(minute),
-    Number(second),
-  );
+  const requested = `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+  const utcDate = new Date(`${requested}Z`);
+  const desired = utcDate.valueOf();
+  if (year === "0000" || !Number.isFinite(desired) || utcDate.toISOString().slice(0, 19) !== requested) return null;
   let guess = desired;
 
   try {
@@ -83,32 +79,17 @@ function localDateTimeToIso(value: string, timezone: string) {
       }).formatToParts(new Date(guess));
       const get = (type: Intl.DateTimeFormatPartTypes) =>
         Number(parts.find((part) => part.type === type)?.value);
-      const represented = Date.UTC(
-        get("year"),
-        get("month") - 1,
-        get("day"),
-        get("hour"),
-        get("minute"),
-        get("second"),
-      );
-      guess += desired - represented;
+      const represented = new Date(0);
+      represented.setUTCFullYear(get("year"), get("month") - 1, get("day"));
+      represented.setUTCHours(get("hour"), get("minute"), get("second"));
+      const difference = desired - represented.valueOf();
+      if (difference === 0) return new Date(guess).toISOString();
+      guess += difference;
     }
-    return new Date(guess).toISOString();
   } catch {
     return null;
   }
-}
-
-function localDateKey(value: Date, timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: timezone,
-  }).formatToParts(value);
-  const get = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? "";
-  return `${get("year")}-${get("month")}-${get("day")}`;
+  return null;
 }
 
 function databaseErrorMessage(error: { code?: string; message: string }) {
@@ -535,14 +516,6 @@ export async function createProgrammingAction(
       fields,
     };
   }
-  if (scheduledAt.slice(0, 10) < localDateKey(new Date(), project.timezone || "America/Guatemala")) {
-    return {
-      status: "error",
-      message: "No puede crear una programación para una fecha anterior a hoy.",
-      fields,
-    };
-  }
-
   const { data, error } = await supabase.rpc("create_programming_with_details", {
     p_project_id: projectId,
     p_supplier_id: supplierId,
