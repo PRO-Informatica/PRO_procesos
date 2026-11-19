@@ -94,7 +94,7 @@ function DispatchActions({
     return (
       <div className="dispatches-actions grid w-full grid-cols-1 gap-2">
         <Link href={`/programming/${item.programmingId}`} className="secondary-button w-full gap-1.5 px-3 text-xs">Ver programación <ChevronRight className="size-3.5" /></Link>
-        {canCreate && ["CONFIRMED", "IN_EXECUTION"].includes(item.programmingStatus) && <button type="button" onClick={onStart} className="primary-button w-full gap-1.5 px-3 text-xs"><Plus className="size-4" /> Iniciar despacho</button>}
+        {canCreate && ["CONFIRMED", "IN_EXECUTION"].includes(item.programmingStatus) && <button type="button" onClick={onStart} className="primary-button w-full gap-1.5 px-3 text-xs"><Plus className="size-4" /> Inicio de Registro</button>}
       </div>
     );
   }
