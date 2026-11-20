@@ -148,7 +148,7 @@ async function normalizeWorkbookXml(bytes: Buffer) {
 function findHeaderColumns(sheet: Worksheet, kind: PriceCatalogKind) {
   const required = kind === "PRODUCT"
     ? ["codigo", "referencia", "precio"]
-    : ["codigo", "descripcion", "precio"];
+    : ["descripcion", "precio"];
 
   for (let rowNumber = 1; rowNumber <= Math.min(sheet.rowCount, 10); rowNumber += 1) {
     const columns = new Map<string, number>();
@@ -159,7 +159,7 @@ function findHeaderColumns(sheet: Worksheet, kind: PriceCatalogKind) {
         : rawHeader === "um" || rawHeader === "unidad" ? "unidad de medida"
         : rawHeader === "precio incluye iva" ? "precio"
         : rawHeader === "observacion" ? "observaciones" : rawHeader;
-      if ((required.includes(header) || (kind === "SERVICE" && ["observaciones", "unidad de medida"].includes(header)) || (kind === "PRODUCT" && ["resistencia psi", "slump"].includes(header))) && !columns.has(header)) columns.set(header, columnNumber);
+      if ((required.includes(header) || (kind === "SERVICE" && ["codigo", "observaciones", "unidad de medida"].includes(header)) || (kind === "PRODUCT" && ["resistencia psi", "slump"].includes(header))) && !columns.has(header)) columns.set(header, columnNumber);
     });
     if (required.every((header) => columns.has(header))) {
       return { rowNumber, columns };
@@ -171,10 +171,10 @@ function findHeaderColumns(sheet: Worksheet, kind: PriceCatalogKind) {
 function addDuplicateErrors(rows: PriceCatalogPreviewRow[], kind: PriceCatalogKind) {
   const grouped = new Map<string, PriceCatalogPreviewRow[]>();
   for (const row of rows) {
-    if (!row.code || (kind === "PRODUCT" && !row.reference)) continue;
+    if (kind === "PRODUCT" ? !row.code || !row.reference : !row.code && !row.description) continue;
     const key = kind === "PRODUCT"
       ? `${row.code}\u0000${row.reference}`
-      : JSON.stringify([row.code, row.observations]);
+      : JSON.stringify([row.code, row.observations, row.code ? null : row.description]);
     const matches = grouped.get(key) ?? [];
     matches.push(row);
     grouped.set(key, matches);
@@ -185,7 +185,9 @@ function addDuplicateErrors(rows: PriceCatalogPreviewRow[], kind: PriceCatalogKi
       row.errors.push(
         kind === "PRODUCT"
           ? "La combinación de código y referencia está duplicada."
-          : "La combinación de código y observaciones está duplicada. Usa observaciones distintas para diferenciar los servicios.",
+          : row.code
+            ? "La combinación de código y observaciones está duplicada. Usa observaciones distintas para diferenciar los servicios."
+            : "La combinación de descripción y observaciones del servicio sin código está duplicada.",
       );
     }
   }
@@ -204,7 +206,8 @@ function parseRows(
     rowNumber += 1
   ) {
     const row = sheet.getRow(rowNumber);
-    const codeCell = row.getCell(header.columns.get("codigo")!);
+    const codeColumn = header.columns.get("codigo");
+    const codeCell = codeColumn ? row.getCell(codeColumn) : null;
     const referenceCell = kind === "PRODUCT"
       ? row.getCell(header.columns.get("referencia")!)
       : null;
@@ -218,7 +221,7 @@ function parseRows(
     const description = descriptionCell ? valueText(descriptionCell.value) : null;
     const rawUnit = unitCell ? valueText(unitCell.value) : "";
     const unitCode = kind === "SERVICE" ? normalizeServiceUnit(rawUnit) : null;
-    const code = identifierText(codeCell).trim();
+    const code = codeCell ? identifierText(codeCell).trim() : "";
     const reference = referenceCell ? identifierText(referenceCell).trim() : null;
     const rawPrice = valueText(priceCell.value);
     const psiColumn = kind === "PRODUCT" ? header.columns.get("resistencia psi") : undefined;
@@ -239,17 +242,17 @@ function parseRows(
     const specs = productSpecifications(rawPsi, rawSlump);
     if (specs.error) errors.push(specs.error);
     if ((psiCell && isFormula(psiCell.value)) || (slumpCell && isFormula(slumpCell.value))) errors.push("La resistencia y el slump no pueden ser fórmulas.");
-    if (!code) errors.push("El código es obligatorio.");
+    if (!code && kind === "PRODUCT") errors.push("El código es obligatorio.");
     else if (code.length > 120 || /[\u0000-\u001f\u007f]/u.test(code)) {
       errors.push("El código no es válido.");
     }
     if (
-      typeof codeCell.value === "number" &&
+      typeof codeCell?.value === "number" &&
       (!Number.isSafeInteger(codeCell.value) || codeCell.value < 0)
     ) {
       errors.push("El código numérico debe ser un entero seguro o estar guardado como texto.");
     }
-    if (isFormula(codeCell.value)) errors.push("El código no puede ser una fórmula.");
+    if (codeCell && isFormula(codeCell.value)) errors.push("El código no puede ser una fórmula.");
 
     if (kind === "PRODUCT") {
       if (!reference) errors.push("La referencia es obligatoria.");
@@ -341,7 +344,7 @@ export async function parseProjectPriceCatalog(
     throw new Error(
       catalogKind === "PRODUCT"
         ? "El Excel debe incluir las columnas codigo, referencia y precio."
-        : "El Excel debe incluir las columnas codigo, descripcion y precio. Unidad de medida y observaciones son opcionales.",
+        : "El Excel debe incluir descripción y precio. Código, unidad de medida y observaciones son opcionales.",
     );
   }
 

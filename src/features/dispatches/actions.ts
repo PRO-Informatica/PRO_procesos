@@ -340,7 +340,7 @@ export async function searchDispatchCatalogAction(
           const id = String(row.id ?? "");
           const code = String(row.code ?? "");
           const price = Number(row.price);
-          if (!validId(id) || !code || !Number.isFinite(price) || price < 0) return [];
+          if (!validId(id) || (type === "PRODUCT" && !code) || !Number.isFinite(price) || price < 0) return [];
           return [{
             id, type, code,
             reference: typeof row.reference === "string" ? row.reference : null,

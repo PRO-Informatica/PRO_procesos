@@ -124,7 +124,7 @@ export function DispatchCatalogCombobox({
                 onClick={() => select(item)} onPointerMove={() => setActiveIndex(index)}
                 className={`block min-h-12 w-full px-3 py-3 text-left text-sm ${index === activeIndex ? "bg-brand-soft/50" : "hover:bg-muted"}`}>
                 <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                  <span className="break-all font-semibold">{item.code} <span className="font-normal text-foreground-muted">· {item.type === "PRODUCT" ? "Producto" : "Servicio"}</span></span>
+                  <span className="break-all font-semibold">{item.code || "Sin código"} <span className="font-normal text-foreground-muted">· {item.type === "PRODUCT" ? "Producto" : "Servicio"}</span></span>
                   <span className="whitespace-nowrap font-semibold">{formatDispatchMoney(item.price, item.currency)}</span>
                 </span>
                 <span className="mt-1 block break-words [overflow-wrap:anywhere]">{(item.type === "PRODUCT" ? item.reference : item.description) || "Sin descripción"}</span>

@@ -30,7 +30,7 @@ type ProductRow = {
 
 type ServiceRow = {
   id: string;
-  code: string;
+  code: string | null;
   description: string | null;
   observations: string | null;
   unit_code: string | null;

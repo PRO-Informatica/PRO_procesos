@@ -97,7 +97,10 @@ export function validateOcrReview(value: unknown): string | null {
     if (!line || typeof line !== "object") return "Revisa las líneas de la guía.";
     const quantity = Number(line.quantity);
     if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 999999999 || Math.abs(quantity * 1000 - Math.round(quantity * 1000)) > 0.00001) return "Cada cantidad debe ser mayor que cero, con hasta tres decimales.";
-    if (!["PRODUCT", "SERVICE"].includes(line.type) || typeof line.productCode !== "string" || !line.productCode.trim() || line.productCode.length > 120 || typeof line.description !== "string" || line.description.length > 500) return "Confirma el tipo, código y descripción de cada línea.";
+    const selectedService = line.type === "SERVICE" && typeof line.catalogItemId === "string" && Boolean(line.catalogItemId);
+    if (!["PRODUCT", "SERVICE"].includes(line.type) || typeof line.productCode !== "string" ||
+        (!line.productCode.trim() && !selectedService) || line.productCode.length > 120 ||
+        typeof line.description !== "string" || line.description.length > 500) return "Confirma el tipo, código y descripción de cada línea.";
     if (typeof line.unit !== "string" || (line.unit !== "" && (!normalizeGuideUnit(line.unit) || (line.type === "PRODUCT" && !["M3", "KM", "UN"].includes(line.unit))))) return "Revisa la UM indicada o déjala vacía.";
   }
   return null;

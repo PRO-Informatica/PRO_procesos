@@ -154,14 +154,14 @@ export function ImportPriceCatalogDialog({
               <p className="mt-2 text-xs text-foreground-muted">
                 Máximo 10 MiB y 10,000 registros. {catalogKind === "PRODUCT"
                   ? "Columnas: codigo, referencia, precio. Opcionales: Resistencia PSI (28 días) y Slump en obra (pulgadas). Si omites estas columnas al actualizar, se conservan sus valores; una celda vacía los borra."
-                  : "Columnas: codigo, descripcion y precio. Unidad de medida y observaciones son opcionales. Una UM vacía o con guion se importa sin unidad. Se aceptan KM, M (metro lineal), M2 (m²), M3 (m³), U/UN (Unidad o Unitario), Servicio, Combo, Recargo o dosis/m3."}
+                  : "Incluye descripción y precio. Código, unidad de medida y observaciones son opcionales. Se aceptan KM, M (metro lineal), M2 (m²), M3 (m³), U/UN (Unidad o Unitario), Servicio, Combo, Recargo, Dosis, Dosis/m³ y Viático."}
               </p>
               <p className="mt-1 text-xs text-foreground-muted">
                 Los precios vacíos o con texto no numérico se importan con valor 0.
               </p>
               {catalogKind === "SERVICE" && (
                 <p className="mt-1 text-xs text-foreground-muted">
-                  El código puede repetirse con observaciones distintas. Actualizar modifica la descripción, UM y precio del mismo código y observaciones. Las observaciones solo aparecen en la cotización y el selector, no en la guía.
+                  Al actualizar, el sistema identifica cada servicio por código y observaciones. Para un servicio sin código, usa la descripción y las observaciones.
                 </p>
               )}
             </div>

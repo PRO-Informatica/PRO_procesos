@@ -50,7 +50,7 @@ export type ProjectProductPrice = {
 
 export type ProjectServicePrice = {
   id: string;
-  code: string;
+  code: string | null;
   description: string | null;
   observations: string | null;
   unitCode: string | null;

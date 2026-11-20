@@ -324,7 +324,7 @@ export function DispatchGuideDialog({
               const subtotal = line.unitPrice === null || !Number.isFinite(parsedQuantity) ? null : line.unitPrice * parsedQuantity;
               const selectionLabel = line.catalogType === "PRODUCT"
                 ? `${line.productCode}${line.catalogReference ? ` · ${line.catalogReference}` : ""}`
-                : line.productCode || (line.lineId ? "Línea histórica sin cotización" : "");
+                : line.productCode || (line.catalogType === "SERVICE" ? line.productDescription : "") || (line.lineId ? "Línea histórica sin cotización" : "");
               const kind = line.catalogType === "PRODUCT" ? "Producto" : line.catalogType === "SERVICE" ? "Servicio" : "Producto o servicio";
               return (
                 <article key={line.key} className="min-w-0 rounded-xl border border-border bg-surface shadow-sm" aria-labelledby={`line-title-${line.key}`}>

@@ -69,7 +69,7 @@ export async function projectCatalog(context: Context): Promise<DispatchCatalogO
         const row = raw as unknown as Record<string, unknown>;
         const price = Number(row.price);
         if (!Number.isFinite(price) || price < 0) throw new CaptureError("Hay precios inválidos en la cotización.", 503);
-        items.push({ id: String(row.id), type, code: String(row.code), price, currency: "GTQ",
+        items.push({ id: String(row.id), type, code: String(row.code ?? ""), price, currency: "GTQ",
           reference: typeof row.reference === "string" ? row.reference : null,
           description: typeof row.description === "string" ? row.description : null,
           unitCode: typeof row.unit_code === "string" ? row.unit_code : null,
@@ -150,7 +150,12 @@ export async function saveCapture(context: Context, id: string, input: unknown, 
     const catalog = await projectCatalog(context);
     const lines = draft.lines.map((line) => {
       const match = matchGuideCatalog(line, catalog, context.unit);
-      const selection = line.catalogItemId ? match.candidates.find((item) => item.id === line.catalogItemId && item.type === line.type) : undefined;
+      const candidates = line.type === "SERVICE" && !line.productCode.trim()
+        ? catalog.filter((item) => item.type === "SERVICE" && !item.code && item.id === line.catalogItemId)
+        : match.candidates;
+      const selection = line.catalogItemId
+        ? candidates.find((item) => item.id === line.catalogItemId && item.type === line.type)
+        : undefined;
       if (match.candidates.length && !selection) throw new CaptureError(`Selecciona la variante de ${line.productCode} antes de guardar.`);
       if (line.catalogItemId && !selection) throw new CaptureError("La selección de la cotización cambió o pertenece a otro proyecto.");
       return { quantity: Number(line.quantity), unit_code: line.unit, catalog_type: line.type, catalog_item_id: selection?.id ?? null,

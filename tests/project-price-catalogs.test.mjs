@@ -49,6 +49,21 @@ test("preserva ceros iniciales de códigos numéricos formateados", async () => 
   assert.equal(result.rows[0].code, "00123");
 });
 
+test("acepta servicios sin columna de código y distingue su descripción y observaciones", async () => {
+  const file = await workbookFile("servicios.xlsx", [
+    ["Descripción", "Unidad de medida", "Precio", "Observaciones"],
+    ["Doble dosis de retardante", "dosis", 21.84],
+    ["Viático de laboratorio", "Viático", 381.92],
+    ["Viático de laboratorio", "Viático", 400, "Turno nocturno"],
+    ["Doble dosis de retardante", "dosis", 22],
+  ]);
+  const result = await parseProjectPriceCatalog(file, "SERVICE");
+  assert.deepEqual(result.rows.map((row) => row.unitCode), ["DOSIS", "VIATICO", "VIATICO", "DOSIS"]);
+  assert.ok(result.rows.every((row) => row.code === ""));
+  assert.deepEqual(result.rows.map((row) => row.errors.length), [1, 0, 0, 1]);
+  assert.match(result.rows[0].errors[0], /descripción y observaciones.*duplicada/u);
+});
+
 test("detecta duplicados y precios inválidos antes de persistir", async () => {
   const file = await workbookFile("servicios.xlsx", [
     ["codigo", "precio", "descripcion", "unidad de medida"],

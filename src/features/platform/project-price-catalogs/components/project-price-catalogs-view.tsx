@@ -197,7 +197,7 @@ function CatalogSection({
             <tbody className="divide-y divide-border">
               {catalog.items.map((item) => (
                 <tr key={item.id}>
-                  <td className="px-6 py-4 font-mono font-semibold sm:px-8">{item.code}</td>
+                  <td className="px-6 py-4 font-mono font-semibold sm:px-8">{item.code || "—"}</td>
                   {kind === "PRODUCT" && <><td className="px-4 py-4 font-mono">{(item as ProjectProductPrice).reference}</td><td className="px-4 py-4">{(item as ProjectProductPrice).resistancePsi ?? "—"}</td><td className="max-w-60 px-4 py-4 [overflow-wrap:anywhere]">{(item as ProjectProductPrice).slump || "—"}</td></>}
                   {kind === "SERVICE" && <><td className="px-4 py-4">{(item as ProjectServicePrice).description || "Sin descripción"}</td><td className="max-w-xs break-words px-4 py-4">{(item as ProjectServicePrice).observations || "—"}</td><td className="px-4 py-4">{(item as ProjectServicePrice).unitCode || "Sin UM"}</td></>}
                   <td className="px-6 py-4 text-right font-semibold sm:px-8">{money(item.price)}</td>
