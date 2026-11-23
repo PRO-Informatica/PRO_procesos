@@ -57,8 +57,8 @@ function form(patches={}) {
   form.set('rows',JSON.stringify([{...row,scheduledAt:'2030-01-01T12:00',quantity:999,orderNumber:'FORGED',placementElement:'Columnas',casting_element:'COLUMNS',...patches}]));
   return form;
 }
-test('preview y guardado admiten fechas históricas y releen fecha/pedido/concreto/volumen del original',async()=>{
-  const f=fixture();const data=form();
+test('el lote guarda la fecha histórica corregida y relee pedido, concreto y volumen del original',async()=>{
+  const f=fixture();const data=form({scheduledAt:'2026-12-10T18:00'});
   const preview=await f.actions.extractProgrammingWorkbookAction({},data);
   assert.equal(preview.status,'success');assert.equal(preview.rows[0].errors.length,0);
   const saved=await f.actions.createProgrammingBatchAction({},data);
@@ -67,7 +67,7 @@ test('preview y guardado admiten fechas históricas y releen fecha/pedido/concre
   assert.equal(f.extracts[1].project.id,projectId);
   assert.equal(f.calls.length,1);assert.equal(f.calls[0].name,'create_programming_batch');
   const item=f.calls[0].args.p_items[0];
-  assert.equal(item.scheduled_at,'2026-10-24T13:00:00.000Z');
+  assert.equal(item.scheduled_at,'2026-12-11T00:00:00.000Z');
   assert.equal(item.casting_element,'PILES');assert.equal(item.order_number,'106');assert.equal(item.lines[0].quantity,24);
   assert.equal(item.lines[0].concrete_type,'CONF4001');assert.equal(item.lines[0].unit_code,'M3');
   assert.deepEqual(Array.from(item.delivery_modes),['PUMP','PLACEMENT']);assert.ok(f.paths.includes('/programming'));
@@ -99,11 +99,11 @@ test('el servidor conserva validaciones de autorización, proyecto, Excel origin
     assert.equal(f.extracts.length,0);assert.equal(f.calls.length,0);
   }
   for(const options of [{parserError:'Proyecto del archivo no coincide'},{m3:false},...[
-    {scheduledAt:'2026-02-30T07:00'},{quantity:'0'},{orderNumber:''},{concreteType:''},
+    {quantity:'0'},{orderNumber:''},{concreteType:''},
   ].map(patch=>({rows:[{...row,...patch}]}))]) {
     const f=fixture(options);assert.equal((await f.actions.createProgrammingBatchAction({},form())).status,'error');assert.equal(f.calls.length,0);
   }
-  for(const patch of [{supplierId:''},{sourceRow:99}]) {
+  for(const patch of [{supplierId:''},{sourceRow:99},{scheduledAt:'2026-02-30T07:00'},{scheduledAt:'2026-12-10T'}]) {
     const f=fixture();assert.equal((await f.actions.createProgrammingBatchAction({},form(patch))).status,'error');assert.equal(f.calls.length,0);
   }
   const f=fixture({rpcError:{message:'PROGRAMMING_BATCH_SUPPLIER_INVALID:1'}});
@@ -133,7 +133,7 @@ test('la edición conserva validación de fecha real, motivo, permiso, cantidad 
   }
   const unauthorized=fixture({permissions:['programming.view']});
   assert.equal((await unauthorized.actions.mutateProgrammingAction({},editForm())).status,'error');assert.equal(unauthorized.calls.length,0);
-  for(const message of ['PROGRAMMING_VERSION_CONFLICT','PROGRAMMING_EDIT_HAS_DISPATCHES','PROGRAMMING_NOT_EDITABLE']) {
+  for(const message of ['PROGRAMMING_VERSION_CONFLICT','PROGRAMMING_STARTED_EDIT_REQUIRES_ADMIN','PROGRAMMING_NOT_EDITABLE']) {
     const f=fixture({permissions:['programming.modify'],rpcError:{message}});
     const result=await f.actions.mutateProgrammingAction({},editForm());
     assert.equal(result.status,'error');assert.equal(f.paths.length,0);

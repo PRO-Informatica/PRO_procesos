@@ -60,8 +60,8 @@ function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = 
     dispatches: [dispatch],
     project_product_prices: [{ id: "price-1", project_id: projectId, code: expectedCode, reference: expectedReference }],
     dispatch_guides: [{ id: "guide-1", project_id: projectId, dispatch_id: dispatchId }],
-    dispatch_guide_lines: [{ id: "line-1", project_id: projectId, guide_id: "guide-1", catalog_type: "PRODUCT", product_code: expectedCode, catalog_reference: expectedReference },
-      { id: "service-1", project_id: projectId, guide_id: "guide-1", catalog_type: "SERVICE", unit_price: 1, estimated_subtotal: "20120.2400", currency: "GTQ" }],
+    dispatch_guide_lines: [{ id: "line-1", project_id: projectId, guide_id: "guide-1", catalog_type: "PRODUCT", product_code: expectedCode, catalog_reference: expectedReference, quantity: 15.5 },
+      { id: "service-1", project_id: projectId, guide_id: "guide-1", catalog_type: "SERVICE", unit_price: 1, estimated_subtotal: "20120.2400", currency: "GTQ", quantity: 15.5 }],
     programming_lines: [{ id: "pl-1", programming_id: dispatch.programming_id, concrete_type: expectedReference }],
     dispatch_reconciliations: [{ dispatch_id: dispatchId, project_id: projectId, current_product_invoice_id: savedProduct ? "invoice-product" : null,
       current_service_invoice_id: null, status: "NOT_STARTED" }],
@@ -78,8 +78,8 @@ function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = 
     const secondReference = sameConcrete ? "CONF5001" : "CONF4001";
     tables.dispatches.push({ ...dispatch, id: "dispatch-other", programming_id: "programming-other" });
     tables.dispatch_guides.push({ id: "guide-2", project_id: projectId, dispatch_id: "dispatch-other" });
-    tables.dispatch_guide_lines.push({ id: "line-2", project_id: projectId, guide_id: "guide-2", catalog_type: "PRODUCT", product_code: secondCode, catalog_reference: secondReference });
-    tables.dispatch_guide_lines.push({ id: "service-2", project_id: projectId, guide_id: "guide-2", catalog_type: "SERVICE", unit_price: 1, estimated_subtotal: "20120.2400", currency: "GTQ" });
+    tables.dispatch_guide_lines.push({ id: "line-2", project_id: projectId, guide_id: "guide-2", catalog_type: "PRODUCT", product_code: secondCode, catalog_reference: secondReference, quantity: 15.5 });
+    tables.dispatch_guide_lines.push({ id: "service-2", project_id: projectId, guide_id: "guide-2", catalog_type: "SERVICE", unit_price: 1, estimated_subtotal: "20120.2400", currency: "GTQ", quantity: 15.5 });
     tables.programming.push({ ...tables.programming[0], id: "programming-other" });
     tables.batch_dispatches.push({ id: "bd-2", project_id: projectId, dispatch_id: "dispatch-other", batch_id: batchId, removed_at: null });
   }
@@ -91,6 +91,7 @@ function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = 
     const query = {
       select(_columns, options) { head = options?.head ?? false; return query; },
       eq(key, value) { filters.push(["eq", key, value]); return query; },
+      gt(key, value) { filters.push(["gt", key, value]); return query; },
       in(key, value) { filters.push(["in", key, value]); return query; },
       is(key, value) { filters.push(["is", key, value]); return query; },
       order() { return query; }, limit(value) { limit = value; return query; },
@@ -98,7 +99,12 @@ function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = 
       maybeSingle() { single = true; return query; },
       then(resolve, reject) {
         reads.push(spec);
-        const rows = (tables[table] ?? []).filter(row => filters.every(([op, key, value]) => op === "in" ? value.includes(row[key]) : op === "is" && value === null ? row[key] == null : row[key] === value));
+        const rows = (tables[table] ?? []).filter(row => filters.every(([op, key, value]) => {
+          if (op === "in") return value.includes(row[key]);
+          if (op === "gt") return row[key] > value;
+          if (op === "is" && value === null) return row[key] == null;
+          return row[key] === value;
+        }));
         const selected = range ? rows.slice(range[0], range[1] + 1) : limit ? rows.slice(0, limit) : rows;
         return Promise.resolve({ data: head ? null : single ? selected[0] ?? null : selected,
           error: queryFailure === table ? { message: "unavailable" } : null, count: rows.length }).then(resolve, reject);
@@ -477,7 +483,7 @@ test("al guardar, Universal devuelve el resultado persistido de la conciliación
   assert.equal(f.writes.filter(write => write.name === "reconcile_dispatch_service").length, 1);
 });
 
-test("el estimado de Servicio pagina todas las líneas y excluye otro proyecto o despacho", async () => {
+test("el estimado de Servicio pagina las líneas con cantidad positiva del despacho", async () => {
   const f = fixture({ lines: [serviceLine], savedProduct: true });
   f.raw.total = 5.01;
   const base = f.tables.dispatch_guide_lines.find(line => line.catalog_type === "SERVICE");
@@ -486,6 +492,7 @@ test("el estimado de Servicio pagina todas las líneas y excluye otro proyecto o
   f.tables.dispatch_guide_lines.push({ ...base, id: "foreign", project_id: "other-project", estimated_subtotal: "100000.0000" });
   f.tables.dispatch_guides.push({ id: "other-guide", project_id: "project-ado", dispatch_id: "other-dispatch" });
   f.tables.dispatch_guide_lines.push({ ...base, id: "other-line", guide_id: "other-guide", estimated_subtotal: "100000.0000" });
+  f.tables.dispatch_guide_lines.push({ ...base, id: "informational", quantity: 0, unit_price: null, estimated_subtotal: null, currency: null });
   const result = await f.api.classifyUniversalInvoice(f.file);
   assert.equal(result.status, "READY"); assert.equal(result.comparison.expected, 5.01); assert.equal(result.comparison.matches, true);
   assert.equal(f.reads.filter(read => read.table === "dispatch_guide_lines" && read.filters.some(([, key, value]) => key === "catalog_type" && value === "SERVICE")).length, 2);

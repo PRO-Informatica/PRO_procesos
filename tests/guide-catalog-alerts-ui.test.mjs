@@ -29,6 +29,7 @@ function fixture() {
     "../catalog-selection": { catalogSelectionDefaults }, "../../platform/project-price-catalogs/service-units": { SERVICE_UNIT_CODES },
     "../formatters": { formatDispatchMoney: (amount) => `Q ${amount}` }, "../types": { initialDispatchMutationState: { status: "idle" } },
     "@/lib/env": { getPublicEnvironment: () => ({ appEnvironment: "DEV" }) }, "@/lib/notification-messages": { notifications: {} },
+    "@/features/vision-ocr/guide-scan-storage": {},
     "@/components/feedback/use-action-notification": { useActionNotification() {} }, "../actions": {},
   };
   for (const [path, names] of [

@@ -23,7 +23,7 @@ function fixture(patch={},permissionsPatch={}){
  let index=0,tree;const state=[];const jsx=(type,props)=>({type,props});
  const imports={
   'react/jsx-runtime':{jsx,jsxs:jsx},react:{useState(initial){const i=index++;if(!(i in state))state[i]=typeof initial==='function'?initial():initial;return[state[i],value=>{state[i]=typeof value==='function'?value(state[i]):value;}];},useMemo:fn=>fn(),useEffect(){},useActionState:()=>[{status:'idle'},()=>{},false]},
-  'lucide-react':{},'motion/react':{AnimatePresence:'AnimatePresence'},'next/link':{default:'Link'},'next/navigation':{useRouter:()=>({refresh(){}})},
+  'lucide-react':{},'motion/react':{AnimatePresence:'AnimatePresence'},'next/link':{__esModule:true,default:'Link'},'next/navigation':{useRouter:()=>({refresh(){}})},
   '@/components/feedback/loading-button':{LoadingButton:'LoadingButton'},'@/components/feedback/use-action-notification':{useActionNotification(){}},
   '@/components/ui/button':{Button:'Button'},'@/components/ui/dialog':{Dialog:'Dialog',DialogFooter:'DialogFooter'},
   '@/lib/notification-messages':{notifications:{}},'@/lib/status-labels':{formatStatusLabel:value=>value},
@@ -32,7 +32,7 @@ function fixture(patch={},permissionsPatch={}){
   '../types':{},'./programming-edit-dialog':{ProgrammingEditDialog:'EditDialog'},'./programming-cancel-dialog':{ProgrammingCancelDialog:'CancelDialog'},'@/features/dispatches/components/register-dispatch-dialog':{StartDispatchDialog:'StartDispatchDialog'},
  };
  const exports={};runInNewContext(compiled,{exports,require(name){assert.ok(Object.hasOwn(imports,name),name);return imports[name];},Date,Intl});
- const render=()=>{index=0;tree=exports.ProgrammingDetailView({data:{detail,suppliers:[],units:[]},project:{id:'project',name:'QA',timezone:'America/Guatemala'},receiverName:'Residente',permissions});};
+ const render=(patch={})=>{Object.assign(detail,patch);index=0;tree=exports.ProgrammingDetailView({data:{detail,suppliers:[],units:[]},project:{id:'project',name:'QA',timezone:'America/Guatemala'},receiverName:'Residente',permissions});};
  render();return{render,all:()=>nodes(tree),button:label=>nodes(tree).find(n=>n.type==='button'&&content(n).trim()===label)};
 }
 test('el detalle vencido muestra aviso informativo y abre Iniciar despacho con la fecha original',()=>{
@@ -53,6 +53,24 @@ test('la alerta no habilita operaciones sin permiso ni para programaciones pendi
  }
 });
 
+test('cuando aparece un despacho vinculado, el detalle ofrece abrirlo y descarta el diálogo de registro',()=>{
+  const f = fixture();
+  f.button('Registrar despacho').props.onClick();
+  f.render();
+  assert.ok(f.all().some(node => node.type === 'StartDispatchDialog'));
+
+  const dispatch = {id:'dispatch-vigente',status:'IN_EXECUTION',result:null,guideNumber:'6015-000543',quantity:6};
+  f.render({status:'IN_EXECUTION',dispatches:[dispatch]});
+  assert.equal(f.button('Registrar despacho'), undefined);
+  assert.equal(f.all().some(node => node.type === 'StartDispatchDialog'), false);
+  const dispatchLink = f.all().find(node =>
+    node.type === 'Link' && content(node).trim() === 'Ver despacho' && !node.props['aria-label']
+  );
+  assert.equal(dispatchLink?.props.href, '/dispatches/dispatch-vigente');
+  for (const status of ['CONFIRMED', 'IN_EXECUTION']) {
+    assert.equal(availability.canCreateDispatchForProgramming({...expired, status, operationStarted:true}), false);
+  }
+});
 
 test('una programación en ejecución sin guías ofrece Cancelar con motivo; con guías no',()=>{
  const f=fixture({status:'IN_EXECUTION',dispatches:[{id:'dispatch',status:'IN_EXECUTION',result:null,guideNumber:null,quantity:0}]});

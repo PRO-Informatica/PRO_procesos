@@ -76,7 +76,7 @@ export function ReinvoicingAgingChart({ data, timezone }: { data: ReinvoicingAgi
     <section aria-labelledby={titleId} className={`${styles.aging} min-w-0 rounded-xl border border-border bg-surface p-4 sm:p-5`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 id={titleId} className="flex items-center gap-2 font-semibold text-foreground"><Clock3 aria-hidden="true" className="size-4 text-brand-strong" />Tiempo en refacturación</h2>
+          <h2 id={titleId} className="flex items-center gap-2 font-semibold text-foreground"><Clock3 aria-hidden="true" className="size-4 text-brand-strong" />Tiempo pendiente de liquidación</h2>
           <p className="mt-1 text-xs text-foreground-muted">Días corridos desde la solicitud de refacturación.</p>
         </div>
         {alertCount > 0 && <p className="inline-flex items-center gap-1.5 rounded-md bg-destructive-soft px-2.5 py-1.5 text-xs font-semibold text-destructive"><AlertTriangle aria-hidden="true" className="size-3.5" />{alertCount} {alertCount === 1 ? "despacho" : "despachos"} con {REINVOICING_ALERT_DAYS} días o más</p>}
@@ -84,7 +84,7 @@ export function ReinvoicingAgingChart({ data, timezone }: { data: ReinvoicingAgi
 
       {!total ? (
         <p className="mt-4 rounded-lg border border-dashed border-border bg-muted/25 p-4 text-sm text-foreground-muted">
-          {data ? "No hay despachos pendientes de refacturación." : "No se pudo consultar el historial de refacturación."}
+          {data ? "No hay despachos pendientes de liquidación." : "No se pudo consultar el historial de refacturación."}
         </p>
       ) : (
         <>
@@ -153,7 +153,7 @@ export function ReinvoicingAgingChart({ data, timezone }: { data: ReinvoicingAgi
               {canPlot && <p className="mt-2 flex items-center gap-2 text-xs text-foreground-muted"><span className="size-2 rounded-full bg-destructive" aria-hidden="true" />{REINVOICING_ALERT_DAYS} días o más</p>}
               <div className="mt-3 overflow-hidden rounded-lg border border-border">
                 <table className="w-full table-fixed text-left text-xs">
-                  <caption className="sr-only">Todos los despachos pendientes de refacturación</caption>
+                  <caption className="sr-only">Todos los despachos pendientes de liquidación</caption>
                   <colgroup><col className="w-[6rem] sm:w-[11rem]" /><col /><col className="w-[4.75rem] sm:w-28" /></colgroup>
                   <thead className="bg-muted text-foreground-muted">
                     <tr>

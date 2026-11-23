@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useRef } from "react";
+import { startTransition, useActionState, useEffect, useRef } from "react";
 
 import { LoadingButton } from "@/components/feedback/loading-button";
 import { useActionNotification } from "@/components/feedback/use-action-notification";
@@ -50,6 +50,7 @@ export function ProgrammingEditDialog({
   onUpdated: () => void;
 }) {
   const router = useRouter();
+  const operationStarted = item.dispatches.length > 0;
   const [state, formAction, pending] = useActionState(
     mutateProgrammingAction,
     initialProgrammingMutationState,
@@ -79,12 +80,17 @@ export function ProgrammingEditDialog({
   return (
     <Dialog
       title="Editar programación"
-      description={`PRG-${item.id.slice(0, 8).toUpperCase()} · al guardar quedará Confirmado`}
+      description={`PRG-${item.id.slice(0, 8).toUpperCase()} · ${operationStarted ? "Despacho iniciado" : "Al guardar quedará Confirmado"}`}
       onClose={onClose}
       pending={pending}
       size="lg"
     >
-      <form action={formAction} aria-busy={pending}>
+      <form onSubmit={(event) => {
+        event.preventDefault();
+        if (pending) return;
+        const data = new FormData(event.currentTarget);
+        startTransition(() => formAction(data));
+      }} aria-busy={pending}>
         <input type="hidden" name="intent" value="edit" />
         <input type="hidden" name="projectId" value={item.projectId} />
         <input type="hidden" name="programmingId" value={item.id} />
@@ -95,6 +101,10 @@ export function ProgrammingEditDialog({
             <label htmlFor="edit-programming-supplier" className="form-label">
               Proveedor
             </label>
+            {operationStarted ? <>
+              <input type="hidden" name="supplierId" value={item.supplierId} />
+              <input id="edit-programming-supplier" value={item.supplierName} readOnly className="form-input bg-muted" />
+            </> : (
             <select
               id="edit-programming-supplier"
               name="supplierId"
@@ -109,6 +119,7 @@ export function ProgrammingEditDialog({
                 </option>
               ))}
             </select>
+            )}
           </div>
 
           <div>
@@ -129,7 +140,7 @@ export function ProgrammingEditDialog({
 
           <div>
             <label htmlFor="edit-programming-order-number" className="form-label">
-              Pedido No.
+              {operationStarted ? "Pedido programado" : "Pedido No."}
             </label>
             <input
               id="edit-programming-order-number"
@@ -142,10 +153,12 @@ export function ProgrammingEditDialog({
             />
           </div>
 
-          <ProgrammingDeliveryFields initialModes={item.deliveryModes} disabled={pending} />
+          <ProgrammingDeliveryFields initialModes={item.deliveryModes} disabled={pending || operationStarted} />
+          {operationStarted && item.deliveryModes.map((mode) => <input key={mode} type="hidden" name="deliveryModes" value={mode} />)}
 
           <ProgrammingLinesFields
             units={units}
+            fixedUnitCode={operationStarted ? item.unitCode : undefined}
             initialLines={item.lines.map((line) => ({
               quantity: String(line.quantity),
               unitCode: line.unitCode,
@@ -184,7 +197,9 @@ export function ProgrammingEditDialog({
               placeholder="Explica por qué se modifica la programación"
             />
             <p className="mt-1 text-xs text-foreground-muted">
-              El motivo quedará registrado en el historial y los cambios se confirmarán automáticamente.
+              {operationStarted
+                ? "El motivo quedará registrado en el historial de la programación. El proveedor, la modalidad y la unidad están vinculados al despacho."
+                : "El motivo quedará registrado en el historial y los cambios se confirmarán automáticamente."}
             </p>
           </div>
 
@@ -207,7 +222,7 @@ export function ProgrammingEditDialog({
           <Button variant="secondary" onClick={onClose} disabled={pending}>
             Volver
           </Button>
-          <LoadingButton loadingLabel="Guardando cambios…">
+          <LoadingButton loading={pending} loadingLabel="Guardando cambios…">
             Guardar cambios
           </LoadingButton>
         </DialogFooter>

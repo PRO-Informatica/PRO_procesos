@@ -215,7 +215,8 @@ export function ProgrammingDetailView({
   const [registerOpen, setRegisterOpen] = useState(false);
   const [availabilityNow] = useState(() => Date.now());
   const detail = data.detail;
-  const operationStarted = detail.dispatches.length > 0;
+  const existingDispatch = detail.dispatches[0];
+  const operationStarted = Boolean(existingDispatch);
   const effectiveStatus = getEffectiveProgrammingStatus({
     version: detail.version,
     status: detail.status,
@@ -230,6 +231,7 @@ export function ProgrammingDetailView({
     operationStarted,
     timezone: project.timezone,
     hasPermission: permissions.canModify,
+    canEditStarted: permissions.canEditStarted,
   }, availabilityNow);
   const canRegisterDispatch = canCreateDispatchForProgramming({
     status: detail.status,
@@ -295,7 +297,14 @@ export function ProgrammingDetailView({
             {canConfirm && (
               <DirectConfirmButton detail={detail} />
             )}
-            {canRegisterDispatch && (
+            {existingDispatch ? (
+              <Link
+                href={`/dispatches/${existingDispatch.id}`}
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong sm:min-h-10 sm:w-auto"
+              >
+                <Eye aria-hidden="true" className="size-4" /> Ver despacho
+              </Link>
+            ) : canRegisterDispatch && (
               <button type="button" onClick={() => setRegisterOpen(true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong sm:min-h-10 sm:w-auto">
                 <Truck aria-hidden="true" className="size-4" /> Registrar despacho
               </button>

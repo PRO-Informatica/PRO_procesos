@@ -102,6 +102,7 @@ function dialogFixture({readOnly=false,guide,manual=false,interactive=false}={})
     '@/features/vision-ocr/components/guide-ocr-details': {},
     '@/features/vision-ocr/components/guide-ocr-review': {GuideOcrReview:props=>jsx('GuideReview',{children:[props.number,props.date,props.arrival,props.departure,props.lines]})},
     '@/features/vision-ocr/guide-draft': {},
+    '@/features/vision-ocr/guide-scan-storage': {},
     '../actions': {saveDispatchGuideAction(){}}, '../catalog-selection': {catalogSelectionDefaults(){}},
     '../../platform/project-price-catalogs/service-units': {SERVICE_UNIT_CODES:['M3']},
     '../formatters': {formatDispatchMoney:value=>String(value)}, '../types': {initialDispatchMutationState:{status:'idle'}},

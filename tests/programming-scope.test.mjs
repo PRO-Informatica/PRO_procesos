@@ -120,20 +120,14 @@ test("una programación pendiente futura también puede editarse", () => {
   );
 });
 
-test("una programación con despacho iniciado no puede editarse", () => {
-  assert.equal(
-    canEditProgramming(
-      {
-        status: "CONFIRMED",
-        scheduledAt: "2026-10-09T08:00:00-06:00",
-        operationStarted: true,
-        timezone: "America/Guatemala",
-        hasPermission: true,
-      },
-      new Date("2026-10-07T12:00:00-06:00").valueOf(),
-    ),
-    false,
-  );
+test("después de iniciar, solo un administrador con permiso de edición puede editar la programación", () => {
+  const programming = { scheduledAt: "2026-10-09T08:00:00-06:00", operationStarted: true, hasPermission: true };
+  for (const status of ["IN_EXECUTION", "DISPATCH_COMPLETED", "COMPLETED"]) {
+    assert.equal(canEditProgramming({ ...programming, status, canEditStarted: false }), false);
+    assert.equal(canEditProgramming({ ...programming, status, canEditStarted: true }), true);
+    assert.equal(canEditProgramming({ ...programming, status, canEditStarted: true, hasPermission: false }), false);
+  }
+  assert.equal(canEditProgramming({ ...programming, status: "CANCELLED", canEditStarted: true }), false);
 });
 
 test("la edición sigue disponible el día programado mientras no exista despacho", () => {

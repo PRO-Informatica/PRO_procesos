@@ -58,6 +58,7 @@ export default async function ProgrammingDetailPage({
       receiverName={profile.fullName}
       permissions={{
         canModify: context.permissions.includes("programming.modify"),
+        canEditStarted: context.isCompanyAdmin,
         canConfirm: context.permissions.includes("programming.confirm"),
         canCancel: context.permissions.includes("programming.cancel"),
         canClose: context.permissions.includes("programming.close"),

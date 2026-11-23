@@ -165,7 +165,14 @@ test("cantidad sigue obligatoria; UM puede quedar vacía y una UM indicada debe 
     catalog_item_id: "78f495d6-d721-4b65-94f0-fdc94a03b8df",
     product_description: null,
   };
-  assert.match(validateDispatchGuideLines([{ ...base, quantity: 0 }]), /cantidad/u);
+  assert.equal(validateDispatchGuideLines([{ ...base, quantity: 0 }]), null);
+  for (const documentType of ["MIXTO_OPERATION", "PANEXUS_OPERATION"]) {
+    assert.match(validateDispatchGuideLines([{ ...base, quantity: 0 }], documentType), /cantidad/u);
+    assert.equal(validateDispatchGuideLines([base], documentType), null);
+  }
+  for (const quantity of [NaN, Infinity, -1, -0.0001, 0.0001, 1000000000]) {
+    assert.match(validateDispatchGuideLines([{ ...base, quantity }]), /cantidad/u);
+  }
   assert.equal(validateDispatchGuideLines([{ ...base, unit_code: "" }]), null);
   assert.match(validateDispatchGuideLines([{ ...base, unit_code: "ma" }]), /UM/u);
 });

@@ -14,10 +14,12 @@ type EditableLine = {
 export function ProgrammingLinesFields({
   units,
   initialLines,
+  fixedUnitCode,
   disabled = false,
 }: {
   units: ProgrammingUnit[];
   initialLines?: EditableLine[];
+  fixedUnitCode?: string;
   disabled?: boolean;
 }) {
   const nextId = useRef(2);
@@ -41,7 +43,7 @@ export function ProgrammingLinesFields({
         <button
           type="button"
           onClick={() => {
-            const inheritedUnit = lines[0]?.unitCode ?? "";
+            const inheritedUnit = fixedUnitCode ?? lines[0]?.unitCode ?? "";
             const id = `programming-line-${Date.now()}-${nextId.current++}`;
             setLines((current) => [
               ...current,
@@ -104,7 +106,9 @@ export function ProgrammingLinesFields({
               <label htmlFor={`${line.id}-unit`} className="form-label">
                 UM
               </label>
-              <select
+              {fixedUnitCode ? (
+                <input id={`${line.id}-unit`} name="lineUnitCode" value={fixedUnitCode} readOnly className="form-input bg-muted" />
+              ) : <select
                 id={`${line.id}-unit`}
                 name="lineUnitCode"
                 required
@@ -128,7 +132,7 @@ export function ProgrammingLinesFields({
                     {unit.code}
                   </option>
                 ))}
-              </select>
+              </select>}
             </div>
             <div className="col-span-2 row-start-3 min-w-0 sm:col-span-1 sm:col-start-4 sm:row-start-1">
               <label htmlFor={`${line.id}-concrete-type`} className="form-label">

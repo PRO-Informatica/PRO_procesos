@@ -38,7 +38,12 @@ test('revisión permite líneas sin catálogo y guías solo de servicios; exige 
  for(const type of ['PRODUCT','SERVICE'])assert.equal(validateOcrReview({...draft,lines:[{...draft.lines[0],type,unit:''}]}),null);
  assert.match(validateOcrReview({...draft,resident:{castingElement:'',laboratoryApplied:false}}),/elemento/);
  assert.match(validateOcrReview({...draft,resident:{castingElement:'COLUMNS',laboratoryApplied:'yes'}}),/elemento/);
- assert.match(validateOcrReview({...draft,lines:[{...draft.lines[0],unit:'ma'}]}),/UM/);assert.match(validateOcrReview({...draft,lines:[{...draft.lines[0],quantity:'0'}]}),/cantidad/);
+ assert.match(validateOcrReview({...draft,lines:[{...draft.lines[0],unit:'ma'}]}),/UM/);assert.equal(validateOcrReview({...draft,lines:[{...draft.lines[0],quantity:'0'}]}),null);
+ for(const documentType of ['MIXTO_OPERATION','PANEXUS_OPERATION']) {
+  assert.match(validateOcrReview({...draft,details:{...draft.details,documentType},lines:[{...draft.lines[0],quantity:'0'}]}),/cantidad/);
+  assert.equal(validateOcrReview({...draft,details:{...draft.details,documentType}}),null);
+ }
+ for(const quantity of ['', ' ', '-1', '-0.0001', '0.0001', 'Infinity', '1000000000']) assert.match(validateOcrReview({...draft,lines:[{...draft.lines[0],quantity}]}),/cantidad/);
  assert.match(validateOcrReview({...draft,arrivalTime:'6 pm'}),/horas/);assert.match(validateOcrReview({...draft,details:{...draft.details,guideDate:'2026-02-31'}}),/fecha/);
 });
 

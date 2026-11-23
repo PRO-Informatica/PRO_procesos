@@ -128,6 +128,38 @@ test("usa exclusivamente Pedido No. aunque No. De pedido tenga otro valor", asyn
   assert.notEqual(row.orderNumber, "111");
 });
 
+test("reconoce encabezados desplazados y conserva programaciones separadas por filas vacías", async () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Solicitud de Concreto");
+  for (const [cell, value] of Object.entries({
+    G2: "atencionalcliente@mixtolisto.com",
+    G5: "Nombre destinatario de factura", I5: project.billingLegalName,
+    G8: "Dirección exacta de Obra", J8: project.address,
+    U30: "Datos para la Fundición",
+    AG32: "Fecha de Fundición", AI32: "Hora", AD32: "Tipo de concreto",
+    AE32: "Volumen (m3)", AF32: "Elemento a fundir",
+    AK34: "Fecha Programada", AA36: "Hora Programada", AB36: "Pedido No.",
+    AJ36: "Adicionales al concreto", AL36: "Bomba",
+    G55: "¿Requiere servicio de laboratorio?", K55: "Muestras de Laboratorio:",
+    AD57: "Persona a quien se confirma el pedido", AF59: "Datos adicionales",
+  })) sheet.getCell(cell).value = value;
+
+  for (const [row, time, order] of [[41, "18:00hrs", "36"], [49, "07:00 hrs.", "39"]]) {
+    for (const [column, value] of Object.entries({
+      AG: "07/10/2030", AI: "08:00", AD: "CONF4001", AE: 12, AF: "Colocación",
+      AK: "08/10/2030", AA: time, AB: order, AJ: "Coordinar la bomba", AL: "X",
+    })) sheet.getCell(`${column}${row}`).value = value;
+  }
+
+  const { rows } = await extractMixtoProgrammingWorkbookBuffer(Buffer.from(await workbook.xlsx.writeBuffer()), project);
+  assert.deepEqual(rows.map(({ sourceRow, scheduledAt, orderNumber, deliveryModes }) => [
+    sourceRow, scheduledAt, orderNumber, deliveryModes,
+  ]), [
+    [41, "2030-10-08T18:00", "36", ["PUMP"]],
+    [49, "2030-10-08T07:00", "39", ["PUMP"]],
+  ]);
+});
+
 test("preserva Pedido No. como texto con ceros y admite identificadores alfanuméricos", async () => {
   const formatted = await extractMixtoProgrammingWorkbookBuffer(
     await workbookBuffer({
@@ -170,9 +202,40 @@ test("persiste en el DTO tipo, volumen M3 y notas operativas", async () => {
   assert.equal(row.notes, "Elemento a fundir: Soil Nailing\nAdicionales al concreto: Coordinar Bomba\nTiempo entre camiones: 30 minutos");
 });
 
+test("corrige día y mes intercambiados si la fecha resultante coincide con la solicitada", async () => {
+  for (const approved of ["12/10/2026", new Date("2026-10-12T00:00:00Z")]) {
+    const { rows: [row] } = await extractMixtoProgrammingWorkbookBuffer(
+      await workbookBuffer({ row: { A12: "10/12/2026", I12: approved, J12: "18:00hrs" } }), project,
+    );
+    assert.equal(row.scheduledAt, "2026-12-10T18:00");
+    assert.equal(row.requestedDate, "2026-12-10");
+    assert.equal(row.workbookTime, "18:00hrs");
+    assert.match(row.dateWarning, /intercambiaron/u);
+  }
+});
+
+test("la vista previa conserva la parte válida de la programación para corregir la otra", async () => {
+  for (const [input, expected] of [
+    [{ I12: "31/02/2030" }, "T13:00"],
+    [{ J12: "Por confirmar" }, "2030-10-07T"],
+    [{ I12: "", J12: "" }, "T"],
+  ]) {
+    const { rows: [row] } = await extractMixtoProgrammingWorkbookBuffer(await workbookBuffer({ row: input }), project);
+    assert.equal(row.scheduledAt, expected);
+    assert.equal(row.orderNumber, "28");
+    assert.equal(isValidApprovedProgrammingDateTime(row.scheduledAt), false);
+  }
+});
+
+test("la fecha aprobada de un traslado real conserva su diferencia con la fecha solicitada", async () => {
+  const { rows: [row] } = await extractMixtoProgrammingWorkbookBuffer(await workbookBuffer({
+    row: { A12: "28/12/2026", I12: "12/29/2026", J12: "7.30 a. m." },
+  }), project);
+  assert.equal(row.scheduledAt, "2026-12-29T07:30");
+  assert.equal(row.dateWarning, "");
+});
+
 for (const [name, row, message] of [
-  ["DÍA PROGRAMADO", { I12: "" }, /Fila Excel 12: DÍA PROGRAMADO faltante o inválido/u],
-  ["HORA PROGRAMADA", { J12: "" }, /Fila Excel 12: HORA PROGRAMADA faltante o inválida/u],
   ["Pedido No.", { K12: "" }, /Fila Excel 12: Pedido No\. es obligatorio/u],
   ["Tipo de concreto", { D12: "" }, /Fila Excel 12: Tipo de concreto es obligatorio/u],
   ["volumen cero", { E12: 0 }, /Fila Excel 12: Volumen \(m3\) debe ser mayor que cero/u],

@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import type { Cell, CellValue, Worksheet } from "exceljs";
+import type { Cell, CellValue, Row, Worksheet } from "exceljs";
 
 import type { BulkProgrammingPreviewRow } from "./types.ts";
 import { DELIVERY_MODES, type DeliveryMode } from "./invoice-policy.ts";
@@ -42,7 +42,7 @@ function normalized(value: unknown) {
 
 function cellText(value: CellValue): string {
   if (value === null || value === undefined) return "";
-  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Date) return Number.isFinite(value.valueOf()) ? value.toISOString() : "";
   if (typeof value === "object") {
     if ("richText" in value && Array.isArray(value.richText)) {
       return value.richText.map((part) => part.text).join("");
@@ -78,48 +78,76 @@ function pad(value: number) {
   return String(value).padStart(2, "0");
 }
 
-function excelSerialDate(value: number) {
-  return new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86_400_000);
+function calendarDate(year: number, month: number, day: number) {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month && date.getUTCDate() === day
+    ? `${year}-${pad(month)}-${pad(day)}`
+    : "";
 }
 
-export function parseMixtoDate(value: CellValue) {
-  let date: Date | null = null;
-  if (value instanceof Date) date = value;
-  else if (typeof value === "number") date = excelSerialDate(value);
-  else {
-    const match = cellText(value).match(/^(\d{1,4})[/.\-](\d{1,2})[/.\-](\d{1,4})$/);
-    if (match) {
-      const first = Number(match[1]);
-      const second = Number(match[2]);
-      const third = Number(match[3]);
-      const year = match[1].length === 4 ? first : third < 100 ? 2000 + third : third;
-      const month = second;
-      const day = match[1].length === 4 ? third : first;
-      date = new Date(Date.UTC(year, month - 1, day));
-      if (
-        date.getUTCFullYear() !== year ||
-        date.getUTCMonth() + 1 !== month ||
-        date.getUTCDate() !== day
-      ) date = null;
-    }
+function formulaResult(value: CellValue): CellValue {
+  return value && typeof value === "object" && "result" in value ? value.result : value;
+}
+
+function textDate(value: string, monthFirst: boolean) {
+  const text = value.normalize("NFKC").replace(/\s*([/.\-])\s*/gu, "$1");
+  const iso = text.match(/^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})$/u);
+  if (iso) return monthFirst ? "" : calendarDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  const match = text.match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4}|\d{2})$/u);
+  if (!match) return "";
+  const year = Number(match[3]) + (match[3].length === 2 ? 2000 : 0);
+  return calendarDate(year, Number(match[monthFirst ? 1 : 2]), Number(match[monthFirst ? 2 : 1]));
+}
+
+export function parseMixtoDate(value: CellValue, date1904 = false) {
+  value = formulaResult(value);
+  if (!(value instanceof Date) && typeof value !== "number") return textDate(cellText(value), false);
+  const date = value instanceof Date ? value : new Date(
+    Date.UTC(1899, 11, 30) + (Math.floor(value) + (date1904 ? 1462 : 0)) * 86_400_000,
+  );
+  return Number.isFinite(date.valueOf()) && date.getUTCFullYear() >= 1000 && date.getUTCFullYear() <= 9999
+    ? date.toISOString().slice(0, 10)
+    : "";
+}
+
+function approvedDate(value: CellValue, requestedDate: string, date1904: boolean) {
+  const source = formulaResult(value);
+  const date = parseMixtoDate(source, date1904);
+  const typedDate = source instanceof Date || typeof source === "number";
+  const [year, month, day] = date.split("-").map(Number);
+  const alternate = typedDate ? calendarDate(year, day, month) : textDate(cellText(source), true);
+  if (alternate && alternate !== date && alternate === requestedDate) {
+    return { date: alternate, warning: "Se intercambiaron día y mes porque coinciden con la fecha solicitada. Verifica la fecha antes de cargar." };
   }
-  if (!date || !Number.isFinite(date.valueOf())) return "";
-  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+  if (date && !typedDate && alternate && alternate !== date && date !== requestedDate) {
+    return { date, warning: `El Excel admite otra lectura (${alternate}). Verifica el día y el mes.` };
+  }
+  return { date: date || alternate, warning: "" };
 }
 
 export function parseMixtoTime(value: CellValue) {
+  value = formulaResult(value);
   if (value instanceof Date) {
-    return `${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}`;
+    return Number.isFinite(value.valueOf()) ? `${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}` : "";
   }
   if (typeof value === "number") {
-    const minutes = Math.round((value - Math.floor(value)) * 24 * 60);
-    return `${pad(Math.floor(minutes / 60) % 24)}:${pad(minutes % 60)}`;
+    if (value < 0 || value >= 1 || !Number.isFinite(value)) return "";
+    const minutes = Math.min(Math.round(value * 24 * 60), 1439);
+    return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
   }
-  const match = cellText(value).match(/^(\d{1,2}):?(\d{2})(?:\s*([ap])\.?\s*m\.?)?$/i);
+  const raw = cellText(value).normalize("NFKC").trim();
+  const hourSuffix = /\s*(?:h|hrs?|horas?)\.?$/iu;
+  const text = raw.replace(hourSuffix, "");
+  if (hourSuffix.test(raw) && /^\d{1,2}$/u.test(text)) {
+    const hour = Number(text);
+    return hour < 24 ? `${pad(hour)}:00` : "";
+  }
+  const match = text.match(/^(\d{1,2})(?:\s*[:.h]\s*)?(\d{2})(?::[0-5]\d)?(?:\s*([ap])\.?\s*m\.?)?$/iu);
   if (!match) return "";
   let hour = Number(match[1]);
   const minute = Number(match[2]);
   const meridiem = match[3]?.toLowerCase();
+  if (meridiem && (hour < 1 || hour > 12)) return "";
   if (meridiem === "p" && hour < 12) hour += 12;
   if (meridiem === "a" && hour === 12) hour = 0;
   if (hour > 23 || minute > 59) return "";
@@ -130,6 +158,18 @@ type ColumnKey =
   | "requestDate" | "requestTime" | "concreteType" | "quantity"
   | "element" | "interval" | "programmedDate" | "programmedTime"
   | "orderNumber" | "additions" | DeliveryMode;
+
+const REQUIRED_HEADERS = [
+  "requestDate", "requestTime", "concreteType", "quantity", "element",
+  "programmedDate", "programmedTime", "orderNumber", "additions",
+] satisfies ColumnKey[];
+const FOLLOWING_SECTION_LABELS = new Set([
+  "requiere servicio de laboratorio",
+  "muestras de laboratorio",
+  "informacion del rendimiento del antisol",
+  "datos adicionales",
+  "observaciones adicionales",
+]);
 
 function identifyHeader(value: string): ColumnKey | null {
   if (value === "concreto directo") return "DIRECT";
@@ -149,25 +189,64 @@ function identifyHeader(value: string): ColumnKey | null {
   return null;
 }
 
-function findHeaders(sheet: Worksheet) {
-  const required = [
-    "requestDate", "requestTime", "concreteType", "quantity", "element",
-    "programmedDate", "programmedTime", "orderNumber", "additions",
-  ] satisfies ColumnKey[];
-  for (let rowNumber = 1; rowNumber < sheet.rowCount; rowNumber += 1) {
-    const columns = new Map<ColumnKey, number>();
-    for (const candidateRow of [rowNumber, rowNumber + 1]) {
-      const row = sheet.getRow(candidateRow);
-      for (let column = 1; column <= Math.max(row.cellCount, 20); column += 1) {
-        const key = identifyHeader(normalized(cellText(row.getCell(column).value)));
-        if (key) columns.set(key, column);
-      }
-    }
-    if (required.every((key) => columns.has(key))) {
-      return { lastRow: rowNumber + 1, columns };
-    }
+function populatedCell(row: Row, columns: readonly number[] = []) {
+  for (const column of columns) {
+    const cell = row.getCell(column);
+    if (cellText(cell.value).trim()) return cell;
   }
-  return null;
+}
+
+function hasProgrammingData(row: Row, columns: ReadonlyMap<ColumnKey, number[]>) {
+  return REQUIRED_HEADERS.some((key) => {
+    const text = cellText(populatedCell(row, columns.get(key))?.value ?? null).trim();
+    return Boolean(text) && identifyHeader(normalized(text)) !== key;
+  });
+}
+
+function startsFollowingSection(row: Row) {
+  let found = false;
+  row.eachCell((cell) => {
+    found ||= FOLLOWING_SECTION_LABELS.has(normalized(cellText(cell.value)));
+  });
+  return found;
+}
+
+function findHeaders(rows: readonly Row[]) {
+  const columns = new Map<ColumnKey, number[]>();
+  let inCastingSection = false;
+  for (const [index, row] of rows.entries()) {
+    if (!inCastingSection) {
+      const labels: string[] = [];
+      row.eachCell((cell) => labels.push(cellText(cell.value)));
+      inCastingSection = normalized(labels.join(" ")).includes("datos para la fundicion");
+      if (!inCastingSection) continue;
+    }
+
+    const hasRequiredHeaders = REQUIRED_HEADERS.every((key) => columns.has(key));
+    if (hasRequiredHeaders && hasProgrammingData(row, columns)) {
+      return { firstDataIndex: index, columns };
+    }
+    if (startsFollowingSection(row)) break;
+    if (!hasRequiredHeaders) {
+      const dateColumns = columns.get("programmedDate") ?? columns.get("requestDate");
+      const dateCell = populatedCell(row, dateColumns);
+      if (dateCell && parseMixtoDate(dateCell.value)) return null;
+    }
+
+    const headersInRow = new Map<ColumnKey, { anchor: string; columns: number[] }>();
+    row.eachCell((cell, column) => {
+      const key = identifyHeader(normalized(cellText(cell.value)));
+      if (!key) return;
+      const anchor = cell.master.address;
+      const heading = headersInRow.get(key);
+      if (!heading) headersInRow.set(key, { anchor, columns: [column] });
+      else if (heading.anchor === anchor) heading.columns.push(column);
+    });
+    for (const [key, heading] of headersInRow) columns.set(key, heading.columns);
+  }
+  return REQUIRED_HEADERS.every((key) => columns.has(key))
+    ? { firstDataIndex: rows.length, columns }
+    : null;
 }
 
 function extractInvoiceRecipient(sheet: Worksheet) {
@@ -236,39 +315,33 @@ export async function extractMixtoProgrammingWorkbookBuffer(
     invoiceRecipient: extractInvoiceRecipient(sheet),
     candidateProjects: project.candidateProjects,
   });
-  const headers = findHeaders(sheet);
+  const workbookRows: Row[] = [];
+  sheet.eachRow((row) => workbookRows.push(row));
+  const headers = findHeaders(workbookRows);
   if (!headers) throw new Error(MIXTO_APPROVED_WORKBOOK_ERROR);
 
   const rows: BulkProgrammingPreviewRow[] = [];
-  let consecutiveEmpty = 0;
-  for (let rowNumber = headers.lastRow + 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
-    const row = sheet.getRow(rowNumber);
-    const value = (key: ColumnKey) => headers.columns.has(key)
-      ? row.getCell(headers.columns.get(key)!).value
-      : null;
-    const relevant = [
-      "requestDate", "requestTime", "concreteType", "quantity", "element",
-      "programmedDate", "programmedTime", "orderNumber", "additions",
-    ] satisfies ColumnKey[];
-    const rawValues = relevant.map((key) => cellText(value(key)));
-    if (rawValues.every((entry) => !entry.trim())) {
-      consecutiveEmpty += 1;
-      if (consecutiveEmpty >= 3 && rows.length) break;
-      continue;
-    }
-    if (rawValues.some((entry) => identifyHeader(normalized(entry)))) continue;
-    consecutiveEmpty = 0;
+  const date1904 = workbook.properties.date1904;
+  for (const row of workbookRows.slice(headers.firstDataIndex)) {
+    const rowNumber = row.number;
+    const cellFor = (key: ColumnKey) => populatedCell(row, headers.columns.get(key));
+    const value = (key: ColumnKey) => cellFor(key)?.value ?? null;
 
-    const date = parseMixtoDate(value("programmedDate"));
-    const time = parseMixtoTime(value("programmedTime"));
-    const orderNumber = cellDisplayText(
-      row.getCell(headers.columns.get("orderNumber")!),
-    ).trim();
+    const requestedDate = parseMixtoDate(value("requestDate"), date1904);
+    const dateValue = value("programmedDate");
+    const timeValue = value("programmedTime");
+    const { date, warning: dateWarning } = approvedDate(dateValue, requestedDate, date1904);
+    const time = parseMixtoTime(timeValue);
+    if (!date && !time && startsFollowingSection(row)) break;
+    if (!hasProgrammingData(row, headers.columns)) continue;
+
+    const orderCell = cellFor("orderNumber");
+    const orderNumber = orderCell ? cellDisplayText(orderCell).trim() : "";
     const concreteType = cellText(value("concreteType"));
     const quantity = Number(cellText(value("quantity")).replace(",", "."));
     const placementElement = cellText(value("element"));
     const additions = cellText(value("additions"));
-    const truckInterval = headers.columns.has("interval") ? cellText(value("interval")) : "";
+    const truckInterval = cellText(value("interval"));
     const deliveryModes = DELIVERY_MODES.filter((mode) => {
       const mark = cellText(value(mode)).trim();
       if (!mark) return false;
@@ -278,8 +351,6 @@ export async function extractMixtoProgrammingWorkbookBuffer(
       return true;
     });
 
-    if (!date) throw new Error(rowError(rowNumber, "DÍA PROGRAMADO faltante o inválido"));
-    if (!time) throw new Error(rowError(rowNumber, "HORA PROGRAMADA faltante o inválida"));
     if (!orderNumber) throw new Error(rowError(rowNumber, "Pedido No. es obligatorio"));
     if (!concreteType) throw new Error(rowError(rowNumber, "Tipo de concreto es obligatorio"));
     if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -290,6 +361,12 @@ export async function extractMixtoProgrammingWorkbookBuffer(
     rows.push({
       sourceRow: rowNumber,
       scheduledAt: `${date}T${time}`,
+      workbookDate: typeof formulaResult(dateValue) === "number" || formulaResult(dateValue) instanceof Date
+        ? parseMixtoDate(dateValue, date1904) : cellText(dateValue),
+      workbookTime: typeof formulaResult(timeValue) === "number" || formulaResult(timeValue) instanceof Date
+        ? time || cellText(timeValue) : cellText(timeValue),
+      requestedDate,
+      dateWarning,
       orderNumber,
       concreteType,
       deliveryModes,
