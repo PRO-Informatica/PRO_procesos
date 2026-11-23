@@ -59,26 +59,22 @@ export function canCreateDispatchForProgramming(
   programming: ProgrammingAvailabilityInput & { hasPermission: boolean },
   now = Date.now(),
 ) {
-  if (!programming.hasPermission) return false;
+  if (!programming.hasPermission || programming.operationStarted) return false;
   const effectiveStatus = getEffectiveProgrammingStatus(programming, now);
   // Expiry is an informational alert; the confirmed operation remains usable.
   return ["CONFIRMED", "EXPIRED", "IN_EXECUTION"].includes(effectiveStatus);
 }
 
 export function canEditProgramming(
-  programming: ProgrammingAvailabilityInput & { hasPermission: boolean },
-  now = Date.now(),
+  programming: ProgrammingAvailabilityInput & { hasPermission: boolean; canEditStarted?: boolean },
+  _now = Date.now(),
 ) {
-  void now;
-  if (!programming.hasPermission || programming.operationStarted) return false;
-  if (!["PENDING_CONFIRMATION", "CONFIRMED"].includes(programming.status)) {
-    return false;
+  void _now;
+  if (!programming.hasPermission || !Number.isFinite(Date.parse(programming.scheduledAt))) return false;
+  if (programming.operationStarted) {
+    return programming.canEditStarted === true && ["IN_EXECUTION", "DISPATCH_COMPLETED", "COMPLETED"].includes(programming.status);
   }
-
-  const scheduledAt = new Date(programming.scheduledAt);
-  if (!Number.isFinite(scheduledAt.valueOf())) return false;
-
-  return true;
+  return ["PENDING_CONFIRMATION", "CONFIRMED"].includes(programming.status);
 }
 
 export function canCancelProgramming(

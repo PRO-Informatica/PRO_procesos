@@ -33,6 +33,8 @@ import { notifications } from "@/lib/notification-messages";
 import { notify } from "@/lib/notify";
 import { ServiceReconciliationSummaryCard } from "@/features/reconciliation/components/service-reconciliation-summary";
 import { formatStatusLabel } from "@/lib/status-labels";
+import { getPublicEnvironment } from "@/lib/env";
+import { clearCompletedGuideScans } from "@/features/vision-ocr/guide-scan-storage";
 
 import {
   finalizeDispatchAction,
@@ -257,12 +259,13 @@ function EvidenceRow({
   );
 }
 
-export function DispatchDetailView({ detail, project, permissions, residentView = false }: { detail: DispatchDetail; project: ProjectSummary; permissions: DispatchPermissions; residentView?: boolean }) {
+export function DispatchDetailView({ detail, project, permissions, actorId, residentView = false }: { detail: DispatchDetail; project: ProjectSummary; permissions: DispatchPermissions; actorId?: string; residentView?: boolean }) {
   const router = useRouter();
+  const environment = actorId ? getPublicEnvironment().appEnvironment : null;
   const editable = detail.status === "IN_EXECUTION" && permissions.canModify;
   const guideEditable = detail.status === "IN_EXECUTION" && (permissions.canManageGuides ?? permissions.canModify);
   const canComplete = editable && permissions.canComplete;
-  const operationDate = localDate(detail.programmingScheduledAt, project.timezone);
+  const operationDate = localDate(detail.arrivalAt ?? detail.programmingScheduledAt, project.timezone);
   const [saveState, saveAction, saving] = useActionState(saveDispatchAction, initialDispatchMutationState);
   const [completeState, completeAction, completing] = useActionState(finalizeDispatchAction, initialDispatchMutationState);
   const [guide, setGuide] = useState<DispatchGuide | "new" | null>(null);
@@ -305,6 +308,11 @@ export function DispatchDetailView({ detail, project, permissions, residentView 
       router.refresh();
     }
   }, [completeState.status, router, saveState.status]);
+  useEffect(() => {
+    if (environment && (detail.status === "COMPLETED" || completeState.status === "success")) {
+      void clearCompletedGuideScans(environment, project.id, detail.id).catch(() => undefined);
+    }
+  }, [completeState.status, detail.id, detail.status, environment, project.id]);
 
   return <MotionPage className="mx-auto min-w-0 w-full max-w-[1500px] space-y-4 pb-10 sm:space-y-6 [&_input]:max-w-full [&_section]:min-w-0">
     <div><Link href="/dispatches" className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-foreground-muted hover:text-foreground"><ArrowLeft className="size-4" /> Volver a despachos</Link><div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4 sm:gap-3"><div className="min-w-0 basis-full sm:basis-auto"><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Detalle de despacho</h1><p className="mt-1 break-words text-sm text-foreground-muted">{detail.programmingCode} · {detail.supplierName}</p></div><DispatchStatusBadge status={detail.status} billingComplete={detail.billingComplete} residentView={residentView} /><DispatchResultBadge result={detail.result} /></div></div>
@@ -328,7 +336,7 @@ export function DispatchDetailView({ detail, project, permissions, residentView 
           <div>
             <label className="form-label" htmlFor="dispatch-arrival">Hora llegada</label>
             <input id="dispatch-arrival" type="time" required value={arrivalTime} onChange={(event) => setManualArrival({ saved: detail.arrivalAt, value: event.target.value })} disabled={!editable} className="form-input disabled:bg-muted" aria-describedby="dispatch-arrival-help" />
-            <p id="dispatch-arrival-help" className="mt-1 text-xs text-foreground-muted">Día de la programación: {formatDispatchDate(operationDate)}. Se toma la hora de inicio y puedes corregirla.</p>
+            <p id="dispatch-arrival-help" className="mt-1 text-xs text-foreground-muted">Fecha de operación: {formatDispatchDate(operationDate)}. Puedes corregir la hora de llegada.</p>
             {editable && arrivalChanged && <p className="mt-2 text-xs font-medium text-brand-strong">Hora corregida sin guardar. Los horarios de los camiones se registran por separado.</p>}
           </div>
           <div><label className="form-label" htmlFor="dispatch-departure">Hora salida</label><input id="dispatch-departure" type="time" value={departureTime} readOnly={automaticDeparture} onChange={(event) => setManualDeparture({ saved: detail.departureAt, value: event.target.value })} disabled={!editable} className={`form-input disabled:bg-muted ${automaticDeparture ? "bg-muted" : ""}`} /><p className="mt-1 text-xs text-foreground-muted">{automaticDeparture ? "Automática: salida más tardía registrada en las guías." : "Si la salida es menor que la llegada, se registra al día siguiente."}</p>{departureTime && departureDate !== operationDate && <p className="mt-1 text-xs font-medium text-foreground-muted">Salida: {formatDispatchDate(departureDate)}</p>}</div>
@@ -367,7 +375,7 @@ export function DispatchDetailView({ detail, project, permissions, residentView 
       {editable && <div className="sticky bottom-2 z-20 flex flex-col gap-2 rounded-xl border border-border bg-surface/95 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))] shadow-xl backdrop-blur sm:bottom-3 sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:rounded-2xl sm:p-4">{canComplete && uploadedEvidenceCount === 0 && <p className="text-xs font-medium text-destructive sm:mr-auto">Carga al menos una evidencia antes de finalizar.</p>}<LoadingButton loadingLabel="Guardando…" className="w-full sm:w-auto">Guardar cambios</LoadingButton>{canComplete && <Button type="button" variant="success" className="w-full sm:w-auto" disabled={uploadedEvidenceCount === 0 || saving} title={uploadedEvidenceCount === 0 ? "Carga al menos una evidencia antes de finalizar." : undefined} onClick={() => setConfirmOpen(true)}><CheckCircle2 className="size-4" /> Finalizar despacho</Button>}</div>}
     </form>
 
-    {guide && <DispatchGuideDialog timezone={project.timezone} projectId={project.id} programmingId={detail.programmingId} dispatchId={detail.id} expectedVersion={detail.version} programmedUnitCode={detail.programmedUnitCode} operationDate={operationDate} defaultProductDescription={detail.programmingConcreteTypes[0] ?? null} defaultCastingElement={detail.programmingCastingElement} defaultCatalogProduct={detail.defaultCatalogProduct} units={detail.units} guide={guide === "new" ? undefined : guide} readOnly={!guideEditable} onClose={() => setGuide(null)} />}
+    {guide && <DispatchGuideDialog timezone={project.timezone} projectId={project.id} programmingId={detail.programmingId} dispatchId={detail.id} actorId={actorId} expectedVersion={detail.version} programmedUnitCode={detail.programmedUnitCode} operationDate={operationDate} defaultProductDescription={detail.programmingConcreteTypes[0] ?? null} defaultCastingElement={detail.programmingCastingElement} defaultCatalogProduct={detail.defaultCatalogProduct} units={detail.units} guide={guide === "new" ? undefined : guide} readOnly={!guideEditable} onClose={() => setGuide(null)} />}
     {guideToDelete && editable && <DeleteDispatchGuideDialog projectId={project.id} programmingId={detail.programmingId} dispatchId={detail.id} expectedVersion={detail.version} guide={guideToDelete} onClose={() => setGuideToDelete(null)} />}
     {incidentOpen && <RegisterIncidentDialog projectId={project.id} dispatchId={detail.id} types={detail.incidentTypes} onClose={() => setIncidentOpen(false)} />}
     {canComplete && confirmOpen && completeState.status !== "success" && <Dialog title="¿Finalizar despacho?" description="Se guardarán los datos actuales y se cerrará la operación." icon={CheckCircle2} onClose={() => setConfirmOpen(false)} pending={completing} size="sm"><form action={completeAction}><div className="space-y-4 p-5"><input type="hidden" name="projectId" value={project.id} /><input type="hidden" name="dispatchId" value={detail.id} /><input type="hidden" name="programmingId" value={detail.programmingId} /><input type="hidden" name="expectedVersion" value={detail.version} /><input type="hidden" name="arrivalAt" value={arrivalTime ? `${operationDate}T${arrivalTime}` : ""} /><input type="hidden" name="departureAt" value={departureValue} /><input type="hidden" name="result" value={result} /><input type="hidden" name="orderNumber" value={orderNumber} /><input type="hidden" name="realVolume" value={result === "NOT_DISPATCHED" ? "0" : realVolume} /><input type="hidden" name="realUnitCode" value={realUnitCode} />{completeState.status === "error" && <p role="alert" className="rounded-lg bg-destructive-soft px-4 py-3 text-sm text-destructive">{completeState.message}</p>}</div><DialogFooter><Button variant="secondary" onClick={() => setConfirmOpen(false)} disabled={completing}>Cancelar</Button><LoadingButton variant="success" loadingLabel="Finalizando…">Finalizar despacho</LoadingButton></DialogFooter></form></Dialog>}

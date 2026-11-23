@@ -103,6 +103,7 @@ export type ProgrammingDetail = ProgrammingItem & {
 
 export type ProgrammingDetailPermissions = {
   canModify: boolean;
+  canEditStarted: boolean;
   canConfirm: boolean;
   canCancel: boolean;
   canClose: boolean;
@@ -165,6 +166,10 @@ export type CreateProgrammingState = {
 export type BulkProgrammingPreviewRow = {
   sourceRow: number;
   scheduledAt: string;
+  workbookDate: string;
+  workbookTime: string;
+  requestedDate: string;
+  dateWarning: string;
   orderNumber: string;
   concreteType: string;
   deliveryModes: DeliveryMode[];

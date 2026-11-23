@@ -37,9 +37,8 @@ export function GuideOcrReview({ value, onChange, disabled, draft, number, date,
       <h4 id="guide-identification-heading" className="font-semibold">Datos de la guía</h4>
       <div className="min-w-0"><label className="form-label" htmlFor="guide-document-type">{draft ? "Tipo de documento" : "Tipo de guía"}</label>
         {draft ? <p id="guide-document-type" className="text-sm">{VISION_TEMPLATE_LABELS[value.documentType as keyof typeof VISION_TEMPLATE_LABELS]}</p>
-          : <select id="guide-document-type" value={isControl ? "MIXTO_OPERATION" : "DISPATCH_GUIDE"} disabled={disabled} onChange={(event) => onChange("documentType", event.target.value)} className="form-input">
-            <option value="DISPATCH_GUIDE">Guía de despacho</option>
-            <option value="MIXTO_OPERATION">Control de operación</option>
+          : <select id="guide-document-type" value={value.documentType} disabled={disabled} onChange={(event) => onChange("documentType", event.target.value)} className="form-input">
+            {Object.entries(VISION_TEMPLATE_LABELS).map(([type, label]) => <option key={type} value={type}>{label}</option>)}
           </select>}
       </div>
       <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3">{number}{date}{field("orderNumber")}</div>

@@ -51,6 +51,7 @@ export default async function ProgrammingPage({ searchParams }: { searchParams?:
       canCreate={context.permissions.includes("programming.create")}
       canConfirm={context.permissions.includes("programming.confirm")}
       canModify={context.permissions.includes("programming.modify")}
+      canEditStarted={context.isCompanyAdmin}
       canCancel={context.permissions.includes("programming.cancel")}
       canStartDispatch={context.permissions.includes("dispatch.create")}
       initialData={data}

@@ -49,6 +49,7 @@ function fixture(overrides = {}, permissions = { canModify: true, canComplete: t
     "@/features/batches/actions": {},
     "@/features/reconciliation/components/service-reconciliation-summary": { ServiceReconciliationSummaryCard: "ServiceReconciliationSummaryCard" }, "@/lib/notification-messages": { notifications: {} },
     "@/lib/notify": {}, "@/lib/status-labels": { formatStatusLabel: value => value },
+    "@/lib/env": {}, "@/features/vision-ocr/guide-scan-storage": {},
     "../actions": {}, "../types": { initialDispatchMutationState: { status: "idle" } },
     "../validation": { realVolumeWarning }, "../real-volume": { guideTotalInput, initialRealVolumeOverride },
     "../formatters": Object.fromEntries(["formatDispatchDate", "formatDispatchDateTime", "formatDispatchMoney", "formatDispatchQuantity"].map(name => [name, String])),

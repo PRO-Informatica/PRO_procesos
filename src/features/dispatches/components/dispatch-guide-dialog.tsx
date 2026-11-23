@@ -14,6 +14,7 @@ import { getPublicEnvironment } from "@/lib/env";
 import { GuidePhotoCapture, guideCaptureUrl, type GuidePhotoResult, type GuidePhotoCaptureHandle } from "@/features/vision-ocr/components/guide-photo-capture";
 import { GuideOcrVariants, SavedGuideOcrDetails } from "@/features/vision-ocr/components/guide-ocr-details";
 import { guideCatalogReviewWarnings, type GuideDetails, type GuideOcrDraft } from "@/features/vision-ocr/guide-draft";
+import { guideScanScope, openGuideScanStorage, type GuideScanStorage } from "@/features/vision-ocr/guide-scan-storage";
 
 import { GuideOcrReview } from "@/features/vision-ocr/components/guide-ocr-review";
 import { normalizeCastingElement, type CastingElement } from "../casting-elements";
@@ -49,6 +50,20 @@ type EditableLine = {
   currency: string;
   ocrCandidates?: DispatchCatalogOption[];
   ocrWarning?: string | null;
+};
+
+type OcrReviewSnapshot = {
+  captureId: string;
+  guideNumber: string;
+  guideDate: string;
+  truckArrivalTime: string;
+  truckDepartureTime: string;
+  castingElement: string;
+  laboratoryApplied: boolean | null;
+  details: GuideDetails;
+  lines: EditableLine[];
+  ocrReviewed: boolean;
+  photoRetryGuide: string | null;
 };
 
 function today() {
@@ -105,6 +120,7 @@ export function DispatchGuideDialog({
   projectId,
   programmingId,
   dispatchId,
+  actorId,
   expectedVersion,
   programmedUnitCode,
   defaultProductDescription,
@@ -120,6 +136,7 @@ export function DispatchGuideDialog({
   projectId: string;
   programmingId: string;
   dispatchId: string;
+  actorId?: string;
   expectedVersion: number;
   programmedUnitCode: string;
   defaultProductDescription?: string | null;
@@ -144,7 +161,11 @@ export function DispatchGuideDialog({
   const [truckDepartureTime, setTruckDepartureTime] = useState(truckTime(guide?.truckDepartureAt, timezone));
   const appEnvironment = getPublicEnvironment().appEnvironment;
   const ocrEnabled = appEnvironment === "DEV" || appEnvironment === "PROD";
+  const draftScope = actorId ? guideScanScope(appEnvironment, projectId, dispatchId, actorId) : undefined;
   const canChooseEntryMethod = ocrEnabled && !guide && !readOnly;
+  const [scanStorage, setScanStorage] = useState<GuideScanStorage>();
+  const [draftChecked, setDraftChecked] = useState(!draftScope || !canChooseEntryMethod);
+  const [draftFailed, setDraftFailed] = useState(false);
   const [entryMethod, setEntryMethod] = useState<"ocr" | "manual">(canChooseEntryMethod ? "ocr" : "manual");
   const [capture, setCapture] = useState<GuidePhotoResult | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -180,6 +201,28 @@ export function DispatchGuideDialog({
   const [initialEditSnapshot] = useState(editSnapshot);
   const hasUnsavedChanges = Boolean(guide && !readOnly && editSnapshot !== initialEditSnapshot);
   const removedLineCount = guide?.lines.filter((savedLine) => !lines.some((line) => line.lineId === savedLine.id)).length ?? 0;
+  useEffect(() => {
+    if (!draftScope || !canChooseEntryMethod) return;
+    let active = true;
+    const reportFailure = () => { if (active) setDraftFailed(true); };
+    void openGuideScanStorage(draftScope, reportFailure)
+      .then((storage) => {
+        if (!active) return;
+        setScanStorage(storage);
+        setPhotoSelected(Boolean(storage.get("queue")));
+      }, reportFailure)
+      .finally(() => { if (active) setDraftChecked(true); });
+    return () => { active = false; };
+  }, [canChooseEntryMethod, draftScope]);
+  useEffect(() => {
+    if (!capture || !scanStorage) return;
+    const review: OcrReviewSnapshot = {
+      captureId: capture.captureId, guideNumber, guideDate, truckArrivalTime, truckDepartureTime,
+      castingElement, laboratoryApplied, details, lines, ocrReviewed, photoRetryGuide,
+    };
+    void scanStorage.save({ review });
+  }, [capture, scanStorage, guideNumber, guideDate, truckArrivalTime, truckDepartureTime, castingElement,
+    laboratoryApplied, details, lines, ocrReviewed, photoRetryGuide]);
   const requestClose = () => {
     if (hasUnsavedChanges) setConfirmClose(true);
     else onClose();
@@ -216,7 +259,7 @@ export function DispatchGuideDialog({
         ...initialLine(programmedUnitCode, defaultProductDescription ?? "", defaultCatalogProduct),
         key: `new-line-${result.guideId ?? result.newVersion}`,
       }]);
-      if (capture) photoCaptureRef.current?.saved();
+      if (capture) await photoCaptureRef.current?.saved();
     }
     return result;
   }, initialDispatchMutationState);
@@ -282,7 +325,17 @@ export function DispatchGuideDialog({
   const addLine = () => { setOcrReviewed(false); setLines((current) => [...current, emptyLine(crypto.randomUUID())]); };
   const locked = readOnly || pending || photoBusy || Boolean(photoRetryGuide) || (photoSelected && !capture);
   const applyCapture = (result: GuidePhotoResult) => {
-    setCapture(result); setDetails({ ...emptyGuideDetails(), ...result.draft.details }); setOcrReviewed(false);
+    const saved = scanStorage?.get<OcrReviewSnapshot>("review");
+    setCapture(result);
+    if (saved?.captureId === result.captureId && saved.details.documentType === result.draft.details.documentType) {
+      setGuideNumber(saved.guideNumber); setGuideDate(saved.guideDate);
+      setTruckArrivalTime(saved.truckArrivalTime); setTruckDepartureTime(saved.truckDepartureTime);
+      setCastingElement(saved.castingElement); setLaboratoryApplied(saved.laboratoryApplied);
+      setDetails(saved.details); setLines(saved.lines);
+      setOcrReviewed(saved.ocrReviewed); setPhotoRetryGuide(saved.photoRetryGuide);
+      return;
+    }
+    setDetails({ ...emptyGuideDetails(), ...result.draft.details }); setOcrReviewed(false);
     setCastingElement(normalizeCastingElement(defaultCastingElement) ?? ""); setLaboratoryApplied(false);
     setGuideNumber(result.draft.guideNumber); setGuideDate(result.draft.details.guideDate);
     setTruckArrivalTime(result.draft.arrivalTime); setTruckDepartureTime(result.draft.departureTime);
@@ -348,7 +401,7 @@ export function DispatchGuideDialog({
                     <input type="hidden" name="lineProductDescription" value={line.productDescription} />
                     <div className="min-w-0 sm:col-span-2 lg:order-3 lg:col-span-1"><label className="form-label" htmlFor={`line-catalog-${line.key}`}>{capture ? "Código *" : "Buscar producto o servicio *"}</label><DispatchCatalogCombobox id={`line-catalog-${line.key}`} projectId={projectId} value={selectionLabel} selectedId={line.catalogItemId} productUnitCode={programmedUnitCode} disabled={locked} onSelect={(item) => selectCatalogItem(line.key, item)} /></div>
                     <div className="grid min-w-0 grid-cols-2 gap-3 lg:contents">
-                      <div className="min-w-0 lg:order-1"><label className="form-label" htmlFor={`line-quantity-${line.key}`}>Cantidad *</label><input id={`line-quantity-${line.key}`} name="lineQuantity" type="number" min="0.001" step="0.001" required value={line.quantity} onChange={(event) => update(line.key, "quantity", event.target.value)} disabled={locked} className="form-input min-w-0 disabled:bg-muted" /></div>
+                      <div className="min-w-0 lg:order-1"><label className="form-label" htmlFor={`line-quantity-${line.key}`}>Cantidad *</label><input id={`line-quantity-${line.key}`} name="lineQuantity" type="number" min={details.documentType === "DISPATCH_GUIDE" ? 0 : 0.001} step="0.001" required value={line.quantity} onChange={(event) => update(line.key, "quantity", event.target.value)} disabled={locked} className="form-input min-w-0 disabled:bg-muted" /></div>
                       <div className="min-w-0 lg:order-2"><label className="form-label" htmlFor={`line-unit-${line.key}`}>UM</label><select id={`line-unit-${line.key}`} title={line.unitCode || "Sin unidad de medida"} value={line.unitCode} onChange={(event) => update(line.key, "unitCode", event.target.value)} disabled={locked} className="form-input min-w-0 disabled:bg-muted"><option value="">—</option>{Array.from(new Set([...(line.catalogType === "SERVICE" ? SERVICE_UNIT_CODES : units.map((unit) => unit.code)), ...(line.unitCode ? [line.unitCode] : [])])).map((code) => <option key={code} value={code}>{code}</option>)}</select></div>
                     </div>
                     <div className="min-w-0 lg:order-4"><label className="form-label" htmlFor={`line-description-${line.key}`}>{line.catalogType === "PRODUCT" ? "Referencia" : "Descripción"}</label><textarea id={`line-description-${line.key}`} rows={2} maxLength={500} value={line.productDescription} title={line.productDescription || undefined} onChange={(event) => update(line.key, "productDescription", event.target.value)} disabled={locked || (line.catalogType !== "SERVICE" && !(capture && !line.catalogItemId))} placeholder="Se completa al seleccionar" className="form-input min-w-0 resize-y disabled:bg-muted" /></div>
@@ -386,11 +439,13 @@ export function DispatchGuideDialog({
         <input type="hidden" name="guideDetails" value={JSON.stringify({ ...details, guideDate })} />
         <div className="space-y-5 p-4 sm:p-6">
           {!guide && state.status === "success" && <p role="status" className="text-sm text-success">Guía guardada. Puedes ingresar la siguiente o cerrar esta ventana.</p>}
-          {canChooseEntryMethod && entryMethod === "ocr" && <GuidePhotoCapture ref={photoCaptureRef} environment={appEnvironment} projectId={projectId} dispatchId={dispatchId} disabled={pending || Boolean(photoRetryGuide)} onRead={applyCapture} onReset={(usingPhoto) => {
+          {!draftChecked && <p role="status" className="text-sm text-foreground-muted">Buscando un borrador de este despacho…</p>}
+          {draftFailed && entryMethod === "ocr" && <p role="status" className="text-sm text-warning">El navegador no pudo guardar el borrador. Puedes seguir trabajando en esta ventana.</p>}
+          {draftChecked && canChooseEntryMethod && entryMethod === "ocr" && <GuidePhotoCapture ref={photoCaptureRef} environment={appEnvironment} projectId={projectId} dispatchId={dispatchId} storage={scanStorage} disabled={pending || Boolean(photoRetryGuide)} onRead={applyCapture} onReset={(usingPhoto) => {
             setPhotoSelected(usingPhoto); setCapture(null); setDetails(emptyGuideDetails()); setOcrReviewed(false); setCastingElement(normalizeCastingElement(defaultCastingElement) ?? ""); setLaboratoryApplied(false);
             if (!usingPhoto) { setGuideNumber(""); setTruckArrivalTime(""); setTruckDepartureTime(""); setLines([initialLine(programmedUnitCode, defaultProductDescription ?? "", defaultCatalogProduct)]); }
           }} onBusy={setPhotoBusy} />}
-          {canChooseEntryMethod && !capture && <div className="flex justify-center sm:justify-start">
+          {draftChecked && canChooseEntryMethod && !capture && <div className="flex justify-center sm:justify-start">
             <Button variant="secondary" disabled={pending || photoBusy || photoSelected || Boolean(photoRetryGuide)}
               onClick={() => setEntryMethod(entryMethod === "ocr" ? "manual" : "ocr")}>
               {entryMethod === "ocr" ? "Carga manual" : "Volver a carga OCR"}
@@ -407,7 +462,7 @@ export function DispatchGuideDialog({
           {state.status === "error" && <p role="alert" className="rounded-lg bg-destructive-soft px-4 py-3 text-sm text-destructive">{state.message}</p>}
           {capture && <label className="flex min-h-11 items-start gap-3 rounded-xl border border-border p-4 text-sm"><input type="checkbox" className="mt-0.5 size-4 shrink-0" checked={ocrReviewed} disabled={pending || photoBusy || Boolean(photoRetryGuide)} onChange={(event) => setOcrReviewed(event.target.checked)} />Revisé la foto y los datos extraídos, incluidos los horarios y todas las líneas. Confirmo los datos corregidos antes de guardar.</label>}
         </div>
-        <DialogFooter><Button variant="secondary" onClick={requestClose} disabled={pending || photoBusy}>{readOnly ? "Cerrar" : "Cancelar"}</Button>{!readOnly && showGuideForm && (!photoSelected || capture) && <LoadingButton loading={pending} loadingLabel="Guardando…" disabled={photoBusy || (photoSelected && !capture) || lines.length === 0 || (!capture && lines.some((line) => !line.catalogItemId && !line.lineId)) || Boolean(capture && !ocrReviewed)}>{photoRetryGuide ? "Reintentar foto" : capture ? "Guardar y escanear otra" : "Guardar guía"}</LoadingButton>}</DialogFooter>
+        <DialogFooter><Button variant="secondary" onClick={requestClose} disabled={pending || photoBusy}>{readOnly ? "Cerrar" : scanStorage && !draftFailed && photoSelected ? "Continuar después" : "Cancelar"}</Button>{!readOnly && showGuideForm && (!photoSelected || capture) && <LoadingButton loading={pending} loadingLabel="Guardando…" disabled={photoBusy || (photoSelected && !capture) || lines.length === 0 || (!capture && lines.some((line) => !line.catalogItemId && !line.lineId)) || Boolean(capture && !ocrReviewed)}>{photoRetryGuide ? "Reintentar foto" : capture ? "Guardar y escanear otra" : "Guardar guía"}</LoadingButton>}</DialogFooter>
       </form>
     </Dialog>
   );

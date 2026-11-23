@@ -55,19 +55,31 @@ export function canCompleteDispatch(input: {
   );
 }
 
-export function validateDispatchGuideLines(lines: DispatchGuideLineInput[]) {
+export function guideLineQuantityError(quantity: number, documentType?: string) {
+  const minimum = documentType === "DISPATCH_GUIDE" ? 0 : 0.001;
+  if (Number.isFinite(quantity) && quantity >= minimum && quantity < 1_000_000_000 &&
+    (quantity === 0 || quantity >= 0.001) &&
+    Math.abs(quantity * 1000 - Math.round(quantity * 1000)) <= 0.00001) return null;
+  return minimum === 0
+    ? "Ingresa una cantidad de cero o más, con hasta tres decimales."
+    : "Los controles de operación requieren una cantidad mayor que cero, con hasta tres decimales.";
+}
+
+export function validateDispatchGuideLines(lines: DispatchGuideLineInput[], documentType = "DISPATCH_GUIDE") {
+  if (!lines.length) return "Agrega al menos una línea a la guía.";
+  for (const line of lines) {
+    const error = guideLineQuantityError(line.quantity, documentType);
+    if (error) return error;
+  }
   if (
-    !lines.length ||
     lines.some(
       (line) =>
-        !Number.isFinite(line.quantity) ||
-        line.quantity <= 0 ||
         (line.unit_code !== "" && !(line.catalog_type === "SERVICE" ? SERVICE_UNIT_CODES as readonly string[] : DISPATCH_GUIDE_UNIT_CODES as readonly string[]).includes(
           line.unit_code,
         )),
     )
   ) {
-    return "Cada línea necesita una cantidad mayor que cero. La UM es opcional; si la indicas, usa una UM válida.";
+    return "La UM es opcional. Si la indicas, usa una UM válida.";
   }
 
   if (

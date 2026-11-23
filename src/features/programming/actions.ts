@@ -138,7 +138,16 @@ function databaseErrorMessage(error: { code?: string; message: string }) {
     return "Esta programación solo podía editarse hasta un día antes de la fecha programada.";
   }
   if (message.includes("PROGRAMMING_NOT_EDITABLE")) {
-    return "Solo pueden editarse programaciones confirmadas que aún no tengan despacho.";
+    return "La programación ya no permite ediciones en su estado actual.";
+  }
+  if (message.includes("PROGRAMMING_STARTED_EDIT_REQUIRES_ADMIN")) {
+    return "Solo un administrador de la empresa puede editar la programación después de iniciar el despacho.";
+  }
+  if (message.includes("PROGRAMMING_STARTED_SUPPLIER_LOCKED")) {
+    return "El proveedor está vinculado al despacho y solo puede cambiarse antes de iniciarlo.";
+  }
+  if (message.includes("PROGRAMMING_STARTED_UNIT_LOCKED")) {
+    return "La unidad de medida está vinculada al despacho y solo puede cambiarse antes de iniciarlo.";
   }
   if (message.includes("PROGRAMMING_EDIT_HAS_DISPATCHES")) {
     return "No se puede editar porque el despacho ya fue iniciado.";
@@ -393,9 +402,11 @@ export async function mutateProgrammingAction(
 
   revalidatePath("/programming");
   revalidatePath(`/programming/${programmingId}`);
-  if (intent === "cancel") {
+  if (intent === "edit" || intent === "cancel") {
     revalidatePath("/dispatches");
     revalidatePath("/dispatches/[id]", "page");
+  }
+  if (intent === "cancel") {
     revalidatePath("/batches");
     revalidatePath("/batches/universal");
     revalidatePath("/reports");
@@ -663,11 +674,13 @@ export async function createProgrammingBatchAction(
   if (!context) {
     return { status: "error", message: "No tienes permiso para crear programaciones." };
   }
-  let submittedRows: Array<{
+  type SubmittedRow = {
     sourceRow: number;
+    scheduledAt: string;
     supplierId: string;
     notes: string;
-  }>;
+  };
+  let submittedRows: SubmittedRow[];
   try {
     submittedRows = JSON.parse(rawRows);
   } catch {
@@ -675,6 +688,10 @@ export async function createProgrammingBatchAction(
   }
   if (!Array.isArray(submittedRows) || !submittedRows.length || submittedRows.length > 250) {
     return { status: "error", message: "La carga debe contener entre 1 y 250 filas." };
+  }
+  if (submittedRows.some((row) => !row || !Number.isSafeInteger(row.sourceRow) || row.sourceRow < 1 ||
+    typeof row.scheduledAt !== "string" || typeof row.supplierId !== "string" || typeof row.notes !== "string" || row.notes.length > 1000)) {
+    return { status: "error", message: "La vista previa no es válida." };
   }
   const timezone = context.activeProject?.timezone || "America/Guatemala";
   let workbook;
@@ -696,8 +713,8 @@ export async function createProgrammingBatchAction(
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : MIXTO_WORKBOOK_ERROR };
   }
-  const submittedBySourceRow = new Map(submittedRows.map((row) => [Number(row.sourceRow), row]));
-  if (workbook.rows.length !== submittedRows.length) {
+  const submittedBySourceRow = new Map(submittedRows.map((row) => [row.sourceRow, row]));
+  if (workbook.rows.length !== submittedRows.length || submittedBySourceRow.size !== submittedRows.length) {
     return { status: "error", message: "El archivo original no coincide con la vista previa." };
   }
   const catalogs = await getProgrammingCatalogs(projectId);
@@ -708,9 +725,11 @@ export async function createProgrammingBatchAction(
     const submitted = submittedBySourceRow.get(row.sourceRow);
     if (!submitted) return { status: "error", message: `La fila Excel ${row.sourceRow} no coincide con la vista previa.` };
     const quantity = Number(row.quantity);
-    const scheduledAt = localDateTimeToIso(row.scheduledAt, timezone);
+    const scheduledAt = isValidApprovedProgrammingDateTime(submitted.scheduledAt)
+      ? localDateTimeToIso(submitted.scheduledAt, timezone)
+      : null;
     if (
-      !scheduledAt || !isValidApprovedProgrammingDateTime(row.scheduledAt) ||
+      !scheduledAt ||
       !Number.isFinite(quantity) || quantity <= 0 ||
       !UUID_PATTERN.test(submitted.supplierId) || !row.orderNumber || !row.concreteType
     ) {

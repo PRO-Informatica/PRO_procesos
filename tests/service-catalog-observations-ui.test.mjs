@@ -64,6 +64,7 @@ test("seleccionar servicio deja descripción, UM, ID y precio en la guía, sin o
     '@/features/vision-ocr/components/guide-ocr-details': {},
     '@/features/vision-ocr/components/guide-ocr-review': { GuideOcrReview: props=>jsx('GuideReview',{children:[props.number,props.date,props.arrival,props.departure,props.lines]}) },
     '@/features/vision-ocr/guide-draft': {},
+    '@/features/vision-ocr/guide-scan-storage': {},
     "../guide-details":guideDetailsModel,"../actions": {}, "../catalog-selection": { catalogSelectionDefaults },
     "../../platform/project-price-catalogs/service-units": { SERVICE_UNIT_CODES: ["M3", "UN"] },
     "./guide-resident-fields": {GuideResidentFields:"ResidentFields"}, "./guide-lines-list": {GuideLinesList:"LinesList"},

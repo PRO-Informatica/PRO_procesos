@@ -26,7 +26,7 @@ const STATUS_LABELS: Readonly<Record<string, string>> = {
   RECONCILED: "Conciliado",
   NOT_STARTED: "Sin iniciar",
   PENDING_RECONCILIATION: "Pendiente de conciliación",
-  PENDING_REINVOICING: "Pendiente de refacturación",
+  PENDING_REINVOICING: "Pendiente de liquidación",
   REQUIRES_CORRECTION: "Requiere corrección",
   COMPLETE: "Completo",
   DISPATCHED: "Despachado",

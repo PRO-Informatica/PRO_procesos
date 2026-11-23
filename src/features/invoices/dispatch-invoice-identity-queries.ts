@@ -46,7 +46,7 @@ export async function getDispatchInvoiceIdentities(
     for (const guideIds of chunks(guides.map((guide) => guide.id))) {
       guideLines.push(...await readInvoiceIdentityRows((from, to) => client.from("dispatch_guide_lines")
         .select("id, guide_id, catalog_type, product_code, catalog_reference").eq("project_id", projectId)
-        .in("guide_id", guideIds).order("id").range(from, to)));
+        .in("guide_id", guideIds).gt("quantity", 0).order("id").range(from, to)));
     }
     const invoiceIds = [...new Set(reconciliations.map((row) => row.current_product_invoice_id).filter((id): id is string => Boolean(id)))];
     const invoices = [];

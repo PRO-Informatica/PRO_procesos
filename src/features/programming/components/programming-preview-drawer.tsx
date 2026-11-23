@@ -44,6 +44,7 @@ export function ProgrammingPreviewDrawer({
   timezone,
   canConfirm,
   canModify,
+  canEditStarted,
   canCancel,
   suppliers,
   units,
@@ -55,6 +56,7 @@ export function ProgrammingPreviewDrawer({
   timezone: string;
   canConfirm: boolean;
   canModify: boolean;
+  canEditStarted: boolean;
   canCancel: boolean;
   suppliers: ProgrammingSupplier[];
   units: ProgrammingUnit[];
@@ -76,6 +78,7 @@ export function ProgrammingPreviewDrawer({
       operationStarted: item.dispatches.length > 0,
       timezone,
       hasPermission: canModify,
+      canEditStarted,
     }, availabilityNow),
   );
   const [state, confirmAction, pending] = useActionState(

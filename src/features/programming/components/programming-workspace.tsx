@@ -77,6 +77,7 @@ export function ProgrammingWorkspace({
   canCreate,
   canConfirm,
   canModify,
+  canEditStarted = false,
   canCancel,
   canStartDispatch = false,
   initialData,
@@ -87,6 +88,7 @@ export function ProgrammingWorkspace({
   canCreate: boolean;
   canConfirm: boolean;
   canModify: boolean;
+  canEditStarted?: boolean;
   canCancel: boolean;
   canStartDispatch?: boolean;
   initialData: ProgrammingPageData;
@@ -423,6 +425,7 @@ export function ProgrammingWorkspace({
         timezone={project.timezone}
         canConfirm={canConfirm}
         canModify={canModify}
+        canEditStarted={canEditStarted}
         canCancel={canCancel}
         suppliers={initialData.suppliers}
         units={initialData.units}

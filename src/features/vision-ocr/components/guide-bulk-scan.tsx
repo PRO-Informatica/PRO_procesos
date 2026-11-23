@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { bulkGuideDraft } from "../bulk-guide-draft";
 import { guideSourceLabel, renderGuidePdfPage, type GuideSource } from "../guide-sources";
 import { automaticGuideCrop, automaticGuideOrientation, prepareGuideImage, rotatedGuideImage, type PreparedGuideImage } from "../image-preparation";
+import { restoreGuideImage, storeGuideImage, type GuideScanStorage, type StoredGuideImage } from "../guide-scan-storage";
 import { isVisionTemplateType, VISION_TEMPLATE_LABELS, type VisionTemplateType } from "../template-classifier";
 import { GuideImagePreview } from "./guide-image-preview";
 import type { GuidePhotoCaptureHandle, GuidePhotoResult } from "./guide-photo-capture";
@@ -17,7 +18,19 @@ type Entry = {
   reading?: GuidePhotoResult; type: VisionTemplateType;
   confirmed: boolean; qualityAccepted: boolean; skipped: boolean; saved: boolean; error: string;
 };
-type Phase = "scanning" | "classification" | "ready" | "review" | "complete";
+type Phase = "paused" | "scanning" | "classification" | "ready" | "review" | "complete";
+type PageCheckpoint = Pick<Entry, "captureId" | "adjustments" | "reading"> & { prepared?: StoredGuideImage };
+type Decisions = Pick<Entry, "type" | "confirmed" | "qualityAccepted" | "skipped" | "saved" | "error"> & { read: boolean };
+type BulkCheckpoint = { phase: Phase; index: number; decisions: Record<string, Decisions> };
+const pagePart = (id: string) => `page/${id}`;
+
+function bulkCheckpoint(entries: Entry[], phase: Phase, index: number): BulkCheckpoint {
+  return {
+    phase, index,
+    decisions: Object.fromEntries(entries.map(({ source, type, confirmed, qualityAccepted, skipped, saved, error, reading }) =>
+      [source.id, { type, confirmed, qualityAccepted, skipped, saved, error, read: Boolean(reading) }])),
+  };
+}
 
 async function responseData(response: Response) {
   const payload = await response.json();
@@ -26,13 +39,22 @@ async function responseData(response: Response) {
 }
 
 export const GuideBulkScan = forwardRef<GuidePhotoCaptureHandle, {
-  sources: GuideSource[]; url: string; disabled: boolean;
+  sources: GuideSource[]; url: string; disabled: boolean; storage?: GuideScanStorage; resumed: boolean;
   onRead: (result: GuidePhotoResult) => void; onReset: (usingPhoto: boolean) => void;
   onBusy: (busy: boolean) => void; onDone: () => void;
-}>(function GuideBulkScan({ sources, url, disabled, onRead, onReset, onBusy, onDone }, ref) {
-  const [entries, setEntries] = useState<Entry[]>(() => sources.map((source) => ({ source, type: "DISPATCH_GUIDE", confirmed: false, qualityAccepted: false, skipped: false, saved: false, error: "" })));
+}>(function GuideBulkScan({ sources, url, disabled, storage, resumed, onRead, onReset, onBusy, onDone }, ref) {
+  const [restored] = useState(() => storage?.get<BulkCheckpoint>("bulk"));
+  const [entries, setEntries] = useState<Entry[]>(() => sources.map((source) => {
+    const { captureId, adjustments, reading } = storage?.get<PageCheckpoint>(pagePart(source.id)) ?? {};
+    const decisions = restored?.decisions[source.id];
+    const detected = reading?.draft.details.documentType;
+    const type = decisions?.read ? decisions.type : isVisionTemplateType(detected) ? detected : "DISPATCH_GUIDE";
+    return { source, captureId, adjustments, reading, confirmed: false, qualityAccepted: false,
+      skipped: false, saved: false, ...decisions, type, error: reading ? "" : decisions?.error ?? "" };
+  }));
   const entriesRef = useRef(entries);
-  const [phase, setPhase] = useState<Phase>("scanning"), [index, setIndex] = useState(0);
+  const [phase, setPhase] = useState<Phase>(() => resumed && (!restored || restored.phase === "scanning") ? "paused" : restored?.phase ?? "scanning");
+  const [index, setIndex] = useState(() => Math.min(restored?.index ?? 0, sources.length - 1));
   const [busy, setBusy] = useState(false), [stage, setStage] = useState("");
   const running = useRef(false), active = useRef(true);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -43,6 +65,11 @@ export const GuideBulkScan = forwardRef<GuidePhotoCaptureHandle, {
     entriesRef.current = entriesRef.current.map((entry, i) => i === position ? { ...entry, ...patch } : entry);
     if (active.current) setEntries(entriesRef.current);
   }
+  async function savePage(position: number) {
+    const { source, captureId, adjustments, reading, prepared } = entriesRef.current[position];
+    const checkpoint: PageCheckpoint = { captureId, adjustments, reading, prepared: prepared && storeGuideImage(prepared) };
+    await storage?.save({ [pagePart(source.id)]: checkpoint });
+  }
   async function discard(id: string) {
     await fetch(url, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ captureId: id }) }).catch(() => undefined);
     captures.current.delete(id);
@@ -52,7 +79,7 @@ export const GuideBulkScan = forwardRef<GuidePhotoCaptureHandle, {
     let entry = entriesRef.current[position];
     // Keep completed reads/capture IDs for retry. Each request is bounded to one
     // page, and the server also caches EXTRACTED captures after network failures.
-    if (entry.reading || entry.skipped) return;
+    if (entry.reading || entry.skipped || entry.saved) return;
     let original: File | undefined;
     if (!entry.prepared || !entry.captureId) {
       setStage(`Preparando página ${position + 1} de ${sources.length}…`);
@@ -78,14 +105,15 @@ export const GuideBulkScan = forwardRef<GuidePhotoCaptureHandle, {
       const target = await responseData(await fetch(`${url}&action=prepare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileName: original!.name, mimeType: original!.type, size: original!.size }) }));
       captures.current.add(target.captureId);
       if (!active.current) { await discard(target.captureId); checkActive(); }
-      update(position, { captureId: target.captureId });
       try {
         const upload = await createClient().storage.from(target.bucket).uploadToSignedUrl(target.path, target.token, original!, { contentType: original!.type, upsert: false });
         if (upload.error) throw upload.error;
       } catch {
-        await discard(target.captureId); update(position, { captureId: undefined });
+        await discard(target.captureId);
         throw Error("No se pudo cargar la página original. Reintenta esta página.");
       }
+      update(position, { captureId: target.captureId });
+      await savePage(position);
     }
     checkActive();
     entry = entriesRef.current[position];
@@ -93,24 +121,24 @@ export const GuideBulkScan = forwardRef<GuidePhotoCaptureHandle, {
     const data = new FormData();
     data.set("captureId", entry.captureId!); data.set("image", entry.prepared!.file); data.set("manual", "false");
     data.set("adjustments", JSON.stringify({ ...entry.adjustments, preparationVersion: "automatic-v2", parserVersion: "guides-controls-v3", bulk: true, pdf: { fileName: entry.source.file.name.slice(0, 200), pageNumber: entry.source.pageNumber, totalPages: entry.source.totalPages } }));
-    const reading = await responseData(await fetch(url, { method: "POST", body: data })) as GuidePhotoResult;
-    checkActive();
+    const { captureId, draft, variants, imageRotation } = await responseData(await fetch(url, { method: "POST", body: data })) as GuidePhotoResult;
+    const reading = { captureId, draft, variants, imageRotation };
     // As in the individual flow, rotate only the display after Vision has read
     // the text. Preserve the input file/hash and the complete original evidence.
-    if (reading.imageRotation && [1, 2, 3].includes(reading.imageRotation)) {
+    if (active.current && reading.imageRotation && [1, 2, 3].includes(reading.imageRotation)) {
       let canvas: HTMLCanvasElement | undefined;
       try {
         canvas = await rotatedGuideImage(entry.prepared!.file, reading.imageRotation);
         const blob = await new Promise<Blob | null>((resolve) => canvas!.toBlob(resolve, "image/jpeg", .9));
         if (blob && active.current) {
           const preview = URL.createObjectURL(blob); previews.current.add(preview);
-          update(position, { prepared: { ...entry.prepared!, preview } });
+          update(position, { prepared: { ...entry.prepared!, preview, previewBlob: blob } });
         }
       } catch { /* A preview failure must not repeat a successful OCR request. */ }
       finally { if (canvas) canvas.width = canvas.height = 0; }
     }
-    checkActive();
     update(position, { reading, type: isVisionTemplateType(reading.draft.details.documentType) ? reading.draft.details.documentType : "DISPATCH_GUIDE", error: "" });
+    await savePage(position);
   }
   async function scan() {
     if (running.current || disabled) return;
@@ -126,25 +154,40 @@ export const GuideBulkScan = forwardRef<GuidePhotoCaptureHandle, {
     } finally {
       running.current = false;
       if (active.current) { setBusy(false); setStage(""); callbacks.current.onBusy(false); }
-      else { for (const id of captures.current) void discard(id); for (const preview of previews.current) URL.revokeObjectURL(preview); }
+      else {
+        if (!storage) for (const id of captures.current) void discard(id);
+        for (const preview of previews.current) URL.revokeObjectURL(preview);
+      }
     }
   }
   useEffect(() => {
     active.current = true;
     // Deferring one tick avoids duplicate OCR requests under Strict Mode's
     // setup/cleanup replay. Never start a second runner while one is active.
-    const timer = setTimeout(() => { void scan(); }, 0);
+    const timer = setTimeout(() => {
+      for (const [position, entry] of entriesRef.current.entries()) {
+        if (entry.captureId && !entry.saved && !entry.skipped) captures.current.add(entry.captureId);
+        const saved = storage?.get<PageCheckpoint>(pagePart(entry.source.id));
+        if (saved?.prepared && !entry.prepared && !entry.saved && !entry.skipped) {
+          const preview = restoreGuideImage(saved.prepared);
+          previews.current.add(preview.preview);
+          update(position, { prepared: preview });
+        }
+      }
+      if (phase === "scanning") void scan();
+    }, 0);
     const owned = captures.current, urls = previews.current;
     return () => {
       clearTimeout(timer); active.current = false;
-      // An in-flight extraction must settle before discarding its capture.
-      // The server deliberately protects captures while they are PROCESSING.
-      if (!running.current) for (const id of owned) void discard(id);
+      if (!storage && !running.current) for (const id of owned) void discard(id);
       for (const preview of urls) URL.revokeObjectURL(preview);
     };
     // A batch has a fixed source list and endpoint for its mounted lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sources, url]);
+  }, [sources, url, storage]);
+  useEffect(() => {
+    if (phase !== "complete") void storage?.save({ bulk: bulkCheckpoint(entries, phase, index) });
+  }, [entries, index, phase, storage]);
   useEffect(() => {
     if (phase === "scanning") return;
     heading.current?.focus({ preventScroll: true });
@@ -156,14 +199,20 @@ export const GuideBulkScan = forwardRef<GuidePhotoCaptureHandle, {
     const draft = entry.reading && bulkGuideDraft(entry.reading, entry.type);
     if (draft) callbacks.current.onRead({ ...entry.reading!, draft });
   }, [phase, index]);
-  useImperativeHandle(ref, () => ({ saved() {
+  useImperativeHandle(ref, () => ({ async saved() {
     const entry = entriesRef.current[index];
     if (phase !== "review" || !entry || entry.saved) return;
     if (entry.captureId) captures.current.delete(entry.captureId);
     update(index, { saved: true });
     const next = entriesRef.current.findIndex((item) => item.confirmed && !item.skipped && !item.saved);
-    callbacks.current.onReset(true);
-    if (next < 0) setPhase("complete"); else setIndex(next);
+    callbacks.current.onReset(next >= 0);
+    if (next < 0) {
+      setPhase("complete");
+      await storage?.clear();
+    } else {
+      setIndex(next);
+      await storage?.save({ bulk: bulkCheckpoint(entriesRef.current, "review", next), [pagePart(entry.source.id)]: null, review: null });
+    }
   }, focusPending() {
     heading.current?.focus({ preventScroll: true }); heading.current?.scrollIntoView({ block: "start" }); return true;
   } }));
@@ -180,16 +229,34 @@ export const GuideBulkScan = forwardRef<GuidePhotoCaptureHandle, {
   async function skip() {
     if (working) return;
     update(index, { skipped: true, error: "" });
-    continueClassification();
+    if (entriesRef.current.every((entry) => entry.saved || entry.skipped)) {
+      setPhase("complete");
+      callbacks.current.onReset(false);
+      await storage?.clear();
+    } else {
+      continueClassification();
+      await storage?.save({ [pagePart(current.source.id)]: null });
+    }
     if (current.captureId) await discard(current.captureId);
   }
-  const canAccept = current?.reading && bulkGuideDraft(current.reading, current.type) && (!current.prepared?.quality.warnings.length || current.qualityAccepted);
+  async function done() {
+    if (working) return;
+    setBusy(true);
+    callbacks.current.onBusy(true);
+    try { await Promise.all([...captures.current].map(discard)); }
+    finally { callbacks.current.onBusy(false); callbacks.current.onDone(); }
+  }
+  const canAccept = current?.prepared && current.reading && bulkGuideDraft(current.reading, current.type) && (!current.prepared.quality.warnings.length || current.qualityAccepted);
   return <section className="min-w-0 space-y-4 rounded-xl border border-border bg-surface p-3 sm:p-4" aria-labelledby="bulk-scan-heading">
     <div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><h4 ref={heading} id="bulk-scan-heading" tabIndex={-1} className="font-semibold">Escaneo masivo</h4><p className="mt-1 break-words text-xs text-foreground-muted">{sources[0].file.name} · {entries.length} página(s)</p></div><span className="text-xs text-foreground-muted" aria-live="polite">{confirmed} clasificada(s) · {saved} guardada(s) · {skipped} omitida(s)</span></div>
     <ol className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3" aria-label="Pasos del escaneo masivo">{["Leer PDF", "Confirmar tipos", "Revisar y guardar"].map((label, i) => {
-      const step = phase === "scanning" ? 0 : phase === "classification" || phase === "ready" ? 1 : 2;
+      const step = phase === "scanning" || phase === "paused" ? 0 : phase === "classification" || phase === "ready" ? 1 : 2;
       return <li key={label} aria-current={step === i ? "step" : undefined} className={`rounded-lg border px-3 py-2 ${step === i ? "border-brand bg-brand-soft font-semibold text-brand-strong" : "border-border text-foreground-muted"}`}>{i + 1}. {label}</li>;
     })}</ol>
+    {phase === "paused" && <div className="space-y-3">
+      <p className="text-sm text-foreground-muted" role="status">{entries.filter((entry) => entry.reading).length} de {entries.length} páginas leídas.</p>
+      <Button disabled={working} onClick={() => void scan()}>Continuar escaneo</Button>
+    </div>}
     {phase === "scanning" && <div className="space-y-2" role="status"><p className="flex items-center gap-2 text-sm"><LoaderCircle className="size-4 shrink-0 animate-spin" />{stage || "Iniciando lectura del PDF…"}</p><progress aria-label="Páginas leídas" className="w-full" max={entries.length} value={entries.filter((entry) => entry.reading || entry.error || entry.skipped).length} /><p className="text-xs text-foreground-muted">Se lee cada página una vez. No se guarda ninguna guía durante este paso.</p></div>}
     {phase === "classification" && current && <>
       <p className="text-sm font-semibold" role="status">Confirmar tipo · Página {current.source.pageNumber} de {entries.length}</p>
@@ -205,6 +272,6 @@ export const GuideBulkScan = forwardRef<GuidePhotoCaptureHandle, {
     {phase === "ready" && <div className="space-y-3"><p className="text-sm text-success" role="status">Clasificación terminada: {confirmed} guía(s) lista(s) para revisar.</p><p className="text-xs text-foreground-muted">Los datos ya se leyeron. Ahora se preparan los formularios con el tipo que confirmaste, sin repetir OCR. Revisa, corrige y guarda cada guía para avanzar.</p><ul className="max-h-48 space-y-2 overflow-y-auto text-xs" aria-label="Clasificación confirmada">{entries.filter((entry) => !entry.skipped).map((entry) => <li key={entry.source.id} className="break-words">Página {entry.source.pageNumber} · {VISION_TEMPLATE_LABELS[entry.type]}</li>)}</ul><div className="flex flex-wrap gap-2"><Button disabled={working || confirmed === 0} onClick={() => { setIndex(entries.findIndex((entry) => entry.confirmed && !entry.skipped)); setPhase("review"); }}>Revisar {confirmed} guía(s)</Button><Button variant="secondary" disabled={working || confirmed === 0} onClick={() => { setIndex(entries.findIndex((entry) => !entry.skipped)); setPhase("classification"); }}>Revisar clasificación</Button></div></div>}
     {phase === "review" && current && <div className="space-y-3"><p className="break-words text-sm font-semibold" role="status">Revisando guía {saved + 1} de {confirmed} · {guideSourceLabel(current.source)}</p><p className="text-sm">{VISION_TEMPLATE_LABELS[current.type]}</p><p className="text-xs text-foreground-muted">Revisa el formulario de abajo. Completa los datos del residente y guarda para pasar a la siguiente guía.</p>{current.prepared && <details className="min-w-0 rounded-lg border border-border p-3"><summary className="cursor-pointer text-sm font-semibold">Ver foto de esta guía</summary><GuideImagePreview key={current.prepared.preview} src={current.prepared.preview} alt={`Foto de página ${current.source.pageNumber} en revisión`} /></details>}</div>}
     {phase === "complete" && <p role="status" className="text-sm text-success">Escaneo terminado. {saved} guía(s) y sus evidencias guardadas.</p>}
-    {phase !== "scanning" && <Button variant="ghost" disabled={working} onClick={() => callbacks.current.onDone()}>{phase === "complete" ? "Terminar escaneo masivo" : "Descartar pendientes y salir del escaneo masivo"}</Button>}
+    {phase !== "scanning" && <Button variant="ghost" disabled={working} onClick={() => void done()}>{phase === "complete" ? "Terminar escaneo masivo" : "Descartar pendientes y salir del escaneo masivo"}</Button>}
   </section>;
 });

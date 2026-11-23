@@ -16,7 +16,7 @@ export async function previewServiceInvoiceComparison(client: SupabaseClient, pr
     lines.push(...await readInvoiceIdentityRows((from, to) => client.from("dispatch_guide_lines")
       .select("id, unit_price, estimated_subtotal::text, currency").eq("project_id", projectId)
       .in("guide_id", guides.slice(index, index + 100).map((guide) => guide.id))
-      .eq("catalog_type", "SERVICE").order("id").range(from, to)));
+      .eq("catalog_type", "SERVICE").gt("quantity", 0).order("id").range(from, to)));
   }
   return compareServiceInvoice(lines, total, currency);
 }

@@ -187,9 +187,7 @@ function estimateFor(
   type: "PRODUCT" | "SERVICE",
 ): DispatchEstimate {
   const lines = guides.flatMap((guide) => guide.lines).filter((line) =>
-    type === "PRODUCT"
-      ? line.catalogType === "PRODUCT" || line.catalogType === null
-      : line.catalogType === "SERVICE",
+    line.quantity > 0 && (line.catalogType === type || (type === "PRODUCT" && line.catalogType === null)),
   );
   return {
     amount: lines.reduce(

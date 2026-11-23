@@ -2,7 +2,7 @@ import { validGuideCrop, type GuideCrop, type Point } from "./image-geometry.ts"
 import { chooseGuideContrast, detectGuideBoundary, detectGuideOrientation } from "./automatic-image.ts";
 export { FULL_GUIDE_CROP, validGuideCrop, type GuideCrop, type Point } from "./image-geometry.ts";
 export type ImageQuality = { width: number; height: number; contrast: number; sharpness: number; warnings: string[] };
-export type PreparedGuideImage = { file: File; quality: ImageQuality; preview: string; enhanced: boolean };
+export type PreparedGuideImage = { file: File; quality: ImageQuality; preview: string; enhanced: boolean; previewBlob?: Blob };
 
 export function imageQuality(data: Uint8ClampedArray, width: number, height: number, sourceWidth = width, sourceHeight = height): ImageQuality {
   const gray = new Float32Array(width * height);

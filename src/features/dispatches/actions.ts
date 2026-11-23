@@ -17,7 +17,7 @@ import type {
 } from "./types";
 import { validateDispatchGuideLines, validateGuideTruckTimes } from "./validation";
 import { getDispatchStartLocalDateTime } from "./registration";
-import { emptyGuideDetails, validateGuideDetails } from "./guide-details";
+import { emptyGuideDetails, validateGuideDetails, type GuideDetails } from "./guide-details";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -88,6 +88,8 @@ function dispatchError(message: string) {
     return "Selecciona el elemento a fundir y revisa si se aplicó laboratorio.";
   if (value.includes("GUIDE_DETAILS_INVALID"))
     return "Revisa los datos de la guía, su longitud y la hora de carga.";
+  if (value.includes("DISPATCH_GUIDE_ZERO_QUANTITY_NOT_ALLOWED"))
+    return "Los controles de operación requieren una cantidad mayor que cero.";
   if (value.includes("GUIDE_DATE_REQUIRED"))
     return "Registra una fecha válida para la guía.";
   if (value.includes("GUIDE_TRUCK_TIMES_REQUIRED"))
@@ -137,7 +139,7 @@ function dispatchError(message: string) {
   if (value.includes("DISPATCH_DEPARTURE_REQUIRED"))
     return "Registra la hora de salida.";
   if (value.includes("DISPATCH_ARRIVAL_DATE_MISMATCH"))
-    return "La hora de llegada debe corresponder al día de la programación.";
+    return "La hora de llegada debe corresponder al día de la operación.";
   if (value.includes("DISPATCH_DEPARTURE_DATE_MISMATCH"))
     return "La hora de salida debe corresponder al día de la programación.";
   if (value.includes("DISPATCH_INVALID_TIME_SEQUENCE"))
@@ -280,7 +282,9 @@ export async function saveDispatchAction(
 
 function guideLines(formData: FormData) {
   const lineIds = formData.getAll("lineId").map((value) => String(value).trim());
-  const quantities = formData.getAll("lineQuantity").map(Number);
+  const quantities = formData.getAll("lineQuantity").map((value) =>
+    typeof value === "string" && value.trim() ? Number(value) : Number.NaN,
+  );
   const units = formData.getAll("lineUnitCode").map(String);
   const catalogTypes = formData
     .getAll("lineCatalogType")
@@ -381,7 +385,7 @@ export async function saveDispatchGuideAction(
   const truckDepartureTime = text(formData, "truckDepartureTime");
   const timesError = validateGuideTruckTimes(truckArrivalTime, truckDepartureTime);
   if (timesError) return { status: "error", message: timesError };
-  const linesError = validateDispatchGuideLines(lines);
+  const linesError = validateDispatchGuideLines(lines, (details as GuideDetails).documentType);
   if (linesError) return { status: "error", message: linesError };
   if (!(await authorize(projectId, "dispatch.manage_guides")))
     return { status: "error", message: "No tienes permiso para guardar guías." };

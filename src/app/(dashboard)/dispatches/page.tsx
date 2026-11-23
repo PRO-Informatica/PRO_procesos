@@ -31,7 +31,8 @@ export default async function DispatchesPage({ searchParams }: { searchParams?: 
   if (filter.status === "error") return <EmptyState title="Indicador no disponible" description={filter.message} />;
   const data = await getDispatchPageData(context.activeProject.id);
   return <DispatchesWorkspace
-    key={JSON.stringify([context.activeProject.id, params])}
+    key={JSON.stringify([profile.id, context.activeProject.id, params])}
+    actorId={profile.id}
     dashboardScope={filter.status === "ready" ? filter.scope : undefined}
     project={context.activeProject}
     residentView={usesResidentProgrammingView(context.roleCodes)}
