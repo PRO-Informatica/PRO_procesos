@@ -151,7 +151,7 @@ test("acepta una fórmula de precio solo con resultado numérico calculado", asy
 
 test("rechaza macros y estructuras distintas a la esperada", async () => {
   const regular = await workbookFile("servicios.xlsx", [["otro", "precio"], ["SERV1", 1]]);
-  await assert.rejects(() => parseProjectPriceCatalog(regular, "SERVICE"), /columnas codigo, descripcion y precio/u);
+  await assert.rejects(() => parseProjectPriceCatalog(regular, "SERVICE"), /debe incluir descripción y precio/u);
 
   const archive = await JSZip.loadAsync(Buffer.from(await regular.arrayBuffer()));
   archive.file("xl/vbaProject.bin", Uint8Array.from([1, 2, 3]));
@@ -300,7 +300,7 @@ test("acepta dosis/m3, dosis/m³ y Unidad del tarifario sin convertir dosis a M3
 
 test("el formato exige descripción de servicio y no afecta productos", async () => {
   const file = await workbookFile("servicios.xlsx", [["codigo", "precio"], ["S1", 1]]);
-  await assert.rejects(() => parseProjectPriceCatalog(file, "SERVICE"), /descripcion y precio/u);
+  await assert.rejects(() => parseProjectPriceCatalog(file, "SERVICE"), /debe incluir descripción y precio/u);
   const product = await workbookFile("productos.xlsx", [["codigo", "referencia", "precio"], ["1", { formula: '"CON.1"', result: "CON.1" }, 1]]);
   const result = await parseProjectPriceCatalog(product, "PRODUCT");
   assert.match(result.rows[0].errors.join(" "), /referencia no puede ser una fórmula/u);
