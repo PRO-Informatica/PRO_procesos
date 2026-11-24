@@ -16,6 +16,7 @@ const actionLabels: Record<string, string> = {
   PROJECT_MEMBERSHIP_DISABLED: "Membresía de proyecto desactivada",
   PROJECT_MEMBERSHIP_REACTIVATED: "Membresía de proyecto reactivada",
   PROJECT_ROLE_ASSIGNED: "Rol de proyecto asignado",
+  PROJECT_ROLE_RETIRED: "Rol de proyecto retirado del catálogo",
   PROJECT_ROLE_REVOKED: "Rol de proyecto revocado",
   USER_DISABLED: "Usuario desactivado",
   USER_ENABLED: "Usuario activado",

@@ -12,7 +12,7 @@ import Link from "next/link";
 
 import { EmptyState } from "@/components/feedback/empty-state";
 import { MotionSection } from "@/components/motion/motion-section";
-import { humanizeInternalCode } from "@/lib/status-labels";
+import { formatAuditAction } from "@/features/platform/audit/formatters";
 
 import { authStatusLabel, formatUserDate } from "../formatters";
 import type {
@@ -51,7 +51,7 @@ function RoleTags({ roles }: { roles: UserRoleAssignment[] }) {
           title={
             role.active
               ? `Asignado ${formatUserDate(role.assignedAt)}`
-              : `Revocado ${formatUserDate(role.revokedAt)}`
+              : role.revokedAt ? `Revocado ${formatUserDate(role.revokedAt)}` : "Rol retirado del catálogo"
           }
         >
           {role.roleName}
@@ -197,7 +197,7 @@ export function UserDetailView({ user }: { user: PlatformUserDetail }) {
         </dl>
         <p className="mt-6 rounded-xl border border-border bg-muted/45 px-4 py-3 text-xs leading-5 text-foreground-muted">
           PLATFORM_ADMIN permite consultar todos los proyectos y las vistas operativas de
-          Compras, Supervisores y Residentes. Las acciones de escritura continúan requiriendo un
+          Compras y Residentes. Las acciones de escritura continúan requiriendo un
           rol operativo explícito.
         </p>
       </MotionSection>
@@ -390,7 +390,7 @@ export function UserDetailView({ user }: { user: PlatformUserDetail }) {
               <li key={event.id} className="flex flex-col gap-1 py-4 first:pt-0 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-foreground">
-                    {humanizeInternalCode(event.action)}
+                    {formatAuditAction(event.action)}
                   </p>
                   <p className="mt-1 text-xs text-foreground-muted">{event.entityType}</p>
                 </div>

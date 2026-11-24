@@ -10,7 +10,7 @@ import { formatStatusLabel } from "@/lib/status-labels";
 import { formatDateRange, formatQuantity } from "../formatters";
 import { dashboardDetailHref, type DashboardDetailView } from "../details";
 import type { ProjectDashboardData } from "../types";
-import { BatchReconciliationChart, WeeklyVolumeChart } from "./dashboard-charts";
+import { ProjectReconciliationChart, WeeklyVolumeChart } from "./dashboard-charts";
 import { RecentActivity } from "./recent-activity";
 
 type Focus = "GENERAL" | "PLANNING" | "SUPERVISOR" | "PURCHASING";
@@ -27,13 +27,33 @@ function Metric({ title, value, detail, icon, href }: { title: string; value: st
 }
 function Attention({ href, label, value, icon }: { href: string; label: string; value: number; icon: React.ReactNode }) { return <Link href={href} className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3 transition hover:border-brand/30 hover:bg-brand-soft/20"><span className="grid size-9 place-items-center rounded-lg bg-destructive-soft text-destructive">{icon}</span><span className="min-w-0 flex-1 text-sm font-medium text-foreground">{label}</span><strong className="text-lg text-destructive">{value}</strong><ArrowRight className="size-4 text-foreground-muted" /></Link>; }
 
-export function ProjectDashboard({ project, roleCodes, data, reinvoicing }: { project: ProjectSummary; roleCodes: string[]; data: ProjectDashboardData; reinvoicing?: React.ReactNode }) {
+export function ProjectDashboard({ project, roleCodes, data, reinvoicing }: {
+  project: ProjectSummary;
+  roleCodes: string[];
+  data: ProjectDashboardData;
+  reinvoicing?: React.ReactNode;
+}) {
   const mode = focus(roleCodes);
   const supervisor = isSupervisorOnly(roleCodes);
   const href = (view: DashboardDetailView) => dashboardDetailHref(project.id, view);
+  const week = data.metrics.week;
   const attention = supervisor ? data.metrics.attention.overdueProgramming > 0 : Object.values(data.metrics.attention).some((value) => value > 0);
   return <MotionPage className="mx-auto max-w-[1500px]">
-    <MotionSection className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="text-xs font-semibold uppercase tracking-[.16em] text-brand-strong">Dashboard operacional</p><span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-semibold text-foreground-muted">{focusLabel[mode]}</span></div><h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{project.name}</h1><p className="mt-2 text-sm text-foreground-muted">{project.companyName} · Semana {formatDateRange(data.weekStart, data.weekEnd, data.timezone)}</p></div><span className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground-muted"><Clock3 className="mr-2 inline size-4 text-brand-strong" />{data.timezone}</span></MotionSection>
+    <MotionSection className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-xs font-semibold uppercase tracking-[.16em] text-brand-strong">Dashboard operacional</p>
+          <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-semibold text-foreground-muted">{focusLabel[mode]}</span>
+        </div>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{project.name}</h1>
+        <p className="mt-2 text-sm text-foreground-muted">{project.companyName} · Semana {formatDateRange(data.weekStart, data.weekEnd, data.timezone)}</p>
+      </div>
+      <div>
+        <span className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground-muted">
+          <Clock3 aria-hidden="true" className="size-4 text-brand-strong" />{data.timezone}
+        </span>
+      </div>
+    </MotionSection>
 
     <MotionList className={`mt-5 grid gap-3 sm:grid-cols-2 ${supervisor ? "xl:grid-cols-3" : "xl:grid-cols-4"}`}>
       <MotionItem><Metric href={href("today")} title="Programaciones de hoy" value={String(data.metrics.today.total)} detail={<Link href={href("today")} className="hover:underline">{`${formatQuantity(data.metrics.today.programmedM3)} M3 · ${data.metrics.today.completed} completadas · ${data.metrics.today.pending} pendientes`}</Link>} icon={<CalendarDays className="size-4" />} /></MotionItem>
@@ -43,10 +63,36 @@ export function ProjectDashboard({ project, roleCodes, data, reinvoicing }: { pr
     </MotionList>
 
     <div className="mt-4 grid gap-4 xl:grid-cols-12">
-      <MotionSection className={`rounded-xl border border-border bg-surface p-4 sm:p-5 ${supervisor ? "xl:col-span-12" : "xl:col-span-7"}`}><Link href={href("weekCompleted")} className="block rounded-lg hover:text-brand-strong focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand"><div className="flex items-center justify-between"><div><h2 className="font-semibold">Cumplimiento semanal</h2><p className="mt-1 text-xs text-foreground-muted">Programaciones completadas</p></div><strong className="text-2xl">{data.metrics.week.compliance}%</strong></div><AnimatedProgress className="mt-4" value={data.metrics.week.compliance} label="Cumplimiento semanal" continuous /></Link><p className="mt-2 text-xs leading-6 text-foreground-muted"><Link href={href("weekCompleted")} className="hover:underline">{data.metrics.week.completed} completadas</Link>{" de "}<Link href={href("week")} className="hover:underline">{data.metrics.week.total}</Link>{" · "}<Link href={href("weekPending")} className="hover:underline">{data.metrics.week.pending} pendientes</Link></p>
-        <div className="mt-6 border-t border-border pt-5"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-display text-sm text-foreground">Programado vs recibido por día</h3><div className="flex gap-3 text-[10px] text-foreground-muted"><span><i className="mr-1 inline-block size-2 rounded-full bg-brand" />Programado</span><span><i className="mr-1 inline-block size-2 rounded-full bg-foreground-muted" />Recibido</span></div></div><WeeklyVolumeChart days={data.weekDays} projectId={project.id} /></div>
+      <MotionSection className={`min-w-0 rounded-xl border border-border bg-surface p-4 sm:p-5 ${supervisor ? "xl:col-span-12" : "xl:col-span-7"}`}>
+        <Link href={href("weekCompleted")} className="block rounded-lg hover:text-brand-strong focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="font-semibold">Cumplimiento semanal</h2>
+              <p className="mt-1 text-xs text-foreground-muted">Programaciones completadas</p>
+            </div>
+            <strong className="text-2xl">{week.compliance}%</strong>
+          </div>
+          <AnimatedProgress className="mt-4" value={week.compliance} label="Cumplimiento semanal" continuous />
+        </Link>
+        <p className="mt-2 text-xs leading-6 text-foreground-muted">
+          <Link href={href("weekCompleted")} className="hover:underline">{week.completed} completadas</Link>{" de "}
+          <Link href={href("week")} className="hover:underline">{week.total}</Link>{" · "}
+          <Link href={href("weekPending")} className="hover:underline">{week.pending} pendientes</Link>
+        </p>
+        <div className="mt-6 border-t border-border pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-display text-sm text-foreground">Programado vs recibido por día</h3>
+            <div className="flex gap-3 text-[10px] text-foreground-muted">
+              <span><i className="mr-1 inline-block size-2 rounded-full bg-brand" />Programado</span>
+              <span><i className="mr-1 inline-block size-2 rounded-full bg-foreground-muted" />Recibido</span>
+            </div>
+          </div>
+          <WeeklyVolumeChart days={data.weekDays} projectId={project.id} />
+        </div>
       </MotionSection>
-      {!supervisor && <MotionSection className="rounded-xl border border-border bg-surface p-4 sm:p-5 xl:col-span-5"><BatchReconciliationChart batches={data.batchReconciliation} projectId={project.id} /></MotionSection>}
+      {!supervisor && <MotionSection className="min-w-0 rounded-xl border border-border bg-surface p-4 sm:p-5 xl:col-span-5">
+        <ProjectReconciliationChart totals={data.projectReconciliation} projectId={project.id} projectName={project.name} />
+      </MotionSection>}
     </div>
 
     {reinvoicing && <MotionSection className="mt-4 min-w-0">{reinvoicing}</MotionSection>}

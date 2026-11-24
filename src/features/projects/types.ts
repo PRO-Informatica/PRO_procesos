@@ -21,6 +21,7 @@ export type ProjectContextData = {
   roleCodes: string[];
   permissions: string[];
   isCompanyAdmin: boolean;
+  dashboardProjectIds: string[];
   hasUniversalInvoiceAccess: boolean;
   hasUniversalBatchAccess: boolean;
   hasUniversalReportAccess: boolean;
@@ -48,6 +49,7 @@ export const emptyProjectContext: ProjectContextData = {
   roleCodes: [],
   permissions: [],
   isCompanyAdmin: false,
+  dashboardProjectIds: [],
   hasUniversalInvoiceAccess: false,
   hasUniversalBatchAccess: false,
   hasUniversalReportAccess: false,

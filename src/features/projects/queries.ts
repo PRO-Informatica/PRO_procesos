@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   hasUniversalOperationalViewRole,
   mergePlatformAdminProjectAccess,
-  PLATFORM_ADMIN_VIEW_ROLE_CODES,
+  PLATFORM_ADMIN_VIEW_SOURCE_ROLES,
   selectPlatformAdminViewRoles,
   selectOperationalViewPermissions,
   restrictSupervisorAccess,
@@ -74,7 +74,7 @@ async function getPlatformAdminOperationalViewAccess(
   const { data: roles, error: rolesError } = await supabase
     .from("roles")
     .select("id, code")
-    .in("code", [...PLATFORM_ADMIN_VIEW_ROLE_CODES])
+    .in("code", [...PLATFORM_ADMIN_VIEW_SOURCE_ROLES])
     .eq("active", true);
   const viewRoles = selectPlatformAdminViewRoles(roles ?? []);
   if (rolesError || !viewRoles) {
@@ -320,18 +320,19 @@ async function resolveRolesAndPermissionsForAccess(
 
   const [rolesResult, rolePermissionsResult] = await Promise.all([
     supabase.from("roles").select("id, code").in("id", roleIds).eq("active", true),
-    supabase.from("role_permissions").select("permission_id").in("role_id", roleIds),
+    supabase.from("role_permissions").select("role_id, permission_id").in("role_id", roleIds),
   ]);
 
   if (rolesResult.error || rolePermissionsResult.error) {
     throw new Error("No fue posible cargar la configuración de acceso.");
   }
 
+  const activeRoleIds = new Set(rolesResult.data.map((role) => role.id as string));
   const permissionIds = [
     ...new Set(
-      rolePermissionsResult.data.map(
-        (assignment) => assignment.permission_id as string,
-      ),
+      rolePermissionsResult.data
+        .filter((assignment) => activeRoleIds.has(assignment.role_id))
+        .map((assignment) => assignment.permission_id as string),
     ),
   ];
 
@@ -520,6 +521,9 @@ export async function getProjectContext(userId: string): Promise<ProjectContextS
       projects,
       activeProject,
       ...access,
+      dashboardProjectIds: accessByProject
+        .filter(({ access: item }) => item.isCompanyAdmin)
+        .map(({ project }) => project.id),
       hasUniversalInvoiceAccess: accessByProject.some(({ access: item }) =>
         item.permissions.includes("invoice.universal"),
       ),

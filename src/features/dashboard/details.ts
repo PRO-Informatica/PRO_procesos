@@ -30,6 +30,7 @@ export function isFinancialDashboardDetail(view: DashboardDetailView) {
 }
 
 export function canViewDashboardDetail(view: DashboardDetailView, roleCodes: string[], permissions: string[]) {
+  if (!canAccessOperationalSection(roleCodes, "/dashboard/details")) return false;
   if (isFinancialDashboardDetail(view)) return canAccessOperationalSection(roleCodes, "/reconciliation") &&
     ["dispatch.view", "invoice.view", "batch.view"].every((permission) => permissions.includes(permission));
   return permissions.includes(view === "receivedMonth" || view === "receivedDay" ? "dispatch.view" : "programming.view");
@@ -45,6 +46,22 @@ export function dashboardDetailHref(project: string, view: DashboardDetailView, 
 export function dashboardDestination(view: DashboardDetailView) {
   if (isFinancialDashboardDetail(view)) return "/reconciliation";
   return view === "receivedMonth" || view === "receivedDay" ? "/dispatches" : "/programming";
+}
+
+// Normalize the destinations dashboard links can open after switching projects.
+export function dashboardNavigationTarget(projectId: string, target: string) {
+  if (["/invoices", "/reconciliation", "/reports"].includes(target) ||
+      /^\/(programming|dispatches|batches)\/[0-9a-f-]{36}$/i.test(target)) return target;
+  if (!/^\/(programming|dispatches|reconciliation)\?/.test(target)) return null;
+
+  const url = new URL(target, "http://localhost");
+  const view = url.searchParams.get("dashboard") ?? "";
+  if (!isDashboardDetailView(view) || dashboardDestination(view) !== url.pathname ||
+      url.searchParams.get("project") !== projectId) return null;
+  return dashboardDetailHref(projectId, view, {
+    batch: url.searchParams.get("batch") ?? undefined,
+    date: url.searchParams.get("date") ?? undefined,
+  });
 }
 
 export type DashboardListScope = {

@@ -3,6 +3,7 @@ export type BatchPeriod = {
   end: string;
   accountingPeriod: string;
 };
+export type BatchPeriodKind = "LEGACY" | "WEEKLY" | "HISTORICAL";
 
 function date(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("INVALID_CALENDAR_DATE");
@@ -22,22 +23,36 @@ function shift(value: string, days: number) {
   return iso(parsed);
 }
 
-/** A calendar week is partitioned at month end, never assigned to two months. */
-export function weeklyBatchPeriods(reference: string): BatchPeriod[] {
+export function weeklyBatchPeriod(reference: string): BatchPeriod {
   const parsed = date(reference);
   const monday = shift(reference, 1 - (parsed.getUTCDay() || 7));
-  const sunday = shift(monday, 6);
-  if (monday.slice(0, 7) === sunday.slice(0, 7))
-    return [{ start: monday, end: sunday, accountingPeriod: `${monday.slice(0, 7)}-01` }];
-  const monthStart = `${sunday.slice(0, 7)}-01`;
-  return [
-    { start: monday, end: shift(monthStart, -1), accountingPeriod: `${monday.slice(0, 7)}-01` },
-    { start: monthStart, end: sunday, accountingPeriod: monthStart },
-  ];
+  return { start: monday, end: shift(monday, 6), accountingPeriod: `${monday.slice(0, 7)}-01` };
+}
+
+export function historicalBatchPeriod(start: string, end: string, today: string): BatchPeriod {
+  date(start);
+  date(end);
+  date(today);
+  if (start > end || end >= today) throw new Error("BATCH_HISTORICAL_RANGE_INVALID");
+  return { start, end, accountingPeriod: `${start.slice(0, 7)}-01` };
+}
+
+export function latestHistoricalBatchDate(today: string) {
+  return shift(today, -1);
+}
+
+export function batchPeriodLabel(kind: BatchPeriodKind, start: string, end: string) {
+  if (kind === "HISTORICAL") return "Lote histórico";
+  if (kind === "WEEKLY" && start.slice(0, 7) !== end.slice(0, 7)) return "Lote compartido";
+  return "Lote semanal";
+}
+
+export function batchAccountingEnd(kind: BatchPeriodKind, periodEnd: string) {
+  return kind === "LEGACY" ? undefined : periodEnd;
 }
 
 export function batchWeekEnd(periodStart: string) {
-  return weeklyBatchPeriods(periodStart).at(-1)!.end;
+  return weeklyBatchPeriod(periodStart).end;
 }
 
 /** Matches the DB guard: the Sunday of the whole week must have passed. */
@@ -93,17 +108,20 @@ export function fifthBusinessDay(month: string) {
 export function evaluateInvoicePeriod(input: {
   invoiceDate: string;
   accountingPeriod: string;
+  accountingEnd?: string;
   receivedDate: string;
 }) {
   try {
     date(input.invoiceDate); date(input.accountingPeriod); date(input.receivedDate);
     const monthStart = `${input.accountingPeriod.slice(0, 7)}-01`;
+    if (input.accountingEnd) date(input.accountingEnd);
+    const lastMonth = (input.accountingEnd ?? monthStart).slice(0, 7);
     const graceDeadline = fifthBusinessDay(monthStart);
-    const sameMonth = input.invoiceDate.slice(0, 7) === monthStart.slice(0, 7);
-    const graceUsed = !sameMonth &&
-      input.invoiceDate.slice(0, 7) === shift(monthStart, -1).slice(0, 7) &&
+    const invoiceMonth = input.invoiceDate.slice(0, 7);
+    const coveredMonth = invoiceMonth >= monthStart.slice(0, 7) && invoiceMonth <= lastMonth;
+    const graceUsed = invoiceMonth === shift(monthStart, -1).slice(0, 7) &&
       input.receivedDate >= monthStart && input.receivedDate <= graceDeadline;
-    return { valid: sameMonth || graceUsed, graceUsed, graceDeadline };
+    return { valid: coveredMonth || graceUsed, graceUsed, graceDeadline };
   } catch {
     return { valid: false, graceUsed: false, graceDeadline: null };
   }

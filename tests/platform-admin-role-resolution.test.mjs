@@ -10,12 +10,11 @@ const compiled = ts.transpileModule(await readFile(new URL("../src/features/proj
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 
-function fixture({ supervisor = "SUPERVISOR", both = false, missing = false, admin = true, roleError = null, memberRoles = [], inherited = [] } = {}) {
+function fixture({ supervisor = "SUPERVISOR", supervisorActive = true, missing = false, admin = true, roleError = null, memberRoles = [], inherited = [] } = {}) {
   const calls = [], diagnostics = [], exports = {};
   const roles = [{ id: "purchasing", code: "PURCHASING", active: true },
     ...(!missing ? [{ id: "resident", code: "RESIDENT", active: true }] : []),
-    { id: "supervisor", code: supervisor, active: true },
-    ...(both ? [{ id: "legacy", code: "RECEPTION", active: true }] : [])];
+    ...(supervisor ? [{ id: "supervisor", code: supervisor, active: supervisorActive }] : [])];
   const data = {
     roles,
     role_permissions: roles.flatMap(role => [{ role_id: role.id, permission_id: "read" }, { role_id: role.id, permission_id: "write" }]),
@@ -52,9 +51,9 @@ function fixture({ supervisor = "SUPERVISOR", both = false, missing = false, adm
   return { queries: exports, calls, diagnostics };
 }
 
-for (const supervisor of ["SUPERVISOR", "RECEPTION"]) {
-  test(`plataforma puede abrir el despacho con el rol ${supervisor}, sin heredar finalización`, async () => {
-    const f = fixture({ supervisor });
+test("plataforma mantiene las lecturas cuando se retira Supervisor", async () => {
+  for (const settings of [{ supervisor: null }, { supervisorActive: false }]) {
+    const f = fixture(settings);
     const context = await f.queries.getProjectContext("admin");
     assert.equal(context.status, "ready");
     assert.equal(context.activeProject.id, "project");
@@ -62,16 +61,18 @@ for (const supervisor of ["SUPERVISOR", "RECEPTION"]) {
     assert.deepEqual([...context.roleCodes], ["PLATFORM_ADMIN"]);
     assert.equal(context.isCompanyAdmin, false);
     assert.equal(f.diagnostics.length, 0);
-  });
-}
+    const ids = f.calls.find(call => call.table === "role_permissions").filters[0].values;
+    assert.deepEqual([...ids], ["purchasing", "resident"]);
+  }
+});
 
-test("si ambos nombres están presentes usa Supervisor y no duplica el rol anterior", async () => {
-  const f = fixture({ both: true });
-  assert.equal((await f.queries.getProjectContext("admin")).status, "ready");
-  const ids = f.calls.find(call => call.table === "role_permissions").filters[0].values;
-  assert.ok(ids.includes("supervisor"));
-  assert.ok(!ids.includes("legacy"));
-  assert.equal(ids.length, 3);
+test("una asignación histórica a un rol retirado deja de conceder sus permisos", async () => {
+  const f = fixture({ admin: false, supervisorActive: false, memberRoles: ["supervisor", "resident"], inherited: ["dispatch.manage_guides"] });
+  const context = await f.queries.getProjectContext("user");
+  assert.equal(context.status, "ready");
+  assert.deepEqual([...context.roleCodes], ["RESIDENT"]);
+  assert.ok(context.permissions.includes("dispatch.view"));
+  assert.ok(!context.permissions.includes("dispatch.manage_guides"));
 });
 
 test("una configuración incompleta o un rechazo de consulta no concede acceso parcial", async () => {

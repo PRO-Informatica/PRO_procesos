@@ -21,7 +21,7 @@ import type {
   UniversalBatchProject,
 } from "../types";
 import { BatchDetailView } from "./batch-detail-view";
-import { BatchStatusBadge } from "./batch-status-badge";
+import { BatchPeriodBadge, BatchStatusBadge } from "./batch-status-badge";
 
 type Selection = { projectId: string; batchId: string };
 type DetailResponse<T> = { data?: T; message?: string };
@@ -58,7 +58,7 @@ function BatchOption({ batch, selected, pending, onSelect }: {
     whileTap={reduceMotion ? undefined : { scale: 0.985 }}
     transition={{ duration: reduceMotion ? 0 : 0.2 }}
   >
-    <span className="min-w-0"><strong className="block truncate text-sm">{batch.code}</strong><span className="mt-1 block text-xs leading-5 text-foreground-muted">{formatBatchDate(batch.periodStart)} – {formatBatchDate(batch.periodEnd)} · {batch.activeDispatchCount} despacho(s)</span>{batch.isOverdue && <span className="mt-1 block text-xs font-semibold text-brand-strong">Pendiente de cierre</span>}</span>
+    <span className="min-w-0"><span className="flex flex-wrap items-center gap-x-2 gap-y-1"><strong className="truncate text-sm">{batch.code}</strong><BatchPeriodBadge batch={batch} /></span><span className="mt-1 block text-xs leading-5 text-foreground-muted">{formatBatchDate(batch.periodStart)} – {formatBatchDate(batch.periodEnd)} · {batch.activeDispatchCount} despacho(s)</span>{batch.isOverdue && <span className="mt-1 block text-xs font-semibold text-brand-strong">Pendiente de cierre</span>}</span>
     <span className="flex shrink-0 items-center justify-between gap-2 min-[420px]:justify-end"><BatchStatusBadge status={batch.status} />{showPending ? <LoaderCircle className="size-4 animate-spin text-brand-strong motion-reduce:animate-none" /> : <ChevronRight className={`size-4 transition-transform ${selected ? "translate-x-0.5 text-brand-strong" : "text-foreground-muted"}`} />}</span>
   </motion.button>;
 }

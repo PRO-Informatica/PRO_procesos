@@ -12,6 +12,7 @@ import * as recipient from "../src/features/invoices/invoice-recipient-policy.ts
 import * as quantity from "../src/features/invoices/reconciliation-quantity.ts";
 import * as reinvoicing from "../src/features/invoices/reinvoicing.ts";
 import * as parser from "../src/features/batches/mixto-listo-parser.ts";
+import * as batchPeriodPolicy from "../src/features/batches/period-policy.ts";
 import * as business from "../src/lib/business-identity.ts";
 import * as address from "../src/lib/address-identity.ts";
 import * as pairing from "../src/features/invoices/universal/upload-pairing.ts";
@@ -69,7 +70,7 @@ function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = 
       status: "REGISTERED", pca_original: "PCA-13102026-0047", fiscal_document_key: "another-fiscal-key" }] : [],
     invoice_lines: savedProduct ? savedLines.map((line, index) => ({ id: `il-${index}`, invoice_id: "invoice-product", ...line })) : [],
     batch_dispatches: [{ id: "bd-1", project_id: projectId, dispatch_id: dispatchId, batch_id: batchId, removed_at: null }],
-    batches: [{ id: batchId, status: "OPEN", code: "LOT-TEST", accounting_period: "2026-10-01" }],
+    batches: [{ id: batchId, status: "OPEN", code: "LOT-TEST", accounting_period: "2026-10-01", period_end: "2026-10-18", period_kind: "WEEKLY" }],
     programming: [{ id: dispatch.programming_id, project_id: projectId, requested_quantity: 15.5, confirmed_quantity: null, unit_code: "M3" }],
     dispatch_incidents: [], suppliers: [{ id: dispatch.supplier_id, name: raw.supplier_legal_name, tax_id: raw.supplier_tax_id }],
   };
@@ -140,6 +141,7 @@ function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = 
   });
   const api = load(serviceCode, {
     "server-only": {}, "node:crypto": { createHash },
+    "@/features/batches/period-policy": batchPeriodPolicy,
     "@/features/batches/mixto-listo-extractor": { extractMixtoListoInvoicePdf: async (buffer) => uploadedRaw.get(new TextDecoder().decode(buffer)) ?? raw },
     "@/features/auth/queries": { requireActiveProfile: async () => ({ id: "user" }) },
     "@/features/projects/queries": { getOperationalProjectAccess: async () => { authorizations.push("authorized"); return scopes; } },

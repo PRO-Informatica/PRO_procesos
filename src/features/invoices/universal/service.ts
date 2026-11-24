@@ -1,5 +1,7 @@
 import "server-only";
 
+import { batchAccountingEnd } from "@/features/batches/period-policy";
+
 import { createHash } from "node:crypto";
 
 import { extractMixtoListoInvoicePdf } from "@/features/batches/mixto-listo-extractor";
@@ -360,7 +362,7 @@ async function classifyInternal(
   }
   const batchIds = [...new Set((relations.data ?? []).map((row) => row.batch_id))];
   const batches = batchIds.length
-    ? await admin.from("batches").select("id, code, accounting_period, status").in("id", batchIds).eq("status", "OPEN")
+    ? await admin.from("batches").select("id, code, accounting_period, period_end, period_kind, status").in("id", batchIds).eq("status", "OPEN")
     : { data: [], error: null };
   const openBatches = batches.data ?? [];
   if (openBatches.length !== 1) {
@@ -446,6 +448,7 @@ async function classifyInternal(
     projectAddress: project.address,
     projectAdditionalAddresses: project.additionalAddresses,
     accountingPeriod: batch.accounting_period,
+    accountingEnd: batchAccountingEnd(batch.period_kind, batch.period_end),
     projectTimezone: project.timezone,
     expectedQuantity: quantityBasis.quantity,
     expectedUnitCode: quantityBasis.unitCode,

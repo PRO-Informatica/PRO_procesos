@@ -44,6 +44,7 @@ const activityLabels: Record<string, string> = {
   PROGRAMMING_SUBMITTED_FOR_CONFIRMATION: "Programación enviada a confirmación",
   BATCH_CREATED: "Lote creado",
   WEEKLY_BATCH_CLOSED: "Lote semanal cerrado",
+  HISTORICAL_BATCH_CLOSED: "Lote histórico cerrado",
   WEEKLY_BATCH_ENSURED: "Lote semanal preparado",
   WEEKLY_BATCH_ROLLOVER_COMPLETED: "Traslado al siguiente lote completado",
   ALL_DISPATCH_ORDERS_MATCHED: "Todos los pedidos del despacho conciliados",

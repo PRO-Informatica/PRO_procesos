@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 
 import { formatProgrammingCode } from "./formatters";
 import { getOverdueBatchAlerts } from "./overdue-queries";
-import { isBatchWeekOverdue, projectCalendarDate } from "./period-policy";
+import { isBatchWeekOverdue, projectCalendarDate, type BatchPeriodKind } from "./period-policy";
 import type {
   BatchDetail, BatchDispatchRelation, BatchInvoice, BatchPageData,
   BatchRolloverPreview, BatchSecondaryData, BatchSource, BatchStatus, BatchSummary,
@@ -19,7 +19,7 @@ import type { ProjectAccessScope } from "@/features/projects/types";
 import { hasUniversalOperationalViewRole } from "@/features/projects/access-policy";
 import { getOperationalProjectAccess, getOperationalProjectAccessForProject } from "@/features/projects/queries";
 
-type BatchRow = { id: string; project_id: string; code: string; period_start: string; period_end: string; accounting_period: string; status: BatchStatus; creation_source: BatchSource; created_at: string };
+type BatchRow = { id: string; project_id: string; code: string; period_start: string; period_end: string; accounting_period: string; period_kind: BatchPeriodKind; status: BatchStatus; creation_source: BatchSource; created_at: string };
 type RelationRow = { id: string; project_id: string; batch_id: string; dispatch_id: string; assignment_source: BatchSource; added_at: string; removed_at: string | null; removed_by: string | null; removal_reason: string | null; rolled_to_batch_id: string | null; removal_metadata: Record<string, unknown> | null };
 type DispatchRow = { id: string; programming_id: string; supplier_id: string; order_number: string | null; status: "IN_EXECUTION" | "COMPLETED"; real_volume: number | string | null; real_unit_code: string | null };
 type ReconciliationRow = { id: string; project_id?: string; dispatch_id: string; status: ReconciliationStatus; current_product_invoice_id: string | null; current_service_invoice_id: string | null; service_status?: string; service_comparison?: unknown };
@@ -40,13 +40,13 @@ function summarize(batch: BatchRow, relations: RelationRow[], billingCompletion:
   const reconciledCount = active.filter((row) => billingCompletion[row.dispatch_id] === true).length;
   return {
     id: batch.id, code: batch.code, periodStart: batch.period_start,
-    periodEnd: batch.period_end, accountingPeriod: batch.accounting_period,
+    periodEnd: batch.period_end, accountingPeriod: batch.accounting_period, periodKind: batch.period_kind,
     status: batch.status, source: batch.creation_source,
     activeDispatchCount: active.length, reconciledCount,
     pendingCount: active.length - reconciledCount,
     rolloverCount: relations.filter((row) => row.batch_id === batch.id && row.rolled_to_batch_id).length,
     isCurrent: batch.period_start <= today && batch.period_end >= today,
-    isOverdue: isBatchWeekOverdue(batch.status, batch.period_start, today),
+    isOverdue: batch.period_kind !== "HISTORICAL" && isBatchWeekOverdue(batch.status, batch.period_start, today),
   };
 }
 
@@ -68,7 +68,7 @@ export async function getUniversalBatchScope(userId: string, projectId: string) 
 export async function getBatchPageData(projectId: string, timezone: string): Promise<BatchPageData> {
   const supabase = await createClient();
   const [batchesResult, relationsResult, billingCompletion, overdue] = await Promise.all([
-    supabase.from("batches").select("id, project_id, code, period_start, period_end, accounting_period, status, creation_source, created_at").eq("project_id", projectId).order("period_start", { ascending: false }).limit(200),
+    supabase.from("batches").select("id, project_id, code, period_start, period_end, accounting_period, period_kind, status, creation_source, created_at").eq("project_id", projectId).order("period_start", { ascending: false }).order("id").limit(200),
     supabase.from("batch_dispatches").select("id, project_id, batch_id, dispatch_id, assignment_source, added_at, removed_at, removed_by, removal_reason, rolled_to_batch_id, removal_metadata").eq("project_id", projectId).order("added_at", { ascending: false }).limit(2000),
     getDispatchBillingCompletion([projectId]),
     getOverdueBatchAlerts(projectId, timezone),
@@ -88,7 +88,7 @@ export async function getUniversalBatchOverview(
   const supabase = await createClient();
   const projectIds = scopes.map(({ project }) => project.id);
   const [batchesResult, relationsResult, billingCompletion] = await Promise.all([
-    supabase.from("batches").select("id, project_id, code, period_start, period_end, accounting_period, status, creation_source, created_at").in("project_id", projectIds).order("period_start", { ascending: false }).limit(1000),
+    supabase.from("batches").select("id, project_id, code, period_start, period_end, accounting_period, period_kind, status, creation_source, created_at").in("project_id", projectIds).order("period_start", { ascending: false }).order("id").limit(1000),
     supabase.from("batch_dispatches").select("id, project_id, batch_id, dispatch_id, assignment_source, added_at, removed_at, removed_by, removal_reason, rolled_to_batch_id, removal_metadata").in("project_id", projectIds).order("added_at", { ascending: false }).limit(10000),
     getDispatchBillingCompletion(projectIds),
   ]);
@@ -137,10 +137,10 @@ export async function getBatchDetail(
   const admin = createAdminClient();
   const relationsQuery = supabase.from("batch_dispatches").select("id, project_id, batch_id, dispatch_id, assignment_source, added_at, removed_at, removed_by, removal_reason, rolled_to_batch_id, removal_metadata").eq("project_id", projectId).eq("batch_id", batchId).order("added_at", { ascending: false });
   const [batchResult, relationsResult, activeProjectRelationsResult, dispatchesResult, previewResult, billingCompletion] = await Promise.all([
-    supabase.from("batches").select("id, project_id, code, period_start, period_end, accounting_period, status, creation_source, created_at").eq("project_id", projectId).eq("id", batchId).maybeSingle(),
+    supabase.from("batches").select("id, project_id, code, period_start, period_end, accounting_period, period_kind, status, creation_source, created_at").eq("project_id", projectId).eq("id", batchId).maybeSingle(),
     includeSecondary ? relationsQuery : relationsQuery.is("removed_at", null),
     supabase.from("batch_dispatches").select("dispatch_id").eq("project_id", projectId).is("removed_at", null),
-    supabase.from("dispatches").select("id, programming_id, supplier_id, order_number, status, real_volume, real_unit_code").eq("project_id", projectId).in("status", ["IN_EXECUTION", "COMPLETED"]),
+    supabase.rpc("get_batch_detail_dispatches", { p_batch_id: batchId }).select("id, programming_id, supplier_id, order_number, status, real_volume, real_unit_code").eq("project_id", projectId),
     includeSecondary ? supabase.rpc("preview_weekly_batch_rollover", { p_batch_id: batchId }) : Promise.resolve({ data: [], error: null }),
     getDispatchBillingCompletion([projectId]),
   ]);
@@ -245,7 +245,14 @@ export async function getBatchDetail(
     }];
   });
   const activeDispatchIds = new Set((activeProjectRelationsResult.data ?? []).map((row) => row.dispatch_id));
-  const eligibleDispatches: EligibleBatchDispatch[] = dispatches.filter((dispatch) => dispatch.status === "COMPLETED" && programmingById.get(dispatch.programming_id)?.status !== "CANCELLED" && !activeDispatchIds.has(dispatch.id)).map((dispatch) => ({
+  const eligibleDispatches: EligibleBatchDispatch[] = dispatches.filter((dispatch) => {
+    const programming = programmingById.get(dispatch.programming_id);
+    if (dispatch.status !== "COMPLETED" || programming?.status === "CANCELLED" || activeDispatchIds.has(dispatch.id)) return false;
+    if (batch.period_kind !== "HISTORICAL") return true;
+    if (!programming?.scheduled_at) return false;
+    const scheduledDate = projectCalendarDate(timezone, new Date(programming.scheduled_at));
+    return scheduledDate >= batch.period_start && scheduledDate <= batch.period_end;
+  }).map((dispatch) => ({
     dispatchId: dispatch.id, programmingCode: formatProgrammingCode(dispatch.programming_id),
     orderNumber: dispatch.order_number,
     supplierName: supplierNames.get(dispatch.supplier_id) ?? "Proveedor no disponible",
@@ -257,10 +264,10 @@ export async function getBatchDetail(
   const preview: BatchRolloverPreview[] = (previewResult.data ?? []).map((row: Record<string, unknown>) => ({
     batchDispatchId: String(row.batch_dispatch_id), dispatchId: String(row.dispatch_id),
     programmingCode: formatProgrammingCode(String(row.dispatch_id)),
-    reconciled: Boolean(row.reconciled), action: row.rollover_action as "STAY" | "MOVE",
+    reconciled: Boolean(row.reconciled), action: row.rollover_action as "STAY" | "MOVE" | "PENDING",
     reason: String(row.rollover_reason), destinationBatchId: row.destination_batch_id ? String(row.destination_batch_id) : null,
-    destinationPeriodStart: String(row.destination_period_start), destinationPeriodEnd: String(row.destination_period_end),
-    destinationAccountingPeriod: String(row.destination_accounting_period),
+    destinationPeriodStart: row.destination_period_start ? String(row.destination_period_start) : null, destinationPeriodEnd: row.destination_period_end ? String(row.destination_period_end) : null,
+    destinationAccountingPeriod: row.destination_accounting_period ? String(row.destination_accounting_period) : null,
   }));
   const summary = summarize(batch, relations, billingCompletion, localDate(timezone));
   const queryCount = 5 + (includeSecondary ? 1 : 0) +
@@ -343,10 +350,10 @@ export async function getBatchSecondaryData(
   const preview: BatchRolloverPreview[] = (previewResult.data ?? []).map((row: Record<string, unknown>) => ({
     batchDispatchId: String(row.batch_dispatch_id), dispatchId: String(row.dispatch_id),
     programmingCode: formatProgrammingCode(String(row.dispatch_id)), reconciled: Boolean(row.reconciled),
-    action: row.rollover_action as "STAY" | "MOVE", reason: String(row.rollover_reason),
+    action: row.rollover_action as "STAY" | "MOVE" | "PENDING", reason: String(row.rollover_reason),
     destinationBatchId: row.destination_batch_id ? String(row.destination_batch_id) : null,
-    destinationPeriodStart: String(row.destination_period_start), destinationPeriodEnd: String(row.destination_period_end),
-    destinationAccountingPeriod: String(row.destination_accounting_period),
+    destinationPeriodStart: row.destination_period_start ? String(row.destination_period_start) : null, destinationPeriodEnd: row.destination_period_end ? String(row.destination_period_end) : null,
+    destinationAccountingPeriod: row.destination_accounting_period ? String(row.destination_accounting_period) : null,
   }));
   const queryCount = 3 + Number(dispatchIds.length > 0) + Number(removedByIds.length > 0) +
     Number(programmingIds.length > 0) + Number(supplierIds.length > 0);

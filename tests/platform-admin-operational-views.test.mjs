@@ -9,10 +9,9 @@ import {
   selectOperationalViewPermissions,
 } from "../src/features/projects/access-policy.ts";
 
-test("PLATFORM_ADMIN hereda las vistas de Compras, Supervisores y Residentes", () => {
+test("PLATFORM_ADMIN hereda las vistas de Compras y Residentes", () => {
   assert.deepEqual(PLATFORM_ADMIN_VIEW_SOURCE_ROLES, [
     "PURCHASING",
-    "SUPERVISOR",
     "RESIDENT",
   ]);
   assert.deepEqual(

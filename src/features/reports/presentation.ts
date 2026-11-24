@@ -7,8 +7,10 @@ export function reportDispatchProcessStatus(
 ) {
   if (dispatchStatus !== "COMPLETED") return dispatchStatus;
   if (billingComplete) return "COMPLETED";
-  if (reconciliationStatus === "RECONCILED") return "PENDING_RECONCILIATION";
-  return reconciliationStatus || "NOT_STARTED";
+  if (!reconciliationStatus || reconciliationStatus === "NOT_STARTED" || reconciliationStatus === "RECONCILED") {
+    return "PENDING_RECONCILIATION";
+  }
+  return reconciliationStatus;
 }
 
 export function reportStatusTone(status: string): BadgeTone {

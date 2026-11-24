@@ -2,6 +2,7 @@ import { Eye } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { DispatchResultBadge } from "@/features/dispatches/components/dispatch-badges";
 import { formatDispatchDateTime, formatDispatchMoney, formatDispatchQuantity } from "@/features/dispatches/formatters";
 import { formatStatusLabel } from "@/lib/status-labels";
 
@@ -27,6 +28,8 @@ function InvoiceCells({ invoice }: { invoice: DispatchReportSummary["productInvo
 
 export function DispatchTableRow({ dispatch, selection }: { dispatch: DispatchReportSummary; selection?: ReactNode }) {
   const status = reportDispatchProcessStatus(dispatch.dispatchStatus, dispatch.reconciliationStatus, dispatch.billingComplete);
+  const result = dispatch.physicalResult;
+  const showResult = status !== "PENDING_RECONCILIATION" && (result === "DISPATCHED" || result === "NOT_DISPATCHED");
   const service = dispatch.serviceReconciliation;
   const validator = dispatch.completedByName ?? (dispatch.dispatchStatus === "COMPLETED" ? "No registrado" : "Pendiente");
   return (
@@ -34,7 +37,12 @@ export function DispatchTableRow({ dispatch, selection }: { dispatch: DispatchRe
       {selection && <td className={styles.selection}>{selection}</td>}
       <th scope="row" className={styles.identifier}>{dispatch.dispatchCode}</th>
       <td>{dispatch.orderNumber ?? "Sin pedido"}</td>
-      <td><ReportStatus status={status} /></td>
+      <td>
+        <div className="flex flex-col items-start gap-1">
+          <ReportStatus status={status} />
+          {showResult && <DispatchResultBadge result={result} />}
+        </div>
+      </td>
       <td><ReportStatus status={dispatch.reconciliationStatus} dot /></td>
       <td>
         {service

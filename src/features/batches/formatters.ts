@@ -1,4 +1,5 @@
-import type { BatchStatus } from "./types";
+import { batchAccountingEnd } from "./period-policy";
+import type { BatchStatus, BatchSummary } from "./types";
 import { formatStatusLabel } from "@/lib/status-labels";
 
 export function formatBatchStatus(status: BatchStatus) {
@@ -19,6 +20,14 @@ export function formatBatchDate(value: string) {
   })
     .format(new Date(`${value}T12:00:00Z`))
     .replace(/[\u00a0\u202f]/g, " ");
+}
+
+export function formatBatchAccountingMonths(batch: Pick<BatchSummary, "accountingPeriod" | "periodEnd" | "periodKind">) {
+  const start = batch.accountingPeriod.slice(0, 7);
+  const end = batchAccountingEnd(batch.periodKind, batch.periodEnd)?.slice(0, 7) ?? start;
+  const formatter = new Intl.DateTimeFormat("es-GT", { month: "long", year: "numeric", timeZone: "UTC" });
+  const formatMonth = (month: string) => formatter.format(new Date(`${month}-01T12:00:00Z`));
+  return start === end ? formatMonth(start) : `${formatMonth(start)} – ${formatMonth(end)}`;
 }
 
 export function formatBatchDateTime(value: string, timezone: string) {

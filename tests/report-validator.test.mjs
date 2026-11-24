@@ -10,6 +10,7 @@ import {serviceReconciliationSummary} from '../src/features/invoices/service-rec
 import {requiresServiceInvoice} from '../src/features/programming/invoice-policy.ts';
 import {reportDispatchProcessStatus,reportStatusTone} from '../src/features/reports/presentation.ts';
 import * as projectAccess from '../src/features/projects/access-policy.ts';
+import {formatStatusLabel} from '../src/lib/status-labels.ts';
 
 const root=new URL('../',import.meta.url);
 const [querySource,routeSource,rowSource]=await Promise.all(['src/features/reports/queries.ts','src/app/(dashboard)/reports/export/route.ts','src/features/reports/components/report-table-rows.tsx'].map(f=>readFile(new URL(f,root),'utf8')));
@@ -96,7 +97,8 @@ function nodes(node){if(!node||typeof node!=='object')return[];if(Array.isArray(
 function text(node){if(node==null||typeof node==='boolean')return'';if(typeof node!=='object')return String(node);return Array.isArray(node)?node.map(text).join(''):text(node.props?.children);}
 const jsx=(type,props)=>({type,props});
 const {DispatchTableRow}=load(rowSource,{
- 'react/jsx-runtime':{jsx,jsxs:jsx},'lucide-react':{Eye:'Eye'},'@/components/ui/badge':{},'@/lib/status-labels':{formatStatusLabel:value=>value??''},
+ 'react/jsx-runtime':{jsx,jsxs:jsx},'lucide-react':{Eye:'Eye'},'@/components/ui/badge':{Badge:'Badge'},'@/lib/status-labels':{formatStatusLabel},
+ '@/features/dispatches/components/dispatch-badges':{DispatchResultBadge:'DispatchResultBadge'},
  '@/features/dispatches/formatters':{formatDispatchDateTime:value=>value,formatDispatchQuantity:value=>value,formatDispatchMoney:value=>value},
  '../presentation':{reportDispatchProcessStatus,reportStatusTone},'./project-scoped-report-link':{ProjectScopedReportLink:'ProjectScopedReportLink'},'./report-results-table.module.css':{default:{}},
 });
@@ -117,9 +119,32 @@ test('Reportería conserva Producto conciliado sin mostrar cierre global cuando 
   const report=await fixture({billingComplete:complete}).report(),row=report.rows.find(row=>row.dispatchId==='completed');
   assert.equal(row.billingComplete,complete);row.reconciliationStatus='RECONCILED';
   const tree=DispatchTableRow({dispatch:row});
-  assert.equal(tree.props.children[3].props.children.props.status,complete?'COMPLETED':'PENDING_RECONCILIATION');
+  assert.equal(nodes(tree.props.children[3]).find(node=>node.props?.status)?.props.status,complete?'COMPLETED':'PENDING_RECONCILIATION');
   assert.equal(tree.props.children[4].props.children.props.status,'RECONCILED');
  }
+});
+
+test('un despacho pendiente de conciliación muestra únicamente la etiqueta azul de su estado', async () => {
+  const report = await fixture({
+    reconciliations: [{ dispatch_id: 'completed', status: 'NOT_STARTED', service_status: 'NOT_STARTED' }],
+  }).report();
+  const dispatch = report.rows.find(row => row.dispatchId === 'completed');
+  for (const result of ['DISPATCHED', 'NOT_DISPATCHED', 'PENDING']) {
+    const { props: { children } } = DispatchTableRow({ dispatch: { ...dispatch, physicalResult: result } });
+    const stateCell = nodes(children[3]);
+    const status = stateCell.find(node => node.props?.status === 'PENDING_RECONCILIATION');
+    assert.ok(status);
+    const badge = status.type(status.props);
+    assert.equal(badge.props.tone, 'info');
+    assert.equal(badge.props.children, 'Pendiente de conciliación');
+    assert.equal(stateCell.some(node => node.type === 'DispatchResultBadge'), false);
+    assert.equal(children[4].props.children.props.status, 'NOT_STARTED');
+    assert.equal(children[5].props.children.props.status, 'NOT_STARTED');
+  }
+  const { props: { children } } = DispatchTableRow({ dispatch: { ...dispatch, dispatchStatus: 'IN_EXECUTION', physicalResult: 'PENDING' } });
+  const stateCell = nodes(children[3]);
+  assert.equal(stateCell.find(node => node.props?.status)?.props.status, 'IN_EXECUTION');
+  assert.equal(stateCell.some(node => node.type === 'DispatchResultBadge'), false);
 });
 
 test('el Excel usa el cierre financiero y conserva Producto conciliado con Servicio pendiente',async()=>{

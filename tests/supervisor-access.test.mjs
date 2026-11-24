@@ -93,22 +93,32 @@ test("las acciones de Programación rechazan formularios manipulados antes de ac
   assert.equal(batch.status, "error"); assert.match(batch.message, /permiso/u);
 });
 
-test("Supervisor corporativo solo ve Inicio, Programación y Despachos; sin campana ni Gmail", () => {
+test("Inicio aparece en el menú de administradores del proyecto; Supervisor conserva sus accesos operativos", () => {
+  let menuContext = context;
   const imports = { ...base, "lucide-react": {}, "next/link": { __esModule: true, default: "Link" },
     "next/image": { default: "Image" }, "next/navigation": { usePathname: () => "/dispatches" },
     "@/features/auth/security": security, "@/features/integrations/gmail/access-policy": gmailAccess,
     "@/features/platform/platform-context": { usePlatformContext: () => ({ isPlatformAdmin: false, hasOperationalAccess: true }) },
-    "@/features/projects/project-context": { useProjectContext: () => context },
+    "@/features/projects/project-context": { useProjectContext: () => menuContext },
     "@/features/projects/components/project-selector": { ProjectSelector: "ProjectSelector" },
     "@/components/shared/scope-switch-link": { ScopeSwitchLink: "ScopeSwitchLink" }, "@/components/shared/theme-toggle": { ThemeToggle: "ThemeToggle" },
     "@/features/integrations/gmail/components/gmail-connection-indicator": { GmailConnectionIndicator: "GmailIndicator" },
     "motion/react": { AnimatePresence: "AnimatePresence", motion: new Proxy({}, { get: (_, name) => name }) } };
-  const sidebar = load("components/layout/app-sidebar.tsx", imports).AppSidebar({ profileEmail: "supervisor@pro.com.gt", collapsed: false, mobileOpen: false, onCollapse() {}, onMobileClose() {} });
+  const { AppSidebar } = load("components/layout/app-sidebar.tsx", imports);
+  const options = { profileEmail: "supervisor@pro.com.gt", collapsed: false, mobileOpen: false, onCollapse() {}, onMobileClose() {} };
+  const sidebar = AppSidebar(options);
   const topbar = load("components/layout/topbar.tsx", imports).Topbar({ profile: { email: "supervisor@pro.com.gt", fullName: "Supervisor" }, unreadNotifications: 0, onOpenNavigation() {} });
-  assert.deepEqual(nodes(sidebar).filter(n => n.type === "Link").map(n => n.props.href), ["/", "/programming", "/dispatches"]);
+  assert.deepEqual(nodes(sidebar).filter(n => n.type === "Link").map(n => n.props.href), ["/programming", "/dispatches"]);
   assert.equal(nodes(topbar).some(n => n.type === "Link" && n.props.href === "/notifications"), false);
   assert.equal(nodes(topbar).some(n => n.type === "GmailIndicator"), false);
-  for (const href of ["/programming", "/dispatches"]) assert.ok(nodes(sidebar).some(n => n.type === "Link" && n.props.href === href));
+  for (const roleCodes of [["RESIDENT"], ["PURCHASING"], ["PLATFORM_ADMIN"], ["COMPANY_ADMIN", "PURCHASING"]]) {
+    menuContext = { ...context, roleCodes, permissions: inherited };
+    for (const mode of [{}, { collapsed: true }, { mobileOpen: true }]) {
+      const hrefs = nodes(AppSidebar({ ...options, ...mode })).filter(n => n.type === "Link").map(n => n.props.href);
+      assert.equal(hrefs.includes("/"), roleCodes.includes("COMPANY_ADMIN"));
+      assert.ok(hrefs.includes("/programming"));
+    }
+  }
 });
 
 test("Gmail también rechaza el acceso directo de Supervisor sin cerrar su sesión", async () => {
@@ -133,7 +143,7 @@ test("secciones ocultas y subrutas se bloquean para Supervisor; los otros roles 
       for (const role of ["RESIDENT", "PURCHASING", "COMPANY_ADMIN", "PLATFORM_ADMIN"]) assert.equal(access.canAccessOperationalSection([role], pathname), true);
     }
   }
-  for (const pathname of ["/", "/programming", `/programming/${id}`, "/dispatches", `/dispatches/${id}`]) {
+  for (const pathname of ["/programming", `/programming/${id}`, "/dispatches", `/dispatches/${id}`]) {
     assert.equal(access.canAccessOperationalSection(["SUPERVISOR"], pathname), true);
   }
 });
@@ -185,6 +195,27 @@ test("el layout no carga notificaciones de Supervisor y conserva la sesión y na
   assert.equal(nodes(tree).find(n => n.type === "AppShell").props.unreadNotifications, 0);
 });
 
+test("el layout conserva Programación si falla la consulta del contador de notificaciones", async () => {
+  let countRequests = 0;
+  const layout = load("app/(dashboard)/layout.tsx", { ...base,
+    "next/navigation": { redirect() { assert.fail("Debe permanecer en Programación"); } },
+    "@/components/layout/app-shell": { AppShell: "AppShell" },
+    "@/features/platform/platform-context": { PlatformProvider: "PlatformProvider" },
+    "@/features/platform/queries": { isPlatformAdmin: async () => false },
+    "@/features/projects/project-context": { ProjectProvider: "ProjectProvider" },
+    "@/features/projects/queries": { getProjectContext: async () => ({ ...context, roleCodes: ["COMPANY_ADMIN"], permissions: inherited }) },
+    "@/features/notifications/queries": { getUnreadNotificationCount: async () => {
+      countRequests += 1;
+      throw new Error("No fue posible consultar los lotes pendientes de cierre.");
+    } },
+  });
+  const tree = await layout.default({ children: "Programación" });
+  const shell = nodes(tree).find(n => n.type === "AppShell");
+  assert.equal(countRequests, 1);
+  assert.equal(shell.props.unreadNotifications, 0);
+  assert.equal(shell.props.children, "Programación");
+});
+
 test("Inicio no muestra lotes, conciliación ni accesos financieros a Supervisor", () => {
   const imports = { ...base, "lucide-react": {}, "next/link": { __esModule: true, default: "Link" },
     "@/components/motion/motion-page": { MotionPage: "MotionPage" },
@@ -192,25 +223,27 @@ test("Inicio no muestra lotes, conciliación ni accesos financieros a Supervisor
     "@/components/motion/motion-section": { MotionSection: "MotionSection" },
     "@/components/feedback/animated-progress": { AnimatedProgress: "AnimatedProgress" },
     "@/lib/status-labels": { formatStatusLabel: String }, "../formatters": { formatDateRange: () => "Semana", formatQuantity: String },
-    "./dashboard-charts": { BatchReconciliationChart: "BatchChart", WeeklyVolumeChart: "WeeklyChart" },
+    "./dashboard-charts": { ProjectReconciliationChart: "ReconciliationChart", WeeklyVolumeChart: "WeeklyChart" },
     "./recent-activity": { RecentActivity: "RecentActivity" },
     "../details": dashboardDetails,
   };
   const data = { metrics: { today: {}, week: {}, month: {}, orders: {}, attention: { reinvoicing: 1, overdueProgramming: 1, pendingInvoice: 1 } },
     currentBatch: { id: "batch" }, activity: ["programming", "dispatch", "dispatch_guide", "invoice", "reconciliation_order"].map(entityType => ({ entityType })) };
   const component = load("features/dashboard/components/project-dashboard.tsx", imports).ProjectDashboard;
-  const tree = component({ project: context.activeProject, roleCodes: ["SUPERVISOR"], data });
-  assert.equal(nodes(tree).some(n => n.type === "BatchChart"), false);
+  const props = { project: context.activeProject, data };
+  const tree = component({ ...props, roleCodes: ["SUPERVISOR"] });
+  assert.equal(nodes(tree).some(n => n.type === "ReconciliationChart"), false);
   assert.equal(nodes(tree).some(n => n.type === "Link" && /^\/(batches|invoices|reconciliation|reports)/u.test(n.props.href)), false);
   assert.equal(nodes(tree).some(n => n.type === "Link" && n.props.href.startsWith("/dashboard/details") && dashboardDetails.isFinancialDashboardDetail(new URL(n.props.href, "http://localhost").searchParams.get("view"))), false);
   assert.deepEqual(nodes(tree).find(n => n.type === "RecentActivity").props.items.map(n => n.entityType), ["programming", "dispatch", "dispatch_guide"]);
-  const admin = component({ project: context.activeProject, roleCodes: ["COMPANY_ADMIN"], data });
-  assert.ok(nodes(admin).some(n => n.type === "BatchChart"));
+  const admin = component({ ...props, roleCodes: ["COMPANY_ADMIN"] });
+  assert.ok(nodes(admin).some(n => n.type === "ReconciliationChart"));
 });
 
 test("el detalle financiero del dashboard rechaza a Supervisor antes de cargar datos", async () => {
   const imports = { ...base,
     "@/features/dashboard/details": dashboardDetails,
+    "@/features/dashboard/components/dashboard-navigation": { OpenDashboardProject: "OpenDashboardProject" },
     "@/features/dashboard/components/dashboard-details": { DashboardDetails: "DashboardDetails" },
     "@/features/dashboard/queries": { getProjectDashboard: async () => { assert.fail("No debe cargar el detalle financiero"); } },
   };

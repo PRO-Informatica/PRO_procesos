@@ -49,7 +49,7 @@ export async function getCastingRadar(projects: ReportProjectInput[], filters: R
   }
   const dispatches: Row[] = [];
   for (const batch of chunks(ids(programs, "id"))) {
-    dispatches.push(...await readRows((from, to) => supabase.from("dispatches").select("id, project_id, supplier_id, programming_id, order_number, status, real_volume, real_unit_code, completed_by").in("programming_id", batch).in("project_id", projectIds).order("id").range(from, to)));
+    dispatches.push(...await readRows((from, to) => supabase.from("dispatches").select("id, project_id, supplier_id, programming_id, order_number, status, result, real_volume, real_unit_code, completed_by").in("programming_id", batch).in("project_id", projectIds).order("id").range(from, to)));
   }
   if (!dispatches.length) return data;
   const guides: Row[] = [], incidents: Row[] = [], relations: Row[] = [], reconciliations: Row[] = [], attempts: Row[] = [];
@@ -126,6 +126,7 @@ export async function getCastingRadar(projects: ReportProjectInput[], filters: R
         receivedQuantity: numeric(dispatch.real_volume), unitCode,
         guideCount: dispatchGuides.length, incidentCount: incidentsByDispatch.get(id)?.length ?? 0,
         ...guideReportMetadata(dispatchGuides, program.casting_element), dispatchStatus: String(dispatch.status),
+        physicalResult: String(dispatch.result ?? "PENDING"),
         completedByName: completed ? actorsMap.get(String(dispatch.completed_by)) ?? "Usuario no disponible" : null,
         billingComplete: billingCompletion[id] === true,
         reconciliationStatus: String(reconciliation?.status ?? "NOT_STARTED"), difference: numeric(attemptsByDispatch.get(id)?.[0]?.difference),

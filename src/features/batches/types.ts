@@ -1,6 +1,7 @@
 import type { ServiceReconciliationSummary } from "@/features/invoices/service-reconciliation";
 import type { InvoiceProcessingPayload } from "@/features/invoices/invoice-processing";
 import type { ProjectSummary } from "@/features/projects/types";
+import type { BatchPeriodKind } from "./period-policy";
 
 export const BATCH_STATUSES = ["OPEN", "CLOSED"] as const;
 export type BatchStatus = (typeof BATCH_STATUSES)[number];
@@ -10,7 +11,7 @@ export type ReconciliationStatus = "NOT_STARTED" | "PENDING_RECONCILIATION" | "W
 
 export type BatchSummary = {
   id: string; code: string; periodStart: string; periodEnd: string;
-  accountingPeriod: string; status: BatchStatus; source: BatchSource;
+  accountingPeriod: string; periodKind: BatchPeriodKind; status: BatchStatus; source: BatchSource;
   activeDispatchCount: number; reconciledCount: number; pendingCount: number;
   rolloverCount: number; isCurrent: boolean; isOverdue: boolean;
 };
@@ -83,9 +84,9 @@ export type EligibleBatchDispatch = {
 
 export type BatchRolloverPreview = {
   batchDispatchId: string; dispatchId: string; programmingCode: string;
-  reconciled: boolean; action: "STAY" | "MOVE"; reason: string;
-  destinationBatchId: string | null; destinationPeriodStart: string;
-  destinationPeriodEnd: string; destinationAccountingPeriod: string;
+  reconciled: boolean; action: "STAY" | "MOVE" | "PENDING"; reason: string;
+  destinationBatchId: string | null; destinationPeriodStart: string | null;
+  destinationPeriodEnd: string | null; destinationAccountingPeriod: string | null;
 };
 
 export type BatchDetail = BatchSummary & {
