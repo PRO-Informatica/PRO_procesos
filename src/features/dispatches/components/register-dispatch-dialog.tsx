@@ -81,7 +81,7 @@ export function StartDispatchDialog({
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={onClose} disabled={pending}>Cancelar</Button>
-            <LoadingButton loadingLabel="Iniciando…">Iniciar despacho</LoadingButton>
+            <LoadingButton loadingLabel="Iniciando…">Iniciar Registro</LoadingButton>
           </DialogFooter>
         </form>
     </Dialog>

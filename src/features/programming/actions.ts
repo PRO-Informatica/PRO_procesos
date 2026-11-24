@@ -687,16 +687,18 @@ export async function createProgrammingBatchAction(
     return { status: "error", message: error instanceof Error ? error.message : MIXTO_WORKBOOK_ERROR };
   }
   const submittedBySourceRow = new Map(submittedRows.map((row) => [row.sourceRow, row]));
-  if (workbook.rows.length !== submittedRows.length || submittedBySourceRow.size !== submittedRows.length) {
+  const selectedRows = workbook.rows.flatMap((row) => {
+    const submitted = submittedBySourceRow.get(row.sourceRow);
+    return submitted ? [{ row, submitted }] : [];
+  });
+  if (selectedRows.length !== submittedRows.length || submittedBySourceRow.size !== submittedRows.length) {
     return { status: "error", message: "El archivo original no coincide con la vista previa." };
   }
   const catalogs = await getProgrammingCatalogs(projectId);
   const m3Unit = catalogs.units.find((unit) => unit.code.trim().toUpperCase() === "M3");
   if (!m3Unit) return { status: "error", message: "La unidad M3 no está activa." };
   const items = [];
-  for (const row of workbook.rows) {
-    const submitted = submittedBySourceRow.get(row.sourceRow);
-    if (!submitted) return { status: "error", message: `La fila Excel ${row.sourceRow} no coincide con la vista previa.` };
+  for (const { row, submitted } of selectedRows) {
     const quantity = Number(row.quantity);
     const scheduledAt = isValidApprovedProgrammingDateTime(submitted.scheduledAt)
       ? localDateTimeToIso(submitted.scheduledAt, timezone)
