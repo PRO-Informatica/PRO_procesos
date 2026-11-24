@@ -1,8 +1,8 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { getDispatchBillingCompletion } from "@/features/dispatches/billing-completion-queries";
-import { dashboardBillingStatus, type DashboardReconciliation } from "./reconciliation";
-import type { BatchStatus, DashboardActivity, DashboardBatch, DashboardRecord, DashboardWeekDay, ProgrammingStatus, ProjectDashboardData } from "./types";
+import { dashboardBillingStatus, type DashboardBillingStatus, type DashboardReconciliation } from "./reconciliation";
+import type { BatchStatus, DashboardActivity, DashboardBatch, DashboardReconciliationTotals, DashboardRecord, DashboardWeekDay, ProgrammingStatus, ProjectDashboardData } from "./types";
 
 const DEFAULT_TIMEZONE = "America/Guatemala";
 type ProgrammingRow = { id: string; scheduled_at: string; order_number: string | null; requested_quantity: number | string; confirmed_quantity: number | string | null; unit_code: string; status: ProgrammingStatus };
@@ -17,6 +17,12 @@ function add(value: string, days: number) { const [y, m, d] = value.split("-").m
 function weekStart(value: string) { const [y, m, d] = value.split("-").map(Number); const weekday = new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay(); return add(value, -(weekday === 0 ? 6 : weekday - 1)); }
 function zonedDate(value: string, timezone: string) { const p = parts(new Date(value), timezone); return key(p.year, p.month, p.day); }
 function percent(value: number, total: number) { return total > 0 ? Math.min(Math.round((value / total) * 100), 100) : 0; }
+
+function countBillingStatuses(statuses: Iterable<DashboardBillingStatus>): DashboardReconciliationTotals {
+  const totals = { pendingInvoices: 0, pendingReconciliation: 0, reinvoicing: 0, reconciled: 0 };
+  for (const status of statuses) totals[status]++;
+  return totals;
+}
 
 async function readBillingRows<T>(query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
   const rows: T[] = [];
@@ -55,10 +61,8 @@ export async function getProjectDashboard(projectId: string, projectTimezone: st
   const reconciliationByDispatch = new Map(orders.map((row) => [row.dispatch_id, row]));
   const deliveryModesByProgramming = new Map(billingPrograms.map((row) => [row.id, row.delivery_modes]));
   const billingStatusByDispatch = new Map(billingDispatches.map((dispatch) => [dispatch.id, dashboardBillingStatus(reconciliationByDispatch.get(dispatch.id), deliveryModesByProgramming.get(dispatch.programming_id), billingCompletion[dispatch.id] === true)]));
-  const statuses = [...billingStatusByDispatch.values()];
-  const matched = statuses.filter((status) => status === "reconciled").length;
-  const noInvoice = statuses.filter((status) => status === "pendingInvoices").length;
-  const differences = statuses.filter((status) => status === "reinvoicing").length;
+  const projectReconciliation = countBillingStatuses(billingStatusByDispatch.values());
+  const { reconciled: matched, pendingInvoices: noInvoice, reinvoicing: differences, pendingReconciliation } = projectReconciliation;
   const activity: DashboardActivity[] = (activityResult.data ?? []).map((row) => { const relation = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles; return { id: row.id, action: row.action, entityType: row.entity_type, entityId: row.entity_id, createdAt: row.created_at, actorName: relation?.full_name?.trim() || (row.actor_user_id ? "Usuario no disponible" : "Sistema") }; });
   const current = batchResult.data as null | { id: string; code: string; period_start: string; period_end: string; accounting_period: string; status: BatchStatus; members: Array<{ removed_at: string | null }> | null };
   const currentBatch: DashboardBatch | null = current ? { id: current.id, code: current.code, periodStart: current.period_start, periodEnd: current.period_end, accountingPeriod: current.accounting_period, status: current.status, activeGuideCount: (current.members ?? []).filter((row) => row.removed_at === null).length } : null;
@@ -69,10 +73,7 @@ export async function getProjectDashboard(projectId: string, projectTimezone: st
       batchId: batch.id,
       batchCode: batch.code,
       periodStart: batch.period_start,
-      pendingInvoices: statuses.filter((status) => status === "pendingInvoices").length,
-      pendingReconciliation: statuses.filter((status) => status === "pendingReconciliation").length,
-      reinvoicing: statuses.filter((status) => status === "reinvoicing").length,
-      reconciled: statuses.filter((status) => status === "reconciled").length,
+      ...countBillingStatuses(statuses),
     };
   });
   const overdueProgramming = programming.filter((row) => zonedDate(row.scheduled_at, timezone) < today && !["COMPLETED", "CANCELLED"].includes(row.status)).length;
@@ -117,5 +118,5 @@ export async function getProjectDashboard(projectId: string, projectTimezone: st
       batchIds: batchIdsByDispatch.get(dispatch.id) ?? [],
     });
   }
-  return { today, weekStart: start, weekEnd: end, timezone, weekDays, currentBatch, batchReconciliation, activity, records, metrics: { today: { total: todayProgramming.length, completed: todayProgramming.filter((row) => row.status === "COMPLETED").length, pending: todayProgramming.filter((row) => !["COMPLETED", "CANCELLED"].includes(row.status)).length, programmedM3: todayProgramming.filter((row) => row.unit_code === "M3").reduce((sum, row) => sum + quantity(row), 0) }, week: { total: weekProgramming.length, completed: completedWeek, pending: weekProgramming.length - completedWeek, compliance: percent(completedWeek, weekProgramming.length) }, month: { programmedM3: programmedMonth, receivedM3: receivedMonth, execution: percent(receivedMonth, programmedMonth) }, orders: { pending: statuses.length - matched - differences, completed: matched, reinvoicing: differences }, reconciliation: { matched, differences, withoutInvoice: noInvoice }, attention: { reinvoicing: differences, overdueProgramming, pendingInvoice: noInvoice } } };
+  return { today, weekStart: start, weekEnd: end, timezone, weekDays, currentBatch, batchReconciliation, activity, records, projectReconciliation, metrics: { today: { total: todayProgramming.length, completed: todayProgramming.filter((row) => row.status === "COMPLETED").length, pending: todayProgramming.filter((row) => !["COMPLETED", "CANCELLED"].includes(row.status)).length, programmedM3: todayProgramming.filter((row) => row.unit_code === "M3").reduce((sum, row) => sum + quantity(row), 0) }, week: { total: weekProgramming.length, completed: completedWeek, pending: weekProgramming.length - completedWeek, compliance: percent(completedWeek, weekProgramming.length) }, month: { programmedM3: programmedMonth, receivedM3: receivedMonth, execution: percent(receivedMonth, programmedMonth) }, orders: { pending: noInvoice + pendingReconciliation, completed: matched, reinvoicing: differences }, reconciliation: { matched, differences, withoutInvoice: noInvoice }, attention: { reinvoicing: differences, overdueProgramming, pendingInvoice: noInvoice } } };
 }

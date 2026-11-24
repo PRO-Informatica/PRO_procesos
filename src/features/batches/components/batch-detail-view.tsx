@@ -26,10 +26,10 @@ import { ServiceReconciliationSummaryCard } from "@/features/reconciliation/comp
 import { formatStatusLabel } from "@/lib/status-labels";
 
 import { decideInvoiceRecipientExceptionAction, reconcileDispatchAction, requestDispatchReinvoicingAction } from "../actions";
-import { formatBatchDate, formatBatchDateTime, formatBatchQuantity } from "../formatters";
+import { formatBatchAccountingMonths, formatBatchDate, formatBatchDateTime, formatBatchQuantity } from "../formatters";
 import { initialBatchMutationState, type BatchDetail, type BatchDispatchRelation, type BatchInvoice, type BatchPermissions, type BatchSecondaryData, type InvoiceType, type ReconciliationStatus } from "../types";
 import { AddDispatchDialog, Modal, RemoveDispatchDialog, RolloverDialog } from "./batch-dialogs";
-import { BatchStatusBadge } from "./batch-status-badge";
+import { BatchPeriodBadge, BatchStatusBadge } from "./batch-status-badge";
 import { BulkInvoiceDialog, DispatchInvoiceDialog } from "./invoice-dialogs";
 import { OverdueBatchNotice } from "./overdue-batch-notice";
 
@@ -265,11 +265,11 @@ export function BatchDetailView({ detail, project, permissions, embedded = false
     <MotionSection disableMotion={embedded}>
       {!embedded && <Link href="/batches" className="inline-flex items-center gap-2 text-sm font-semibold text-foreground-muted hover:text-foreground"><ArrowLeft className="size-4" /> Volver a lotes</Link>}
       <div className={`${embedded ? "" : "mt-4"} flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between`}>
-        <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">{embedded ? `${project.name} · ${project.code}` : "Lote semanal"}</p><div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-2xl font-semibold sm:text-3xl">{detail.code}</h1><BatchStatusBadge status={detail.status} /></div><p className="mt-2 text-sm text-foreground-muted">{formatBatchDate(detail.periodStart)} – {formatBatchDate(detail.periodEnd)} · Período contable {formatBatchDate(detail.accountingPeriod)}</p></div>
+        <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">{embedded ? `${project.name} · ${project.code}` : "Lotes"}</p><div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-2xl font-semibold sm:text-3xl">{detail.code}</h1><BatchStatusBadge status={detail.status} /><BatchPeriodBadge batch={detail} /></div><p className="mt-2 text-sm text-foreground-muted">{formatBatchDate(detail.periodStart)} – {formatBatchDate(detail.periodEnd)} · Meses contables · {formatBatchAccountingMonths(detail)}</p></div>
         <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
           {permissions.canModify && editable && <button type="button" onClick={() => setAddOpen(true)} className="secondary-button w-full gap-2 sm:w-auto"><Plus className="size-4" /> Agregar despacho</button>}
           {permissions.canCreateInvoice && editable && <button type="button" onClick={() => setBulkOpen(true)} className="secondary-button w-full gap-2 sm:w-auto"><Files className="size-4" /> Carga masiva de facturas</button>}
-          {permissions.canModify && editable && <button type="button" onClick={() => void openRollover()} disabled={secondaryPending} aria-busy={secondaryPending && secondaryOperation === "rollover"} className="primary-button w-full gap-2 sm:w-auto disabled:opacity-60">{showSecondaryPending && secondaryOperation === "rollover" ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /> : <RotateCcw className="size-4" />} Cerrar lote y preparar siguiente</button>}
+          {permissions.canModify && editable && <button type="button" onClick={() => void openRollover()} disabled={secondaryPending} aria-busy={secondaryPending && secondaryOperation === "rollover"} className="primary-button w-full gap-2 sm:w-auto disabled:opacity-60">{showSecondaryPending && secondaryOperation === "rollover" ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /> : <RotateCcw className="size-4" />} {detail.periodKind === "HISTORICAL" ? "Cerrar lote histórico" : "Cerrar lote y preparar siguiente"}</button>}
         </div>
       </div>
       {message && <p className="mt-4 rounded-xl bg-muted px-4 py-3 text-sm">{message}</p>}
@@ -298,7 +298,7 @@ export function BatchDetailView({ detail, project, permissions, embedded = false
 
     {addOpen && <AddDispatchDialog projectId={project.id} batchId={detail.id} dispatches={detail.eligibleDispatches} onClose={() => setAddOpen(false)} onSuccess={refreshData} />}
     {bulkOpen && <BulkInvoiceDialog projectId={project.id} batchId={detail.id} onClose={() => setBulkOpen(false)} onSuccess={refreshData} />}
-    {rolloverOpen && <RolloverDialog projectId={project.id} batchId={detail.id} preview={resolvedSecondary?.preview ?? []} onClose={() => setRolloverOpen(false)} onSuccess={refreshData} />}
+    {rolloverOpen && <RolloverDialog projectId={project.id} batchId={detail.id} historical={detail.periodKind === "HISTORICAL"} preview={resolvedSecondary?.preview ?? []} onClose={() => setRolloverOpen(false)} onSuccess={refreshData} />}
     {remove && <RemoveDispatchDialog projectId={project.id} batchId={detail.id} relation={remove} onClose={() => setRemove(null)} onSuccess={refreshData} />}
     {invoice && <DispatchInvoiceDialog projectId={project.id} batchId={detail.id} relation={invoice.relation} type={invoice.type} replacement={invoice.replacement} onClose={() => setInvoice(null)} onSuccess={refreshData} />}
     {reinvoicing && <ReinvoicingDialog projectId={project.id} batchId={detail.id} relation={reinvoicing.relation} type={reinvoicing.type} onClose={() => setReinvoicing(null)} onSuccess={refreshData} />}

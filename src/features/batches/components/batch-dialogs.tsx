@@ -13,7 +13,7 @@ import { notifications } from "@/lib/notification-messages";
 
 import { addDispatchToBatchAction, createBatchAction, removeDispatchFromBatchAction, rolloverBatchAction } from "../actions";
 import { formatBatchDate, formatBatchQuantity } from "../formatters";
-import { projectCalendarDate, weeklyBatchPeriods, type BatchPeriod } from "../period-policy";
+import { batchPeriodLabel, historicalBatchPeriod, latestHistoricalBatchDate, projectCalendarDate, weeklyBatchPeriod, type BatchPeriod } from "../period-policy";
 import { initialBatchMutationState, type BatchDispatchRelation, type BatchMutationState, type BatchRolloverPreview, type EligibleBatchDispatch } from "../types";
 
 export function Modal({ title, description, icon: Icon, onClose, pending, children, wide = false }: { title: string; description: string; icon: typeof Plus; onClose: () => void; pending: boolean; children: React.ReactNode; wide?: boolean }) {
@@ -22,30 +22,47 @@ export function Modal({ title, description, icon: Icon, onClose, pending, childr
 
 export function CreateBatchDialog({ project, onClose }: { project: ProjectSummary; onClose: () => void }) {
   const router = useRouter();
-  const [reference, setReference] = useState(() => projectCalendarDate(project.timezone));
-  let periods: BatchPeriod[] = [];
-  try { if (reference) periods = weeklyBatchPeriods(reference); } catch { /* Incomplete date input. */ }
-  const split = periods.length === 2;
+  const today = projectCalendarDate(project.timezone);
+  const latestHistoricalDate = latestHistoricalBatchDate(today);
+  const [periodKind, setPeriodKind] = useState<"WEEKLY" | "HISTORICAL">("WEEKLY");
+  const [reference, setReference] = useState(today);
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  let period: BatchPeriod | undefined;
+  try {
+    period = periodKind === "HISTORICAL" ? historicalBatchPeriod(start, end, today) : weeklyBatchPeriod(reference);
+  } catch { /* Dates are still incomplete or invalid. */ }
   const [state, action, pending] = useActionState(createBatchAction, initialBatchMutationState);
   useActionNotification({ pending, status: state.status, success: notifications.batchCreated });
   useEffect(() => { if (state.status === "success" && state.batchId) router.push(`/batches/${state.batchId}`); }, [router, state]);
-  return <Modal title="Crear lote semanal" description="Cada lote pertenece a un solo mes, aunque la semana cruce de mes." icon={CalendarRange} onClose={onClose} pending={pending}>
+  return <Modal title="Crear lote" description="Elige una semana completa o un rango de fechas anteriores." icon={CalendarRange} onClose={onClose} pending={pending}>
     <form action={action}>
       <input type="hidden" name="projectId" value={project.id} />
       <div className="space-y-4 p-5 sm:p-6">
-        <div><label className="form-label" htmlFor="batch-reference">Fecha de la semana *</label><input id="batch-reference" name="referenceDate" type="date" required value={reference} onChange={(event) => setReference(event.target.value)} disabled={pending} className="form-input" /></div>
-        <div><label className="form-label" htmlFor="batch-code">{split ? "Código base *" : "Código *"}</label><input key={periods[0]?.start} id="batch-code" name="code" required maxLength={70} defaultValue={`LOT-${periods[0]?.start ?? ""}`} className="form-input" /></div>
-        <div className="space-y-2 rounded-xl border border-border bg-muted/25 p-4 text-sm">
-          {periods.map((period) => <p key={period.start}>{formatBatchDate(period.start)} – {formatBatchDate(period.end)} · Mes {period.accountingPeriod.slice(0, 7)}</p>)}
+        <div>
+          <label className="form-label" htmlFor="batch-kind">Tipo de lote</label>
+          <select id="batch-kind" name="periodKind" value={periodKind} onChange={(event) => setPeriodKind(event.target.value === "HISTORICAL" ? "HISTORICAL" : "WEEKLY")} disabled={pending} className="form-input">
+            <option value="WEEKLY">Semanal</option>
+            <option value="HISTORICAL">Histórico</option>
+          </select>
         </div>
-        {split && <div role="alert" className="rounded-xl border border-brand/25 bg-brand-soft p-4 text-sm text-foreground">
-          <p className="font-semibold text-brand-strong">Se crearán dos lotes</p><p className="mt-1">Esta semana cruza de mes. Los últimos días del mes y los primeros del siguiente tendrán lotes separados. Se añadirá el mes a cada código.</p>
-          <label key={periods[0]?.start} className="mt-3 flex items-start gap-2"><input type="checkbox" name="confirmSplit" value="yes" required className="mt-1 accent-[var(--brand)]" />Confirmo la creación de los dos lotes.</label>
+        {periodKind === "HISTORICAL" ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div><label className="form-label" htmlFor="batch-start">Fecha inicial *</label><input id="batch-start" name="periodStart" type="date" max={latestHistoricalDate} required value={start} onChange={(event) => setStart(event.target.value)} disabled={pending} className="form-input" /></div>
+            <div><label className="form-label" htmlFor="batch-end">Fecha final *</label><input id="batch-end" name="periodEnd" type="date" min={start || undefined} max={latestHistoricalDate} required value={end} onChange={(event) => setEnd(event.target.value)} disabled={pending} className="form-input" /></div>
+          </div>
+        ) : (
+          <div><label className="form-label" htmlFor="batch-reference">Fecha de la semana *</label><input id="batch-reference" name="referenceDate" type="date" required value={reference} onChange={(event) => setReference(event.target.value)} disabled={pending} className="form-input" /></div>
+        )}
+        <div><label className="form-label" htmlFor="batch-code">Código *</label><input key={`${periodKind}-${period?.start}`} id="batch-code" name="code" required maxLength={80} defaultValue={period ? `LOT-${periodKind === "HISTORICAL" ? "HIST-" : ""}${period.start}` : ""} className="form-input" /></div>
+        {period && <div aria-live="polite" className="rounded-xl border border-border bg-muted/25 p-4 text-sm">
+          <p className="font-semibold">{batchPeriodLabel(periodKind, period.start, period.end)}</p>
+          <p className="mt-1 text-foreground-muted">{formatBatchDate(period.start)} – {formatBatchDate(period.end)}</p>
         </div>}
-        <p className="text-xs text-foreground-muted">El cierre es manual. Si hay un lote abierto de una semana cuyo domingo ya pasó, debes cerrarlo antes de crear otro.</p>
+        {periodKind === "HISTORICAL" && <p className="text-xs text-foreground-muted">Puedes agregar despachos programados dentro del rango seleccionado.</p>}
         <Message state={state} />
       </div>
-      <Footer onClose={onClose} pending={pending} disabled={!periods.length} label={split ? "Crear dos lotes" : "Crear lote semanal"} loading="Creando…" />
+      <Footer onClose={onClose} pending={pending} disabled={!period} label="Crear lote" loading="Creando…" />
     </form>
   </Modal>;
 }
@@ -126,12 +143,33 @@ export function RemoveDispatchDialog({ projectId, batchId, relation, onClose, on
   return <Modal title="Remover despacho" description={`${relation.programmingCode} se retirará del lote sin borrar su historial.`} icon={AlertTriangle} onClose={onClose} pending={pending}><form action={action}><input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="batchId" value={batchId} /><input type="hidden" name="dispatchId" value={relation.dispatchId} /><div className="p-5 sm:p-6"><label className="form-label" htmlFor="remove-reason">Motivo *</label><textarea id="remove-reason" name="reason" required maxLength={1000} rows={4} className="form-input resize-y" /><Message state={state} /></div><Footer onClose={onClose} pending={pending} label="Remover despacho" loading="Removiendo…" /></form></Modal>;
 }
 
-export function RolloverDialog({ projectId, batchId, preview, onClose, onSuccess }: { projectId: string; batchId: string; preview: BatchRolloverPreview[]; onClose: () => void; onSuccess?: () => void | Promise<void> }) {
+export function RolloverDialog({ projectId, batchId, historical, preview, onClose, onSuccess }: { projectId: string; batchId: string; historical: boolean; preview: BatchRolloverPreview[]; onClose: () => void; onSuccess?: () => void | Promise<void> }) {
   const router = useRouter(); const successHandled = useRef(false); const [state, action, pending] = useActionState(rolloverBatchAction, initialBatchMutationState);
   useActionNotification({ pending, status: state.status, success: notifications.batchClosed });
   useEffect(() => { if (state.status === "success" && !successHandled.current) { successHandled.current = true; void (async () => { try { if (onSuccess) await onSuccess(); else router.refresh(); } finally { onClose(); } })(); } }, [onClose, onSuccess, router, state.status]);
-  const stay = preview.filter((row) => row.action === "STAY"), move = preview.filter((row) => row.action === "MOVE"), next = preview[0];
-  return <Modal title="Cerrar lote y preparar siguiente" description="Permanecen los despachos con Producto y Servicio requeridos conciliados. Las diferencias y refacturaciones pendientes pasan al siguiente período, separado por mes." icon={RotateCcw} onClose={onClose} pending={pending}><form action={action}><input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="batchId" value={batchId} /><div className="space-y-4 p-5 sm:p-6">{next && <div className="rounded-xl border border-border bg-muted/25 p-4 text-sm"><p className="font-semibold">Siguiente período</p><p className="mt-1 text-foreground-muted">{formatBatchDate(next.destinationPeriodStart)} – {formatBatchDate(next.destinationPeriodEnd)}</p></div>}<div className="grid gap-3 sm:grid-cols-2"><Summary label="Permanecen completos" value={stay.length} tone="success" /><Summary label="Continúan siguiente período" value={move.length} tone="warning" /></div><Message state={state} /></div><Footer onClose={onClose} pending={pending} label="Confirmar cierre" loading="Cerrando…" icon /></form></Modal>;
+  const stay = preview.filter((row) => row.action === "STAY"), move = preview.filter((row) => row.action !== "STAY"), next = preview[0];
+  return (
+    <Modal title={historical ? "Cerrar lote histórico" : "Cerrar lote y preparar siguiente"}
+      description={historical ? "Completa la conciliación de los despachos del rango para cerrar el lote." : "Los despachos conciliados permanecen en el lote. Los pendientes continúan en el siguiente período."}
+      icon={RotateCcw} onClose={onClose} pending={pending}>
+      <form action={action}>
+        <input type="hidden" name="projectId" value={projectId} />
+        <input type="hidden" name="batchId" value={batchId} />
+        <div className="space-y-4 p-5 sm:p-6">
+          {next?.destinationPeriodStart && next.destinationPeriodEnd && <div className="rounded-xl border border-border bg-muted/25 p-4 text-sm">
+            <p className="font-semibold">Siguiente período</p>
+            <p className="mt-1 text-foreground-muted">{formatBatchDate(next.destinationPeriodStart)} – {formatBatchDate(next.destinationPeriodEnd)}</p>
+          </div>}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Summary label="Despachos conciliados" value={stay.length} tone="success" />
+            <Summary label={historical ? "Pendientes de conciliar" : "Continúan en el siguiente período"} value={move.length} tone="warning" />
+          </div>
+          <Message state={state} />
+        </div>
+        <Footer onClose={onClose} pending={pending} disabled={historical && move.length > 0} label="Confirmar cierre" loading="Cerrando…" icon />
+      </form>
+    </Modal>
+  );
 }
 
 function Summary({ label, value, tone }: { label: string; value: number; tone: "success" | "warning" }) { return <div className={`rounded-xl border p-4 ${tone === "success" ? "border-success/20 bg-success-soft text-success" : "border-amber-300/30 bg-amber-50 text-amber-900 dark:bg-amber-950/35 dark:text-amber-200"}`}><p className="text-xs font-semibold uppercase">{label}</p><p className="mt-2 text-2xl font-semibold">{value}</p></div>; }

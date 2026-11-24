@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { dashboardNavigationTarget } from "@/features/dashboard/details";
 import { createClient } from "@/lib/supabase/server";
 
 import { ACTIVE_PROJECT_COOKIE, canAccessOperationalProject } from "./queries";
@@ -70,6 +71,7 @@ export async function switchProject(
             returnTo === `/${segment}` || returnTo.startsWith(`/${segment}/`),
         )
       : null;
-  const safeReturnTo = universalBatchReturn ?? dispatchDetailReturn ?? programmingDetailReturn ?? (moduleRoot ? `/${moduleRoot}` : "/");
+  const dashboardReturn = typeof returnTo === "string" ? dashboardNavigationTarget(projectId, returnTo) : null;
+  const safeReturnTo = universalBatchReturn ?? dispatchDetailReturn ?? programmingDetailReturn ?? dashboardReturn ?? (moduleRoot ? `/${moduleRoot}` : "/");
   redirect(safeReturnTo);
 }

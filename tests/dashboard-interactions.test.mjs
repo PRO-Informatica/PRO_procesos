@@ -6,6 +6,7 @@ import ts from "typescript";
 import * as details from "../src/features/dashboard/details.ts";
 import * as formatters from "../src/features/dashboard/formatters.ts";
 import * as aging from "../src/features/dashboard/reinvoicing-aging.ts";
+import * as access from "../src/features/projects/access-policy.ts";
 
 const jsx = (type, props) => ({ type, props });
 const nodes = node => !node || typeof node !== "object" ? [] : Array.isArray(node) ? node.flatMap(nodes) : [node, ...nodes(node.props?.children)];
@@ -20,6 +21,7 @@ function component(path, extra = {}, reduced = false) {
     "motion/react": { motion: new Proxy({}, { get: (_, key) => `motion.${key}` }), useReducedMotion: () => reduced, useInView: () => true },
     "@/lib/motion/tokens": { motionTokens: { duration: { progress: 1, route: 0.2 }, ease: "easeOut" } },
     "../details": details, "../formatters": formatters,
+    "@/features/dashboard/components/dashboard-navigation": { OpenDashboardProject: "OpenDashboardProject" },
     "@/lib/status-labels": { formatStatusLabel: String },
     "@/components/motion/motion-page": { MotionPage: "MotionPage" },
     "@/components/ui/badge": { Badge: "Badge" },
@@ -42,31 +44,27 @@ const linkFromShape = (bar, index = 0) => {
   return shape.type(shape.props);
 };
 
-test("las barras y tarjetas abren el mismo estado del lote, incluso después de cambiar de lote", () => {
-  const { BatchReconciliationChart } = charts();
-  const props = { projectId: "project-a", batches: [
-    { batchId: "old", batchCode: "Lote anterior", pendingInvoices: 1, pendingReconciliation: 2, reinvoicing: 3, reconciled: 4 },
-    { batchId: "new", batchCode: "Lote actual", pendingInvoices: 0, pendingReconciliation: 0, reinvoicing: 6, reconciled: 0 },
-  ] };
-  let tree = BatchReconciliationChart(props);
-  const findBar = () => nodes(tree).find(node => node.type === "Bar");
-  let barLink = linkFromShape(findBar(), 2);
+test("las barras y tarjetas abren el mismo estado del proyecto seleccionado", () => {
+  const { ProjectReconciliationChart } = charts();
+  const projectId = "project-b";
+  const tree = ProjectReconciliationChart({
+    projectId, projectName: "Proyecto B",
+    totals: { pendingInvoices: 1, pendingReconciliation: 2, reinvoicing: 3, reconciled: 4 },
+  });
+  const bar = nodes(tree).find(node => node.type === "Bar");
+  const barLink = linkFromShape(bar, 2);
   assert.equal(barLink.type, "Link");
-  assert.match(barLink.props["aria-label"], /6 despachos.*Refacturación.*Lote actual/);
-  assert.equal(barLink.props.href, details.dashboardDetailHref("project-a", "reinvoicing", { batch: "new" }));
-  nodes(tree).find(node => node.type === "select").props.onChange({ target: { value: "old" } });
-  tree = BatchReconciliationChart(props);
-  barLink = linkFromShape(findBar(), 2);
-  assert.match(barLink.props["aria-label"], /3 despachos.*Lote anterior/);
+  assert.match(barLink.props["aria-label"], /3 despachos.*Refacturación.*Proyecto B/);
+  assert.equal(barLink.props.href, details.dashboardDetailHref(projectId, "reinvoicing"));
   const stats = nodes(tree).filter(node => typeof node.type === "function" && node.props.label);
   assert.equal(stats.length, 4);
   for (const [index, stat] of stats.entries()) {
     const link = stat.type(stat.props);
     assert.equal(link.type, "Link");
-    assert.equal(link.props.href, linkFromShape(findBar(), index).props.href);
+    assert.equal(link.props.href, linkFromShape(bar, index).props.href);
   }
-  assert.equal(nodes(tree).find(node => node.type === "Link" && node.props.children === "Ver despachos del lote").props.href,
-    details.dashboardDetailHref("project-a", "orders", { batch: "old" }));
+  assert.equal(nodes(tree).find(node => node.type === "Link" && node.props.children === "Ver despachos del proyecto").props.href,
+    details.dashboardDetailHref(projectId, "orders"));
 });
 
 test("las series diarias distinguen programaciones y guías con enlaces accesibles", () => {
@@ -216,21 +214,114 @@ test("la animación continua es opcional y respeta el movimiento reducido", () =
   }
 });
 
-test("los indicadores reutilizan las rutas existentes y los enlaces antiguos redirigen", async () => {
+test("Inicio redirige a Programación a quienes carecen del rol de administración del proyecto", async () => {
+  const project = { id: "project-a", timezone: "America/Guatemala" };
+  let roleCodes = [];
+  let dashboardCalls = 0;
+  const { default: page } = component("app/(dashboard)/page.tsx", {
+    react: { Suspense: "Suspense" },
+    "next/navigation": { redirect: href => { throw Object.assign(new Error("redirect"), { href }); } },
+    "@/components/feedback/empty-state": { EmptyState: "EmptyState" },
+    "@/features/dashboard/components/dashboard-skeleton": { DashboardSkeleton: "DashboardSkeleton" },
+    "@/features/dashboard/components/project-dashboard": { ProjectDashboard: "ProjectDashboard" },
+    "@/features/dashboard/components/reinvoicing-aging-chart": {},
+    "@/features/dashboard/details": details,
+    "@/features/dashboard/queries": { getProjectDashboard: async () => { dashboardCalls++; return { timezone: project.timezone }; } },
+    "@/features/dashboard/reinvoicing-aging-queries": { getReinvoicingAging: async () => assert.fail("Consulta inesperada") },
+    "@/features/auth/queries": { requireActiveProfile: async () => ({ id: "user" }) },
+    "@/features/projects/queries": { getProjectContext: async () => ({ status: "ready", activeProject: project, roleCodes, permissions: ["programming.view"], projects: [project], dashboardProjectIds: [project.id] }) },
+    "@/features/projects/access-policy": access,
+  });
+  for (roleCodes of [["PURCHASING"], ["RESIDENT"], ["PURCHASING", "RESIDENT"], ["PLATFORM_ADMIN"]]) {
+    await assert.rejects(page(), error => error.href === "/programming");
+  }
+  assert.equal(dashboardCalls, 0);
+  roleCodes = ["COMPANY_ADMIN", "RESIDENT"];
+  const pageTree = await page();
+  const content = pageTree.props.children;
+  assert.equal((await content.type(content.props)).type, "ProjectDashboard");
+  assert.equal(dashboardCalls, 1);
+});
+
+test("Inicio carga las gráficas del proyecto activo aunque la URL conserve un filtro anterior", async () => {
+  const active = { id: "project-a", name: "ACOAT", timezone: "America/Guatemala" };
+  const charts = [], invoices = [];
+  const roleCodes = ["COMPANY_ADMIN"];
+  const permissions = ["dispatch.view", "invoice.view", "batch.view"];
+  const { default: page } = component("app/(dashboard)/page.tsx", {
+    react: { Suspense: "Suspense" },
+    "next/navigation": { redirect: href => { throw Object.assign(new Error("redirect"), { href }); } },
+    "@/components/feedback/empty-state": { EmptyState: "EmptyState" },
+    "@/features/dashboard/components/dashboard-skeleton": { DashboardSkeleton: "DashboardSkeleton" },
+    "@/features/dashboard/components/project-dashboard": { ProjectDashboard: "ProjectDashboard" },
+    "@/features/dashboard/components/reinvoicing-aging-chart": { ReinvoicingAgingChart: "ReinvoicingAgingChart" },
+    "@/features/dashboard/details": details,
+    "@/features/dashboard/queries": { getProjectDashboard: async (id, timezone) => { charts.push([id, timezone]); return { timezone }; } },
+    "@/features/dashboard/reinvoicing-aging-queries": { getReinvoicingAging: async id => { invoices.push(id); return {}; } },
+    "@/features/auth/queries": { requireActiveProfile: async () => ({ id: "user" }) },
+    "@/features/projects/queries": {
+      getProjectContext: async () => ({ status: "ready", activeProject: active, roleCodes, permissions }),
+    },
+    "@/features/projects/access-policy": access,
+  });
+  const filters = { weeklyProject: "project-b", reinvoicingPointProject: "project-b" };
+  const tree = await page({ searchParams: Promise.resolve(filters) });
+  const content = tree.props.children;
+  const dashboard = await content.type(content.props);
+  assert.equal(dashboard.props.project.id, active.id);
+  const agingChart = dashboard.props.reinvoicing.props.children;
+  assert.equal((await agingChart.type(agingChart.props)).props.timezone, active.timezone);
+  assert.deepEqual(charts, [[active.id, active.timezone]]);
+  assert.deepEqual(invoices, [active.id]);
+});
+
+test("los indicadores reutilizan las rutas existentes y solo el administrador abre los enlaces antiguos", async () => {
   for (const view of Object.keys(details.DASHBOARD_DETAILS)) {
     const url = new URL(details.dashboardDetailHref("project-a", view), "http://localhost");
     assert.equal(url.pathname, details.dashboardDestination(view));
     assert.equal(url.searchParams.get("dashboard"), view);
   }
+  let roleCodes = ["COMPANY_ADMIN"];
   const { default: page } = component("app/(dashboard)/dashboard/details/page.tsx", {
     "next/navigation": { redirect: href => { throw Object.assign(new Error("redirect"), { href }); } },
     "@/components/feedback/empty-state": { EmptyState: "EmptyState" },
     "@/features/auth/queries": { requireActiveProfile: async () => ({ id: "user" }) },
-    "@/features/projects/queries": { getProjectContext: async () => ({ status: "ready", activeProject: { id: "project-a" }, roleCodes: ["PURCHASING"], permissions: ["dispatch.view", "invoice.view", "batch.view"] }) },
+    "@/features/projects/queries": { getProjectContext: async () => ({ status: "ready", activeProject: { id: "project-a" }, roleCodes, permissions: ["dispatch.view", "invoice.view", "batch.view"] }) },
     "@/features/dashboard/details": details,
+    "@/features/projects/access-policy": access,
   });
   assert.equal((await page({ searchParams: Promise.resolve({ project: "other", view: "reinvoicing" }) })).type, "EmptyState");
   await assert.rejects(page({ searchParams: Promise.resolve({ project: "project-a", view: "reinvoicing", batch: "batch" }) }), error => error.href === "/reconciliation?project=project-a&dashboard=reinvoicing&batch=batch");
+  roleCodes = ["PURCHASING"];
+  assert.equal((await page({ searchParams: Promise.resolve({ project: "project-a", view: "reinvoicing" }) })).props.title, "Sin acceso a este detalle");
+});
+
+test("los enlaces del dashboard a otro proyecto mantienen los filtros tras confirmar el cambio", async () => {
+  const project = "project-b";
+  const target = details.dashboardDetailHref(project, "receivedDay", { date: "2026-11-17" });
+  assert.equal(details.dashboardNavigationTarget(project, target), target);
+  for (const invalid of ["https://host.example", "//host.example", "/platform", target.replace(project, "project-a"), target.replace("/dispatches", "/reconciliation")]) {
+    assert.equal(details.dashboardNavigationTarget(project, invalid), null);
+  }
+
+  let selectedRoles = ["COMPANY_ADMIN"];
+  const { default: page } = component("app/(dashboard)/dashboard/details/page.tsx", {
+    "@/components/feedback/empty-state": { EmptyState: "EmptyState" },
+    "next/navigation": { redirect: () => assert.fail("El proyecto activo solo cambia con confirmación") },
+    "@/features/auth/queries": { requireActiveProfile: async () => ({ id: "user" }) },
+    "@/features/dashboard/details": details,
+    "@/features/projects/access-policy": access,
+    "@/features/projects/queries": {
+      getProjectContext: async () => ({ status: "ready", activeProject: { id: "project-a" }, roleCodes: ["COMPANY_ADMIN"], dashboardProjectIds: ["project-a", project] }),
+      getOperationalProjectAccessForProject: async () => ({ project: { id: project, name: "Proyecto B" }, roleCodes: selectedRoles }),
+    },
+  });
+  const input = { searchParams: Promise.resolve({ project, target }) };
+  const confirmation = await page(input);
+  assert.equal(confirmation.props.title, "Abrir detalle en Proyecto B");
+  assert.equal(confirmation.props.action.props.target, target);
+  selectedRoles = ["PURCHASING"];
+  assert.equal((await page(input)).props.title, "Sin acceso a este detalle");
 });
 
 test("el filtro del indicador valida rol, proyecto, destino y lote antes de mostrar registros", async () => {
@@ -244,9 +335,15 @@ test("el filtro del indicador valida rol, proyecto, destino y lote antes de most
       { id: "g2", kind: "guide", href: "/dispatches/d1", groups: ["receivedMonth"], batchIds: [] },
     ] }; } },
   });
-  const context = { activeProject: { id: "project-a", name: "ACOAT" }, roleCodes: ["PURCHASING"], permissions: ["dispatch.view", "invoice.view", "batch.view"] };
+  const context = { activeProject: { id: "project-a", name: "ACOAT" }, roleCodes: ["COMPANY_ADMIN"], permissions: ["dispatch.view", "invoice.view", "batch.view", "programming.view"] };
   const params = { project: "project-a", dashboard: "reinvoicing", batch: "batch" };
   assert.equal((await getDashboardListScope(params, { ...context, roleCodes: ["SUPERVISOR"] }, "/reconciliation")).status, "error");
+  for (const role of ["PURCHASING", "RESIDENT", "PLATFORM_ADMIN"]) {
+    const restricted = { ...context, roleCodes: [role] };
+    assert.equal((await getDashboardListScope(params, restricted, "/reconciliation")).status, "error");
+    assert.equal((await getDashboardListScope({ project: "project-a", dashboard: "today" }, restricted, "/programming")).status, "error");
+    assert.equal((await getDashboardListScope({}, restricted, "/programming")).status, "none");
+  }
   assert.equal((await getDashboardListScope({ ...params, project: "other" }, context, "/reconciliation")).status, "error");
   assert.equal((await getDashboardListScope(params, context, "/dispatches")).status, "error");
   assert.equal(calls, 0);

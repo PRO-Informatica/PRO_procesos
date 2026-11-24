@@ -10,7 +10,7 @@ export default async function BatchesPage() {
   const context = await getProjectContext(profile.id);
   if (context.status === "error") throw new Error(context.message);
   if (!context.activeProject) {
-    return <div className="mx-auto max-w-3xl"><EmptyState title="No tienes un proyecto operacional" description="Selecciona un proyecto antes de consultar sus lotes semanales." /></div>;
+    return <div className="mx-auto max-w-3xl"><EmptyState title="No tienes un proyecto operacional" description="Selecciona un proyecto antes de consultar sus lotes." /></div>;
   }
   if (!canAccessOperationalSection(context.roleCodes, "/batches") || !context.permissions.includes("batch.view")) {
     return <div className="mx-auto max-w-3xl"><EmptyState title="Sin acceso a lotes" description="Tu rol actual no incluye batch.view para este proyecto." /></div>;

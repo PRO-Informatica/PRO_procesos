@@ -313,7 +313,7 @@ function buildRoleAssignments(
       roleName: role?.name ?? "Rol no disponible",
       assignedAt: assignment.assigned_at,
       revokedAt: assignment.revoked_at,
-      active: assignment.revoked_at === null,
+      active: assignment.revoked_at === null && role?.active === true,
     };
   });
 }

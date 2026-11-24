@@ -24,6 +24,10 @@ export default async function DashboardLayout({
   const hasOperationalAccess = projectContext.status === "ready";
   const unreadNotifications = projectContext.status === "ready" && projectContext.activeProject && canAccessOperationalSection(projectContext.roleCodes, "/notifications")
     ? await getUnreadNotificationCount({ projectId: projectContext.activeProject.id, projectName: projectContext.activeProject.name, timezone: projectContext.activeProject.timezone, userId: profile.id, permissions: projectContext.permissions })
+        .catch((error: unknown) => {
+          console.error("No fue posible cargar el contador de notificaciones.", error);
+          return 0;
+        })
     : 0;
 
   if (platformAdmin && projectContext.status === "empty") {

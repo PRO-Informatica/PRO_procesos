@@ -90,7 +90,7 @@ export type DispatchReportSummary = Pick<GuideReportRow,
   "programmingCode" | "scheduledAt" | "timezone" | "orderNumber" | "batchCode" |
   "receivedQuantity" | "unitCode" | "guideCount" | "incidentCount" |
   "castingElements" | "castingElementLabel" | "trucks" | "laboratoryLabel" |
-  "completedByName" | "dispatchStatus" | "billingComplete" | "reconciliationStatus" | "serviceReconciliation" | "difference"
+  "completedByName" | "dispatchStatus" | "physicalResult" | "billingComplete" | "reconciliationStatus" | "serviceReconciliation" | "difference"
 > & {
   productInvoice: Pick<ReportInvoice, "number" | "total" | "currency" | "extractionStatus"> | null;
   serviceInvoice: Pick<ReportInvoice, "number" | "total" | "currency" | "extractionStatus"> | null;

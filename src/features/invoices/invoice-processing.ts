@@ -31,6 +31,7 @@ export type InvoiceProcessingContext = DispatchInvoiceIdentity & {
   projectAddress: string | null;
   projectAdditionalAddresses?: readonly string[];
   accountingPeriod: string;
+  accountingEnd?: string;
   projectTimezone: string;
   expectedQuantity: number | null;
   expectedUnitCode: string | null;
@@ -210,6 +211,7 @@ export function processExtractedInvoice(
   }
   const period = evaluateInvoicePeriod({
     invoiceDate: extracted.invoice_date!, accountingPeriod: context.accountingPeriod,
+    accountingEnd: context.accountingEnd,
     receivedDate: projectCalendarDate(context.projectTimezone),
   });
   const periodValid = period.valid;
@@ -244,7 +246,7 @@ export function processExtractedInvoice(
   const criticalErrors = [
     !validations.product_identity_valid && "El código y la referencia de concreto de la factura no coinciden con los productos verificables de las guías o programación del despacho.",
     !validations.service_pca_valid && "La factura de Servicio requiere un Producto validado del mismo despacho, guardado o incluido en esta carga, y el mismo PCA completo.",
-    !periodValid && "La factura está fuera del mes del lote y del plazo de cinco días hábiles de gracia para el mes anterior.",
+    !periodValid && "La factura queda fuera de los meses del lote y del plazo de cinco días hábiles de gracia para el mes anterior.",
     !validations.type_valid && "El tipo detectado no coincide con el espacio seleccionado.",
     !validations.project_valid && "La Dirección de Envío no corresponde a la Dirección exacta de Obra del proyecto.",
     !validations.supplier_valid && "El emisor no corresponde al proveedor del despacho.",

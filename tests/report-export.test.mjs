@@ -101,6 +101,8 @@ test("el estado global del despacho solo muestra Completado cuando está concili
   );
   assert.equal(reportDispatchProcessStatus("COMPLETED", "RECONCILED", false), "PENDING_RECONCILIATION");
   assert.equal(reportDispatchProcessStatus("COMPLETED", "RECONCILED"), "PENDING_RECONCILIATION");
+  assert.equal(reportDispatchProcessStatus("COMPLETED", "NOT_STARTED"), "PENDING_RECONCILIATION");
+  assert.equal(reportDispatchProcessStatus("COMPLETED", null), "PENDING_RECONCILIATION");
   assert.equal(
     reportDispatchProcessStatus("IN_EXECUTION", "RECONCILED"),
     "IN_EXECUTION",

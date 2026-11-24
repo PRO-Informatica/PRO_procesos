@@ -13,11 +13,11 @@ import {
 } from "recharts";
 import Link from "next/link";
 import { motion, useInView, useReducedMotion } from "motion/react";
-import { useId, useRef, useState } from "react";
+import { useId, useRef } from "react";
 import { motionTokens } from "@/lib/motion/tokens";
 import { formatQuantity } from "../formatters";
 import { dashboardDetailHref } from "../details";
-import type { DashboardBatchReconciliation, DashboardWeekDay } from "../types";
+import type { DashboardReconciliationTotals, DashboardWeekDay } from "../types";
 import styles from "./dashboard-charts.module.css";
 
 const tooltipStyle = {
@@ -119,14 +119,14 @@ export function WeeklyVolumeChart({ days, projectId }: { days: DashboardWeekDay[
   );
 }
 
-const batchStatusSeries = [
+const reconciliationStatusSeries = [
   { key: "pendingInvoices", label: "Carga de factura", shortLabel: "Por cargar" },
   { key: "pendingReconciliation", label: "Pendiente de conciliación", shortLabel: "Por conciliar" },
   { key: "reinvoicing", label: "Refacturación", shortLabel: "Refacturación" },
   { key: "reconciled", label: "Conciliados", shortLabel: "Conciliados" },
 ] as const;
 
-function BatchStatusStat({
+function ReconciliationStatusStat({
   label,
   value,
   tone = "default",
@@ -153,36 +153,21 @@ function BatchStatusStat({
   );
 }
 
-export function BatchReconciliationChart({
-  batches,
+export function ProjectReconciliationChart({
+  totals,
   projectId,
+  projectName,
 }: {
-  batches: DashboardBatchReconciliation[];
+  totals: DashboardReconciliationTotals;
   projectId: string;
+  projectName: string;
 }) {
   const reduceMotion = useReducedMotion();
-  const [selectedBatchId, setSelectedBatchId] = useState(
-    () => batches.at(-1)?.batchId ?? "",
-  );
-  const selectedBatch =
-    batches.find((batch) => batch.batchId === selectedBatchId) ?? batches.at(-1);
-
-  if (!selectedBatch) {
-    return (
-      <div>
-        <h2 className="font-semibold text-foreground">Conciliación por lote</h2>
-        <div className="mt-5 grid min-h-52 place-items-center rounded-lg border border-dashed border-border bg-muted/25 px-4 text-center text-sm text-foreground-muted">
-          Sin lotes disponibles para consultar.
-        </div>
-      </div>
-    );
-  }
-
-  const statusData = batchStatusSeries.map((item) => ({
+  const statusData = reconciliationStatusSeries.map((item) => ({
     name: item.shortLabel,
     fullName: item.label,
-    value: selectedBatch[item.key],
-    href: dashboardDetailHref(projectId, item.key, { batch: selectedBatch.batchId }),
+    value: totals[item.key],
+    href: dashboardDetailHref(projectId, item.key),
   }));
   const total = statusData.reduce((sum, item) => sum + item.value, 0);
 
@@ -194,36 +179,17 @@ export function BatchReconciliationChart({
       animate={{ opacity: 1 }}
       transition={{ duration: reduceMotion ? 0 : motionTokens.duration.route }}
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="font-semibold text-foreground">Conciliación por lote</h2>
-          <p className="mt-1 text-xs text-foreground-muted">
-            Estados del lote seleccionado
-          </p>
-        </div>
-        <label className="block sm:min-w-52">
-          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-foreground-muted">
-            Lote
-          </span>
-          <select
-            value={selectedBatch.batchId}
-            onChange={(event) => setSelectedBatchId(event.target.value)}
-            className="min-h-10 w-full rounded-lg border border-border bg-surface px-3 text-xs font-medium text-foreground outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15"
-            aria-label="Seleccionar lote para la gráfica de conciliación"
-          >
-            {[...batches].reverse().map((batch) => (
-              <option key={batch.batchId} value={batch.batchId}>
-                {batch.batchCode}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <h2 className="font-semibold text-foreground">Conciliación por proyecto</h2>
+      <p className="mt-1 text-xs text-foreground-muted">
+        Estados de los despachos del proyecto
+      </p>
 
-      <div
+      {total === 0 ? (
+        <p className="mt-4 rounded-lg border border-dashed border-border bg-muted/25 p-4 text-sm text-foreground-muted">Este proyecto aún no tiene despachos.</p>
+      ) : <div
         className="mt-4 h-56 w-full"
         role="group"
-        aria-label={`${selectedBatch.batchCode}: ${total} despachos distribuidos por estado de conciliación`}
+        aria-label={`${projectName}: ${total} despachos distribuidos por estado de conciliación`}
       >
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
@@ -256,21 +222,21 @@ export function BatchReconciliationChart({
               maxBarSize={42}
               radius={[5, 5, 0, 0]}
               isAnimationActive={false}
-              shape={(props: BarShapeProps) => <LinkedBar {...props} href={statusData[props.index].href} label={`Ver ${statusData[props.index].value} despachos en ${statusData[props.index].fullName} de ${selectedBatch.batchCode}`} />}
+              shape={(props: BarShapeProps) => <LinkedBar {...props} href={statusData[props.index].href} label={`Ver ${statusData[props.index].value} despachos en ${statusData[props.index].fullName} de ${projectName}`} />}
             >
               <LabelList dataKey="value" position="top" offset={9} fill="var(--foreground)" fontSize={12} fontWeight={600} formatter={(value) => Number(value) > 0 ? value : ""} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
-      </div>
+      </div>}
 
       <div className="mt-4 grid grid-cols-2 gap-2">
-        <BatchStatusStat label="Por cargar factura" value={selectedBatch.pendingInvoices} href={statusData[0].href} />
-        <BatchStatusStat label="Por conciliar" value={selectedBatch.pendingReconciliation} href={statusData[1].href} />
-        <BatchStatusStat label="Refacturación" value={selectedBatch.reinvoicing} tone="danger" href={statusData[2].href} />
-        <BatchStatusStat label="Conciliados" value={selectedBatch.reconciled} tone="success" href={statusData[3].href} />
+        <ReconciliationStatusStat label="Por cargar factura" value={totals.pendingInvoices} href={statusData[0].href} />
+        <ReconciliationStatusStat label="Por conciliar" value={totals.pendingReconciliation} href={statusData[1].href} />
+        <ReconciliationStatusStat label="Refacturación" value={totals.reinvoicing} tone="danger" href={statusData[2].href} />
+        <ReconciliationStatusStat label="Conciliados" value={totals.reconciled} tone="success" href={statusData[3].href} />
       </div>
-      <Link href={dashboardDetailHref(projectId, "orders", { batch: selectedBatch.batchId })} className="secondary-button mt-4 w-full text-xs">Ver despachos del lote</Link>
+      <Link href={dashboardDetailHref(projectId, "orders")} className="secondary-button mt-4 w-full text-xs">Ver despachos del proyecto</Link>
     </motion.div>
   );
 }

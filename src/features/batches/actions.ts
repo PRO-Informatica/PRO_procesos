@@ -16,7 +16,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 import { extractMixtoListoInvoicePdf } from "./mixto-listo-extractor";
-import { weeklyBatchPeriods } from "./period-policy";
+import { batchAccountingEnd, historicalBatchPeriod, projectCalendarDate, weeklyBatchPeriod } from "./period-policy";
 import { orderNumberFromMixtoListoPca } from "./mixto-listo-parser";
 import { batchInvoiceCanBeSaved } from "./invoice-upload-pairing";
 import type { BatchMutationState, InvoiceInspection, InvoiceType } from "./types";
@@ -57,7 +57,12 @@ function batchError(message: string) {
   if (error.includes("REMOVAL_REASON")) return "Indica un motivo válido para remover el despacho.";
   if (error.includes("OVERDUE_OPEN")) return "Hay un lote abierto cuya semana ya terminó. Ciérralo antes de crear otro lote.";
   if (error.includes("DESTINATION_CLOSED")) return "El lote siguiente ya está cerrado; revisa la secuencia de cierre antes de continuar.";
-  if (error.includes("MONTH_SEGMENT") || error.includes("MONDAY_TO_SUNDAY")) return "El período debe corresponder a la semana seleccionada, sin cruzar de mes.";
+  if (error.includes("HISTORICAL_RANGE")) return "Selecciona un rango en orden, con ambas fechas anteriores a hoy.";
+  if (error.includes("HISTORICAL_DISPATCH_DATE")) return "La fecha programada del despacho está fuera del rango del lote histórico.";
+  if (error.includes("HISTORICAL_PENDING")) return "Completa la conciliación de los despachos pendientes antes de cerrar el lote histórico.";
+  if (error.includes("LEGACY_PERIOD_REVIEW")) return "Esta semana tiene lotes del esquema anterior. Revisa sus períodos antes de continuar.";
+  if (error.includes("MONDAY_TO_SUNDAY")) return "El período semanal debe cubrir de lunes a domingo.";
+  if (error.includes("BATCH_CODE_REQUIRED")) return "Ingresa un código para el lote de hasta 80 caracteres.";
   if (error.includes("ALREADY_EXISTS") || error.includes("DUPLICATE")) return "Ya existe un lote para esa semana o código.";
   if (error.includes("PERMISSION_DENIED")) return "No tienes permiso para realizar esta operación.";
   return "No fue posible completar la operación del lote.";
@@ -65,7 +70,7 @@ function batchError(message: string) {
 
 function invoiceError(message: string) {
   const error = message.toUpperCase();
-  if (error.includes("INVOICE_ACCOUNTING_PERIOD")) return "La factura no corresponde al mes del lote o ya vencieron los cinco días hábiles de gracia para el mes anterior.";
+  if (error.includes("INVOICE_ACCOUNTING_PERIOD")) return "La factura queda fuera de los meses del lote o del plazo de cinco días hábiles para el mes anterior.";
   if (error.includes("NOT_COMPLETED")) return "El despacho debe estar completado para recibir facturas.";
   if (error.includes("ACTIVE_DISPATCH_INVOICE")) return "Ya existe una factura activa de ese tipo para el despacho.";
   if (error.includes("TYPE_MISMATCH")) return "El tipo detectado no coincide con el tipo de factura seleccionado.";
@@ -91,7 +96,7 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
   const admin = createAdminClient();
   const [dispatchResult, batchResult, projectResult, reconciliationResult] = await Promise.all([
     admin.from("dispatches").select("id, project_id, programming_id, supplier_id, order_number, real_volume, real_unit_code, status, result").eq("id", dispatchId).eq("project_id", projectId).maybeSingle(),
-    admin.from("batches").select("id, project_id, accounting_period").eq("id", batchId).eq("project_id", projectId).maybeSingle(),
+    admin.from("batches").select("id, project_id, accounting_period, period_end, period_kind").eq("id", batchId).eq("project_id", projectId).maybeSingle(),
     admin.from("projects").select("id, company_id, address, additional_addresses, billing_legal_name, billing_tax_id, timezone").eq("id", projectId).maybeSingle(),
     admin.from("dispatch_reconciliations").select("status, current_product_invoice_id, current_service_invoice_id, service_status").eq("dispatch_id", dispatchId).eq("project_id", projectId).maybeSingle(),
   ]);
@@ -132,6 +137,7 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
     projectAddress: projectResult.data.address,
     projectAdditionalAddresses: projectResult.data.additional_addresses ?? [],
     accountingPeriod: batchResult.data.accounting_period,
+    accountingEnd: batchAccountingEnd(batchResult.data.period_kind, batchResult.data.period_end),
     projectTimezone: projectResult.data.timezone,
     expectedQuantity: quantityBasis.quantity,
     expectedUnitCode: quantityBasis.unitCode,
@@ -146,16 +152,23 @@ async function invoiceContext(projectId: string, batchId: string, dispatchId: st
 
 export async function createBatchAction(_previous: BatchMutationState, formData: FormData): Promise<BatchMutationState> {
   const projectId = value(formData, "projectId");
-  if (!UUID.test(projectId) || !(await authorize(projectId, "batch.create"))) return { status: "error", message: "No tienes permiso para crear lotes." };
-  const referenceDate = value(formData, "referenceDate");
-  let split: boolean;
-  try { split = weeklyBatchPeriods(referenceDate).length === 2; }
-  catch { return { status: "error", message: "Selecciona una fecha válida para la semana." }; }
-  if (split && value(formData, "confirmSplit") !== "yes") return { status: "error", message: "Confirma expresamente la creación de los dos lotes separados por mes." };
-  const { data, error } = await (await createClient()).rpc("create_weekly_batches", { p_project_id: projectId, p_code: value(formData, "code"), p_reference_date: referenceDate });
+  const access = UUID.test(projectId) ? await authorize(projectId, "batch.create") : null;
+  if (!access) return { status: "error", message: "No tienes permiso para crear lotes." };
+  const historical = value(formData, "periodKind") === "HISTORICAL";
+  let period;
+  try {
+    period = historical
+      ? historicalBatchPeriod(value(formData, "periodStart"), value(formData, "periodEnd"), projectCalendarDate(access.scope.project.timezone))
+      : weeklyBatchPeriod(value(formData, "referenceDate"));
+  } catch {
+    return { status: "error", message: historical ? batchError("HISTORICAL_RANGE") : "Selecciona una fecha válida para la semana." };
+  }
+  const { data, error } = await (await createClient()).rpc(historical ? "create_historical_batch" : "create_batch", {
+    p_project_id: projectId, p_code: value(formData, "code"), p_period_start: period.start, p_period_end: period.end,
+  });
   if (error || !data) return { status: "error", message: batchError(error?.message ?? "BATCH_CREATE_FAILED") };
-  refresh(String(data.batch_id));
-  return { status: "success", message: split ? "Los dos lotes se crearon correctamente." : "Lote creado correctamente.", batchId: String(data.batch_id) };
+  refresh(String(data));
+  return { status: "success", message: "Lote creado correctamente.", batchId: String(data) };
 }
 
 export async function addDispatchToBatchAction(_previous: BatchMutationState, formData: FormData): Promise<BatchMutationState> {
@@ -192,12 +205,12 @@ export async function removeDispatchFromBatchAction(_previous: BatchMutationStat
 export async function rolloverBatchAction(_previous: BatchMutationState, formData: FormData): Promise<BatchMutationState> {
   const projectId = value(formData, "projectId"), batchId = value(formData, "batchId");
   if (![projectId, batchId].every((id) => UUID.test(id)) || !(await authorize(projectId, "batch.modify"))) return { status: "error", message: "No tienes permiso para cerrar el lote." };
-  const { error } = await (await createClient()).rpc("rollover_weekly_batch", { p_batch_id: batchId });
+  const { data, error } = await (await createClient()).rpc("rollover_weekly_batch", { p_batch_id: batchId });
   if (error) return { status: "error", message: batchError(error.message) };
   refresh(batchId);
   revalidatePath("/notifications");
   revalidatePath("/(dashboard)", "layout");
-  return { status: "success", message: "Semana cerrada y pendientes trasladados al siguiente lote." };
+  return { status: "success", message: data ? "Lote cerrado. Los despachos pendientes continúan en el siguiente lote." : "Lote histórico cerrado correctamente." };
 }
 
 export async function inspectDispatchInvoicePdf(projectId: string, batchId: string, dispatchId: string, requestedType: InvoiceType, formData: FormData): Promise<InvoiceInspection> {

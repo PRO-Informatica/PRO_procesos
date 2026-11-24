@@ -21,7 +21,7 @@ function fixture({ guideCount = 2, billingComplete = false, quotedMetadata = fal
   const calls = [];
   const tables = {
     programming: [{ id: "program-a", project_id: "project-a", scheduled_at: "2026-12-01T05:00:00Z", casting_element: "PILES", unit_code: "M3" }, { id: "program-b", project_id: "project-b", scheduled_at: "2026-11-03T13:00:00Z" }],
-    dispatches: [{ id: "empty", project_id: "project-a", programming_id: "program-a", supplier_id: "supplier", status: "IN_EXECUTION", real_volume: 0 }, { id: "full", project_id: "project-a", programming_id: "program-a", supplier_id: "supplier", status: "COMPLETED", completed_by: "validator", real_volume: 7, real_unit_code: "M3" }, { id: "foreign", project_id: "project-b", programming_id: "program-b" }],
+    dispatches: [{ id: "empty", project_id: "project-a", programming_id: "program-a", supplier_id: "supplier", status: "IN_EXECUTION", real_volume: 0 }, { id: "full", project_id: "project-a", programming_id: "program-a", supplier_id: "supplier", status: "COMPLETED", result: "DISPATCHED", completed_by: "validator", real_volume: 7, real_unit_code: "M3" }, { id: "foreign", project_id: "project-b", programming_id: "program-b" }],
     dispatch_guides: Array.from({ length: guideCount }, (_, i) => ({ id: `guide-${String(i).padStart(6, "0")}`, project_id: "project-a", dispatch_id: "full", guide_number: `000${i}`, guide_date: "2026-10-15", details: { truck: i % 2 ? "189" : "183" }, laboratory_applied: i === 0 })),
     dispatch_guide_lines: Array.from({ length: guideCount }, (_, i) => ({ id: `line-${i}`, project_id: "project-a", guide_id: `guide-${String(i).padStart(6, "0")}`, position: 1, catalog_type: "PRODUCT", catalog_reference: "CONF5001", quantity: 4, unit_code: "M3" })),
     dispatch_incidents: [{ id: "incident", project_id: "project-a", dispatch_id: "full" }],
@@ -92,6 +92,9 @@ test("consulta por despachos, conserva los vacíos y carga sus resúmenes y guí
   const full = data.dispatches[1];
   assert.equal(full.guides.length, 2);
   assert.equal(full.summary.receivedQuantity, 7);
+  assert.equal(full.summary.physicalResult, "DISPATCHED");
+  assert.equal(data.dispatches[0].summary.physicalResult, "PENDING");
+  assert.ok(f.calls.find(call => call.table === "dispatches")?.select.split(", ").includes("result"));
   assert.equal(full.summary.billingComplete, false);
   assert.equal(full.summary.batchCode, "LOT-1");
   assert.equal(full.summary.incidentCount, 1);

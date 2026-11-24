@@ -109,7 +109,7 @@ test("Dashboard desambigua la pertenencia del despacho al lote", () => {
   assert.doesNotMatch(dashboardQueries, /status, batch_dispatches\(id, removed_at\)/u);
 });
 
-test("Dashboard agrupa los cuatro estados de conciliación por lote", () => {
+test("Dashboard agrupa los cuatro estados de conciliación por proyecto", () => {
   assert.match(dashboardQueries, /dispatch_id, status, service_status, current_product_invoice_id, current_service_invoice_id/u);
   assert.match(
     dashboardQueries,
@@ -119,12 +119,11 @@ test("Dashboard agrupa los cuatro estados de conciliación por lote", () => {
   assert.match(dashboardQueries, /pendingReconciliation:/u);
   assert.match(dashboardQueries, /reinvoicing:/u);
   assert.match(dashboardQueries, /reconciled:/u);
-  assert.match(dashboardCharts, /BatchReconciliationChart/u);
-  assert.match(dashboardCharts, /Conciliación por lote/u);
-  assert.match(dashboardCharts, /Seleccionar lote para la gráfica de conciliación/u);
+  assert.match(dashboardCharts, /ProjectReconciliationChart/u);
+  assert.match(dashboardCharts, /Conciliación por proyecto/u);
   assert.match(dashboardCharts, /Por cargar factura/u);
   assert.match(dashboardCharts, /Por conciliar/u);
-  assert.match(projectDashboard, /BatchReconciliationChart/u);
+  assert.match(projectDashboard, /ProjectReconciliationChart/u);
 });
 
 test("conciliación usa Volumen Real y conserva intentos/refacturación", () => {
