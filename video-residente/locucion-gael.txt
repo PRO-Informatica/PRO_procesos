@@ -1,0 +1,15 @@
+En este tutorial recorrerás el flujo completo en obra: programar, iniciar el registro, registrar guías y cerrar. Primero confirma tu proyecto y entra a Programación.
+
+Para programar varios pedidos, abre Carga masiva, selecciona tu Excel y pulsa Vista previa. Revisa que todos los campos estén correctos y que no haya ningún inconveniente. Si algo está mal, corrígelo aquí, antes de cargar: la fecha, la hora, o quita la fila que no va. Luego, pulsa Cargar programaciones.
+
+En Kanban ves cada pedido por estado. Si cambió la hora, abre la tarjeta, entra a Editar programación, indica el motivo y guarda. Si ya no se necesita, cancélalo con su motivo. Cuando llegue el camión, arrástralo a En ejecución.
+
+Ya en Despachos, busca la programación por su código y pulsa Inicio de Registro. Revisa la hora de llegada y el receptor, pulsa Iniciar Registro, y verás el detalle del despacho en ejecución.
+
+Ahora, las guías. Dentro del despacho, pulsa Agregar guía, sube tus fotos o un PDF y usa el Escaneo masivo. Confirma el tipo de cada página. Después compara cada guía con su foto: número, pedido, horarios del camión y cantidades. Corrige lo que no coincida y completa a mano los campos que faltan, como las observaciones y el registro del residente. Marca la confirmación y guarda. Repite hasta que PRO confirme que todo quedó guardado.
+
+Con las guías guardadas, revisa Pedido, Control Operación: el resultado, el número de pedido y que el volumen real coincida con el total según las guías.
+
+¿Hubo un problema en obra? Regístralo en Incidencias: tipo, responsabilidad, cobro y notas. Ojo: si el resultado es No despachado, necesitas al menos una incidencia para finalizar.
+
+Para terminar, verifica la hora de salida y la evidencia. Pulsa Finalizar despacho y confirma. Cuando veas Despacho completo, tu operación está cerrada.

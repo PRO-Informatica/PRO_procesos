@@ -1,0 +1,109 @@
+<template>
+<style>
+#root{position:absolute;inset:0;background:#111216;font-family:Inter,sans-serif;color:#fff;overflow:hidden}
+.glow{position:absolute;inset:0;background:radial-gradient(900px 520px at 88% -8%,rgba(237,28,46,.24),transparent 60%),radial-gradient(760px 520px at -6% 112%,rgba(237,28,46,.14),transparent 60%)}
+.chip{position:absolute;left:210px;top:56px;display:flex;gap:16px;align-items:center;font-weight:800;font-size:26px;letter-spacing:.1em;opacity:0}
+.chip b{background:#ED1C2E;color:#fff;border-radius:8px;padding:4px 14px;font-size:24px;letter-spacing:.02em}
+.logo{position:absolute;right:210px;top:44px;width:150px;height:75px;opacity:0}
+.demo-tag{position:absolute;right:400px;top:70px;font-size:17px;font-weight:600;color:#9aa0aa;letter-spacing:.02em;opacity:0}
+.frame{position:absolute;left:210px;top:130px;width:1500px;height:822px;border-radius:18px;overflow:hidden;background:#fff;box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 2px rgba(255,255,255,.1);opacity:0}
+.stage{position:absolute;left:0;top:0;transform-origin:0 0}
+.stage img.base{position:absolute;left:0;top:0;display:block}
+.red{position:absolute;background:#fff;display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700;color:#111216;z-index:6}
+.red i{display:block;width:28px;height:28px;border-radius:50%;background:#FDE8EA;color:#A80F1E;font-style:normal;text-align:center;line-height:28px;font-size:13px}
+.red.dim{background:#7f7f7f;color:#0b0c0e}.red.dim i{background:#7e7475;color:#540f15}
+.hl{position:absolute;border:4px solid #ED1C2E;border-radius:10px;box-shadow:0 0 0 7px rgba(237,28,46,.22);opacity:0;z-index:20}
+.cur{position:absolute;left:0;top:0;width:34px;height:34px;z-index:60;opacity:0}
+.cur b{display:block;width:34px;height:34px;transform-origin:2px 2px;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='34' height='34' viewBox='0 0 34 34'><path d='M2 2 L2 26 L9 20 L14 31 L19 29 L14 18 L23 18 Z' fill='%23111216' stroke='white' stroke-width='2' stroke-linejoin='round'/></svg>") no-repeat;filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}
+.rip{position:absolute;left:-22px;top:-22px;width:44px;height:44px;border-radius:50%;border:4px solid #ED1C2E;opacity:0;z-index:55}
+.cap{position:absolute;left:0;right:0;top:972px;text-align:center;height:60px}
+.cap span{position:absolute;left:50%;top:0;display:block;white-space:nowrap;background:rgba(17,18,22,.94);border:2px solid #ED1C2E;color:#fff;font-size:30px;font-weight:700;padding:8px 28px;border-radius:40px;opacity:0}
+.wipe{position:absolute;inset:0;background:#ED1C2E;z-index:90}
+.pro-app{position:absolute;transform-origin:0 0;font-family:var(--font-sans);color:var(--foreground);z-index:30;-webkit-font-smoothing:antialiased;line-height:1.5}
+.pro-app .fixed{position:absolute}
+.pro-app .hid{opacity:0}
+
+.stage{width:1482px;height:812px}
+.stage img.base{width:1482px;height:812px}
+
+</style>
+<div id="root" data-composition-id="s6" data-width="1920" data-height="1080">
+  <div class="glow"></div>
+  <div id="s6-chip" class="chip"><b>05</b>PEDIDO / CONTROL OPERACIÓN</div><img id="s6-logo" class="logo" src="assets/pro-logo.png">
+  <div id="s6-frame" class="frame">
+    <div id="s6-stage" class="stage">
+      <img id="s6-img0" class="base" src="assets/07-detalle-guias.jpg" width="1482" height="812">
+      <div class="red" data-layout-allow-overlap style="left:1296px;top:10px;width:166px;height:40px"><i>R</i>Residente</div>
+      <img id="s6-img1" class="base" src="assets/08-control-operacion.jpg" width="1482" height="812" style="opacity:0">
+      <div id="s6-hl1" class="hl" style="left:296px;top:531px;width:168px;height:26px"></div><div id="s6-hl7" class="hl" style="left:288px;top:300px;width:200px;height:28px"></div><div id="s6-hl2" class="hl" style="left:290px;top:348px;width:220px;height:66px"></div><div id="s6-hl3" class="hl" style="left:508px;top:348px;width:220px;height:66px"></div><div id="s6-hl5" class="hl" style="left:944px;top:348px;width:140px;height:50px"></div><div id="s6-hl6" class="hl" style="left:1166px;top:348px;width:212px;height:116px"></div>
+      <div id="s6-cur" class="cur"><b></b></div>
+      <div id="s6-rip" class="rip"></div>
+    </div>
+  </div>
+  <div class="cap"><span id="s6-cap1">Total según guías</span><span id="s6-cap2">Pedido / Control Operación</span><span id="s6-cap3">Resultado y número de pedido</span><span id="s6-cap4">Volumen real = total según guías</span></div>
+
+  <div id="s6-wipe" class="wipe" data-layout-allow-overflow></div>
+</div>
+<script>
+
+const W=1482, H=812, S=1500/W, K=W/2008;
+const $=(s)=>document.querySelector(s), $$=(s)=>[...document.querySelectorAll(s)];
+const st=$('#s6-stage'), R=st.closest('[data-composition-id]')||document, cur=$('#s6-cur'), curb=$('#s6-cur b'), rip=$('#s6-rip');
+gsap.set(st,{scale:S,x:0,y:0,transformOrigin:'0 0'});
+gsap.set(cur,{x:700,y:300});
+$$('#s6-stage .pro-app').forEach(e=>gsap.set(e,{scale:K,transformOrigin:'0 0'}));
+const tl=gsap.timeline({paused:true});
+// RM: anclas [tiempo anterior, tiempo en la pista actual] para alinear cada acción con la palabra que la nombra.
+const RM=[[0, 0], [1.61, 1.6], [4.13, 3.98], [5.1, 4.97], [7.75, 6.37], [9.95, 8.01], [11.2, 9.4]];
+if(RM){const m=(t)=>{let i=0;while(i<RM.length-2&&t>RM[i+1][0])i++;const [a0,b0]=RM[i],[a1,b1]=RM[i+1];return b0+(t-a0)*(b1-b0)/(a1-a0);};
+  ['to','from','fromTo','set','call'].forEach(k=>{const o=tl[k].bind(tl);tl[k]=(...a)=>{const j=a.length-1;if(typeof a[j]==='number')a[j]=Math.max(0,m(a[j]));return o(...a);};});}
+// Positions are measured lazily (when each tween starts), in stage pixels, so they follow the real layout.
+// Elements are resolved NOW (the runtime scopes selectors only while this script runs);
+// positions are measured lazily, in layout coordinates, when each tween starts.
+const E=(a)=>typeof a==='string'?$(a):a;
+const P=(el)=>{let x=el.offsetWidth/2,y=el.offsetHeight/2,e=el;
+  while(e&&e!==st){const g=(p)=>Number(gsap.getProperty(e,p))||0, sc=(e.classList.contains('pro-app')?(Number(gsap.getProperty(e,'scale'))||1):1);
+    x=e.offsetLeft+g('x')+g('xPercent')*e.offsetWidth/100+x*sc; y=e.offsetTop+g('y')+g('yPercent')*e.offsetHeight/100+y*sc; e=e.offsetParent;}
+  return{cx:x,cy:y};};
+// POS: positions baked by the build (recorded frame by frame in a real browser), so HyperFrames never has to
+// measure layout while a scene is hidden. Without POS they are measured lazily and recorded in window.__rec.
+const POS=[]; let __pi=0; window.__rec=window.__rec||{}; const REC=window.__rec['s6']=[];
+const ptf=(a)=>{const i=__pi++;if(Array.isArray(a))return()=>({cx:a[0],cy:a[1]});if(POS&&POS[i]){const v=POS[i];return()=>v;}const el=E(a);return()=>{const v=P(el);REC[i]=v;return v;};};
+const lz=(fn)=>{const i=__pi++;if(POS&&POS[i]){const v=POS[i].v;return()=>v;}return()=>{const v=fn();REC[i]={v};return v;};};
+const mv=(a,t,d=.8)=>{const f=ptf(a);tl.to(cur,{x:()=>f().cx,y:()=>f().cy,duration:d,ease:'power2.inOut'},t);};
+const ck=(a,t)=>{const f=ptf(a);tl.set(rip,{x:()=>f().cx,y:()=>f().cy},t).fromTo(rip,{opacity:.95,scale:.3},{opacity:0,scale:2,duration:.55,ease:'power2.out',immediateRender:false},t).fromTo(curb,{scale:1},{scale:.8,duration:.08,yoyo:true,repeat:1,immediateRender:false},t);};
+const go=(a,t,d=.7)=>{mv(a,t-d-.08,d);ck(a,t);};
+const hl=(s,t,d)=>{tl.fromTo(s,{opacity:0,scale:.94},{opacity:1,scale:1,duration:.35,ease:'back.out(2)',immediateRender:false},t).to(s,{opacity:0,duration:.3},t+d);};
+const zm=(a,z,t,d=1)=>{const s=S*z,f=ptf(a);tl.to(st,{scale:s,x:()=>Math.min(0,Math.max(1500-W*s,750-f().cx*s)),y:()=>Math.min(0,Math.max(822-H*s,411-f().cy*s)),duration:d,ease:'power2.inOut'},t).to(cur,{scale:1/z,duration:d,ease:'power2.inOut'},t);};
+const cap=(i,t,d)=>{const e='#s6-cap'+i;gsap.set(e,{xPercent:-50});tl.fromTo(e,{opacity:0,y:14},{opacity:1,y:0,duration:.35,ease:'power2.out',immediateRender:false},t).to(e,{opacity:0,duration:.3},t+d);};
+const ring=(s,t,d,c='237,28,46')=>{tl.fromTo(s,{boxShadow:`0 0 0 0px rgba(${c},0)`},{boxShadow:`0 0 0 4px rgba(${c},.5)`,duration:.3,immediateRender:false},t).to(s,{boxShadow:`0 0 0 0px rgba(${c},0)`,duration:.3},t+d);};
+const show=(s,t,d=.2)=>tl.to(s,{opacity:1,duration:d},t);
+const hide=(s,t,d=.2)=>tl.to(s,{opacity:0,duration:d},t);
+// Dialog motion from src/components/ui/dialog.tsx: overlay fades, panel opacity/y 10/scale .97 in 0.22 s.
+const dIn=(o,p,t)=>{tl.to(o,{opacity:1,duration:.18},t).fromTo(p,{opacity:0,y:10,scale:.97},{opacity:1,y:0,scale:1,duration:.22,ease:'power2.out',immediateRender:false},t);};
+const dOut=(o,p,t)=>{tl.to(p,{opacity:0,y:8,scale:.97,duration:.18},t).to(o,{opacity:0,duration:.18},t);};
+const sw=(s,i,t)=>{tl.set($$(s+'>*'),{opacity:(k)=>k===i?1:0},t);};
+const typeText=(s,txt,t,d)=>{const el=E(s),o={n:0};tl.to(o,{n:txt.length,duration:d,ease:'none',onUpdate:()=>{el.textContent=txt.slice(0,Math.round(o.n));}},t);};
+const offIn=(el,root)=>{let y=0;while(el&&el!==root){y+=el.offsetTop;el=el.offsetParent;}return y;};
+const scr=(inner,target,t,d=.6,m=24)=>{const ie=E(inner),te=typeof target==='number'?null:E(target),f=lz(()=>te?-(offIn(te,ie)-m):-target);tl.to(ie,{y:f,duration:d,ease:'power2.inOut'},t);};
+
+gsap.set('#s6-wipe',{xPercent:0});
+tl.to('#s6-wipe',{xPercent:101,duration:.55,ease:'power3.inOut'},0);
+tl.fromTo('#s6-frame',{opacity:0,y:30},{opacity:1,y:0,duration:.6,ease:'power3.out'},.25)
+  .fromTo('#s6-chip',{opacity:0,x:-24},{opacity:1,x:0,duration:.5,ease:'power3.out'},.45)
+  .fromTo('#s6-logo',{opacity:0},{opacity:1,duration:.5},.55)
+  .to(cur,{opacity:1,duration:.3},.9);
+
+
+// l = t - 84.8   (pantallas reales)
+zm([740,540],1.0,.0,.01);
+mv([380,542],.6,.7); hl('#s6-hl1',.6,1.6); cap(1,.6,1.8);                              // "Con las guías guardadas" (0.2–0.9)
+show('#s6-img1',1.7,.45); zm([800,400],1.2,1.75,.9); hl('#s6-hl7',2.0,1.5); cap(2,1.9,1.8);   // "revisa Pedido, Control Operación" (1.6–3.1)
+mv([400,390],3.2,.6); hl('#s6-hl2',3.9,1.2); cap(3,3.9,2.0);                           // "el resultado" (4.1)
+mv([617,390],4.8,.5); hl('#s6-hl3',5.0,1.3);                                           // "el número de pedido" (5.1–5.6)
+mv([1232,401],7.0,.8); hl('#s6-hl6',7.6,3.3); cap(4,7.6,3.4);                          // "que el volumen real (7.75)
+hl('#s6-hl5',9.6,1.3);                                                                 //  coincida con el total según las guías" (9.9–10.8)
+
+window.__timelines["s6"] = tl;
+</script>
+</template>

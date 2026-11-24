@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <!-- Estilos reales de PRO (globals.css + Tailwind compilado) para las pantallas reconstruidas -->
+    <link rel="stylesheet" href="assets/app/pro-app.css" />
+    <style>
+      /* El reinicio no toca .pro-app: ahí mandan las utilidades reales de Tailwind (están en @layer) */
+      *:not(.pro-app, .pro-app *) { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #111216; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="120" data-width="1920" data-height="1080">
+      <div id="s1" data-composition-id="s1" data-composition-src="compositions/s1.html" data-start="0" data-duration="11.1" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="s2" data-composition-id="s2" data-composition-src="compositions/s2.html" data-start="11.1" data-duration="20" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="s3" data-composition-id="s3" data-composition-src="compositions/s3.html" data-start="31.1" data-duration="15.3" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="s4" data-composition-id="s4" data-composition-src="compositions/s4.html" data-start="46.4" data-duration="11.7" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="s5" data-composition-id="s5" data-composition-src="compositions/s5.html" data-start="58.1" data-duration="28.7" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="s6" data-composition-id="s6" data-composition-src="compositions/s6.html" data-start="86.8" data-duration="9.4" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="s7" data-composition-id="s7" data-composition-src="compositions/s7.html" data-start="96.2" data-duration="12.8" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="s8" data-composition-id="s8" data-composition-src="compositions/s8.html" data-start="109" data-duration="11" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <audio id="narracion" class="clip" src="assets/locucion-gael.mp3" data-start="0" data-duration="118.91" data-track-index="2" data-volume="1"></audio>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

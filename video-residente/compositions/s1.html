@@ -1,0 +1,117 @@
+<template>
+<style>
+#root{position:absolute;inset:0;background:#111216;font-family:Inter,sans-serif;color:#fff;overflow:hidden}
+.glow{position:absolute;inset:0;background:radial-gradient(900px 520px at 88% -8%,rgba(237,28,46,.24),transparent 60%),radial-gradient(760px 520px at -6% 112%,rgba(237,28,46,.14),transparent 60%)}
+.chip{position:absolute;left:210px;top:56px;display:flex;gap:16px;align-items:center;font-weight:800;font-size:26px;letter-spacing:.1em;opacity:0}
+.chip b{background:#ED1C2E;color:#fff;border-radius:8px;padding:4px 14px;font-size:24px;letter-spacing:.02em}
+.logo{position:absolute;right:210px;top:44px;width:150px;height:75px;opacity:0}
+.demo-tag{position:absolute;right:400px;top:70px;font-size:17px;font-weight:600;color:#9aa0aa;letter-spacing:.02em;opacity:0}
+.frame{position:absolute;left:210px;top:130px;width:1500px;height:822px;border-radius:18px;overflow:hidden;background:#fff;box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 2px rgba(255,255,255,.1);opacity:0}
+.stage{position:absolute;left:0;top:0;transform-origin:0 0}
+.stage img.base{position:absolute;left:0;top:0;display:block}
+.red{position:absolute;background:#fff;display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700;color:#111216;z-index:6}
+.red i{display:block;width:28px;height:28px;border-radius:50%;background:#FDE8EA;color:#A80F1E;font-style:normal;text-align:center;line-height:28px;font-size:13px}
+.red.dim{background:#7f7f7f;color:#0b0c0e}.red.dim i{background:#7e7475;color:#540f15}
+.hl{position:absolute;border:4px solid #ED1C2E;border-radius:10px;box-shadow:0 0 0 7px rgba(237,28,46,.22);opacity:0;z-index:20}
+.cur{position:absolute;left:0;top:0;width:34px;height:34px;z-index:60;opacity:0}
+.cur b{display:block;width:34px;height:34px;transform-origin:2px 2px;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='34' height='34' viewBox='0 0 34 34'><path d='M2 2 L2 26 L9 20 L14 31 L19 29 L14 18 L23 18 Z' fill='%23111216' stroke='white' stroke-width='2' stroke-linejoin='round'/></svg>") no-repeat;filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}
+.rip{position:absolute;left:-22px;top:-22px;width:44px;height:44px;border-radius:50%;border:4px solid #ED1C2E;opacity:0;z-index:55}
+.cap{position:absolute;left:0;right:0;top:972px;text-align:center;height:60px}
+.cap span{position:absolute;left:50%;top:0;display:block;white-space:nowrap;background:rgba(17,18,22,.94);border:2px solid #ED1C2E;color:#fff;font-size:30px;font-weight:700;padding:8px 28px;border-radius:40px;opacity:0}
+.wipe{position:absolute;inset:0;background:#ED1C2E;z-index:90}
+.pro-app{position:absolute;transform-origin:0 0;font-family:var(--font-sans);color:var(--foreground);z-index:30;-webkit-font-smoothing:antialiased;line-height:1.5}
+.pro-app .fixed{position:absolute}
+.pro-app .hid{opacity:0}
+
+.stage{width:1451px;height:840px}
+.stage img.base{width:1451px;height:840px}
+
+</style>
+<div id="root" data-composition-id="s1" data-width="1920" data-height="1080">
+  <div class="glow"></div>
+  <div id="s1-chip" class="chip"><b>00</b>INICIO</div><img id="s1-logo" class="logo" src="assets/pro-logo.png">
+  <div id="s1-frame" class="frame">
+    <div id="s1-stage" class="stage">
+      <img id="s1-img0" class="base" src="assets/01-calendario.jpg" width="1451" height="840">
+      <div class="red" data-layout-allow-overlap style="left:1266px;top:9px;width:164px;height:40px"><i>R</i>Residente</div>
+      <div id="s1-hl1" class="hl" style="left:8px;top:66px;width:172px;height:42px"></div><div id="s1-hl2" class="hl" style="left:8px;top:145px;width:170px;height:32px"></div><div id="s1-hl3" class="hl" style="left:236px;top:76px;width:200px;height:72px"></div>
+      <div id="s1-cur" class="cur"><b></b></div>
+      <div id="s1-rip" class="rip"></div>
+    </div>
+  </div>
+  <div class="cap"><span id="s1-cap1">Confirma tu proyecto</span><span id="s1-cap2">Entra a Programación</span></div>
+<div id="s1-title" style="position:absolute;inset:0;z-index:40;background:#111216">
+  <div class="glow"></div>
+  <div id="s1-biglogo" style="position:absolute;left:660px;top:170px;width:600px;height:300px;background:url('assets/pro-logo.png') center/contain no-repeat"></div>
+  <div id="s1-kick" style="position:absolute;left:0;right:0;top:500px;text-align:center;font-size:26px;font-weight:800;letter-spacing:.32em;color:#ED1C2E">TUTORIAL PARA RESIDENTES</div>
+  <div id="s1-h1" style="position:absolute;left:0;right:0;top:555px;text-align:center;font-size:96px;font-weight:900;letter-spacing:-.02em">Flujo en Obra</div>
+  <div style="position:absolute;left:0;right:0;top:712px;display:flex;justify-content:center;gap:22px;font-size:34px;font-weight:700;color:#D7D9DF">
+    <span id="s1-st1">Programar</span><span id="s1-d1" style="color:#ED1C2E">·</span><span id="s1-st2">Iniciar el registro</span><span id="s1-d2" style="color:#ED1C2E">·</span><span id="s1-st3">Registrar guías</span><span id="s1-d3" style="color:#ED1C2E">·</span><span id="s1-st4">Cerrar</span></div>
+  <div id="s1-bar" style="position:absolute;left:760px;top:800px;width:400px;height:6px;background:#ED1C2E;border-radius:3px"></div>
+</div>
+  <div id="s1-wipe" class="wipe" data-layout-allow-overflow></div>
+</div>
+<script>
+
+const W=1451, H=840, S=1500/W, K=W/2008;
+const $=(s)=>document.querySelector(s), $$=(s)=>[...document.querySelectorAll(s)];
+const st=$('#s1-stage'), R=st.closest('[data-composition-id]')||document, cur=$('#s1-cur'), curb=$('#s1-cur b'), rip=$('#s1-rip');
+gsap.set(st,{scale:S,x:0,y:0,transformOrigin:'0 0'});
+gsap.set(cur,{x:700,y:300});
+$$('#s1-stage .pro-app').forEach(e=>gsap.set(e,{scale:K,transformOrigin:'0 0'}));
+const tl=gsap.timeline({paused:true});
+// RM: anclas [tiempo anterior, tiempo en la pista actual] para alinear cada acción con la palabra que la nombra.
+const RM=[[0, 0], [3.79, 3.29], [4.56, 4.03], [6.0, 5.44], [7.54, 6.85], [8.39, 7.77], [8.84, 8.28], [10.2, 9.62], [10.63, 10.06], [11.8, 11.1]];
+if(RM){const m=(t)=>{let i=0;while(i<RM.length-2&&t>RM[i+1][0])i++;const [a0,b0]=RM[i],[a1,b1]=RM[i+1];return b0+(t-a0)*(b1-b0)/(a1-a0);};
+  ['to','from','fromTo','set','call'].forEach(k=>{const o=tl[k].bind(tl);tl[k]=(...a)=>{const j=a.length-1;if(typeof a[j]==='number')a[j]=Math.max(0,m(a[j]));return o(...a);};});}
+// Positions are measured lazily (when each tween starts), in stage pixels, so they follow the real layout.
+// Elements are resolved NOW (the runtime scopes selectors only while this script runs);
+// positions are measured lazily, in layout coordinates, when each tween starts.
+const E=(a)=>typeof a==='string'?$(a):a;
+const P=(el)=>{let x=el.offsetWidth/2,y=el.offsetHeight/2,e=el;
+  while(e&&e!==st){const g=(p)=>Number(gsap.getProperty(e,p))||0, sc=(e.classList.contains('pro-app')?(Number(gsap.getProperty(e,'scale'))||1):1);
+    x=e.offsetLeft+g('x')+g('xPercent')*e.offsetWidth/100+x*sc; y=e.offsetTop+g('y')+g('yPercent')*e.offsetHeight/100+y*sc; e=e.offsetParent;}
+  return{cx:x,cy:y};};
+// POS: positions baked by the build (recorded frame by frame in a real browser), so HyperFrames never has to
+// measure layout while a scene is hidden. Without POS they are measured lazily and recorded in window.__rec.
+const POS=[]; let __pi=0; window.__rec=window.__rec||{}; const REC=window.__rec['s1']=[];
+const ptf=(a)=>{const i=__pi++;if(Array.isArray(a))return()=>({cx:a[0],cy:a[1]});if(POS&&POS[i]){const v=POS[i];return()=>v;}const el=E(a);return()=>{const v=P(el);REC[i]=v;return v;};};
+const lz=(fn)=>{const i=__pi++;if(POS&&POS[i]){const v=POS[i].v;return()=>v;}return()=>{const v=fn();REC[i]={v};return v;};};
+const mv=(a,t,d=.8)=>{const f=ptf(a);tl.to(cur,{x:()=>f().cx,y:()=>f().cy,duration:d,ease:'power2.inOut'},t);};
+const ck=(a,t)=>{const f=ptf(a);tl.set(rip,{x:()=>f().cx,y:()=>f().cy},t).fromTo(rip,{opacity:.95,scale:.3},{opacity:0,scale:2,duration:.55,ease:'power2.out',immediateRender:false},t).fromTo(curb,{scale:1},{scale:.8,duration:.08,yoyo:true,repeat:1,immediateRender:false},t);};
+const go=(a,t,d=.7)=>{mv(a,t-d-.08,d);ck(a,t);};
+const hl=(s,t,d)=>{tl.fromTo(s,{opacity:0,scale:.94},{opacity:1,scale:1,duration:.35,ease:'back.out(2)',immediateRender:false},t).to(s,{opacity:0,duration:.3},t+d);};
+const zm=(a,z,t,d=1)=>{const s=S*z,f=ptf(a);tl.to(st,{scale:s,x:()=>Math.min(0,Math.max(1500-W*s,750-f().cx*s)),y:()=>Math.min(0,Math.max(822-H*s,411-f().cy*s)),duration:d,ease:'power2.inOut'},t).to(cur,{scale:1/z,duration:d,ease:'power2.inOut'},t);};
+const cap=(i,t,d)=>{const e='#s1-cap'+i;gsap.set(e,{xPercent:-50});tl.fromTo(e,{opacity:0,y:14},{opacity:1,y:0,duration:.35,ease:'power2.out',immediateRender:false},t).to(e,{opacity:0,duration:.3},t+d);};
+const ring=(s,t,d,c='237,28,46')=>{tl.fromTo(s,{boxShadow:`0 0 0 0px rgba(${c},0)`},{boxShadow:`0 0 0 4px rgba(${c},.5)`,duration:.3,immediateRender:false},t).to(s,{boxShadow:`0 0 0 0px rgba(${c},0)`,duration:.3},t+d);};
+const show=(s,t,d=.2)=>tl.to(s,{opacity:1,duration:d},t);
+const hide=(s,t,d=.2)=>tl.to(s,{opacity:0,duration:d},t);
+// Dialog motion from src/components/ui/dialog.tsx: overlay fades, panel opacity/y 10/scale .97 in 0.22 s.
+const dIn=(o,p,t)=>{tl.to(o,{opacity:1,duration:.18},t).fromTo(p,{opacity:0,y:10,scale:.97},{opacity:1,y:0,scale:1,duration:.22,ease:'power2.out',immediateRender:false},t);};
+const dOut=(o,p,t)=>{tl.to(p,{opacity:0,y:8,scale:.97,duration:.18},t).to(o,{opacity:0,duration:.18},t);};
+const sw=(s,i,t)=>{tl.set($$(s+'>*'),{opacity:(k)=>k===i?1:0},t);};
+const typeText=(s,txt,t,d)=>{const el=E(s),o={n:0};tl.to(o,{n:txt.length,duration:d,ease:'none',onUpdate:()=>{el.textContent=txt.slice(0,Math.round(o.n));}},t);};
+const offIn=(el,root)=>{let y=0;while(el&&el!==root){y+=el.offsetTop;el=el.offsetParent;}return y;};
+const scr=(inner,target,t,d=.6,m=24)=>{const ie=E(inner),te=typeof target==='number'?null:E(target),f=lz(()=>te?-(offIn(te,ie)-m):-target);tl.to(ie,{y:f,duration:d,ease:'power2.inOut'},t);};
+
+
+// Voz: "En este tutorial recorrerás el flujo completo del residente. Programar(3.8), iniciar el despacho(4.6), registrar guías(6.0) y cerrar(7.5)."
+gsap.set('#s1-wipe',{opacity:0});
+tl.fromTo('#s1-biglogo',{scale:.92},{scale:1,duration:1.0,ease:'power3.out'},0)
+  .fromTo('#s1-kick',{opacity:0,y:20},{opacity:1,y:0,duration:.5},.5)
+  .fromTo('#s1-h1',{y:30},{y:0,duration:.6,ease:'power3.out'},0)
+  .fromTo('#s1-bar',{scaleX:0},{scaleX:1,duration:.7,ease:'power3.out'},1.2);
+[['#s1-st1',3.75],['#s1-d1',4.4],['#s1-st2',4.5],['#s1-d2',5.9],['#s1-st3',5.95],['#s1-d3',7.4],['#s1-st4',7.5]].forEach(([s,t])=>tl.fromTo(s,{opacity:0,y:16},{opacity:1,y:0,duration:.35,ease:'power2.out'},t));
+tl.to('#s1-title',{opacity:0,duration:.5,ease:'power2.inOut'},8.0);
+// "Primero confirma tu proyecto (9.5) y entra a Programación (10.6)."
+tl.fromTo('#s1-frame',{opacity:0,y:30},{opacity:1,y:0,duration:.6,ease:'power3.out'},8.05)
+  .fromTo('#s1-chip',{opacity:0,x:-24},{opacity:1,x:0,duration:.5},8.3)
+  .fromTo('#s1-logo',{opacity:0},{opacity:1,duration:.5},8.4)
+  .to(cur,{opacity:1,duration:.3},8.5);
+mv([93,87],8.5,.7); hl('#s1-hl1',8.9,1.4); cap(1,8.9,1.3);
+go([92,161],10.6,.6); hl('#s1-hl2',10.2,.9); cap(2,10.3,1.4);
+hl('#s1-hl3',10.95,.75);
+
+window.__timelines["s1"] = tl;
+</script>
+</template>

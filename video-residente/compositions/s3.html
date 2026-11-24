@@ -1,0 +1,209 @@
+<template>
+<style>
+#root{position:absolute;inset:0;background:#111216;font-family:Inter,sans-serif;color:#fff;overflow:hidden}
+.glow{position:absolute;inset:0;background:radial-gradient(900px 520px at 88% -8%,rgba(237,28,46,.24),transparent 60%),radial-gradient(760px 520px at -6% 112%,rgba(237,28,46,.14),transparent 60%)}
+.chip{position:absolute;left:210px;top:56px;display:flex;gap:16px;align-items:center;font-weight:800;font-size:26px;letter-spacing:.1em;opacity:0}
+.chip b{background:#ED1C2E;color:#fff;border-radius:8px;padding:4px 14px;font-size:24px;letter-spacing:.02em}
+.logo{position:absolute;right:210px;top:44px;width:150px;height:75px;opacity:0}
+.demo-tag{position:absolute;right:400px;top:70px;font-size:17px;font-weight:600;color:#9aa0aa;letter-spacing:.02em;opacity:0}
+.frame{position:absolute;left:210px;top:130px;width:1500px;height:822px;border-radius:18px;overflow:hidden;background:#fff;box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 2px rgba(255,255,255,.1);opacity:0}
+.stage{position:absolute;left:0;top:0;transform-origin:0 0}
+.stage img.base{position:absolute;left:0;top:0;display:block}
+.red{position:absolute;background:#fff;display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700;color:#111216;z-index:6}
+.red i{display:block;width:28px;height:28px;border-radius:50%;background:#FDE8EA;color:#A80F1E;font-style:normal;text-align:center;line-height:28px;font-size:13px}
+.red.dim{background:#7f7f7f;color:#0b0c0e}.red.dim i{background:#7e7475;color:#540f15}
+.hl{position:absolute;border:4px solid #ED1C2E;border-radius:10px;box-shadow:0 0 0 7px rgba(237,28,46,.22);opacity:0;z-index:20}
+.cur{position:absolute;left:0;top:0;width:34px;height:34px;z-index:60;opacity:0}
+.cur b{display:block;width:34px;height:34px;transform-origin:2px 2px;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='34' height='34' viewBox='0 0 34 34'><path d='M2 2 L2 26 L9 20 L14 31 L19 29 L14 18 L23 18 Z' fill='%23111216' stroke='white' stroke-width='2' stroke-linejoin='round'/></svg>") no-repeat;filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}
+.rip{position:absolute;left:-22px;top:-22px;width:44px;height:44px;border-radius:50%;border:4px solid #ED1C2E;opacity:0;z-index:55}
+.cap{position:absolute;left:0;right:0;top:972px;text-align:center;height:60px}
+.cap span{position:absolute;left:50%;top:0;display:block;white-space:nowrap;background:rgba(17,18,22,.94);border:2px solid #ED1C2E;color:#fff;font-size:30px;font-weight:700;padding:8px 28px;border-radius:40px;opacity:0}
+.wipe{position:absolute;inset:0;background:#ED1C2E;z-index:90}
+.pro-app{position:absolute;transform-origin:0 0;font-family:var(--font-sans);color:var(--foreground);z-index:30;-webkit-font-smoothing:antialiased;line-height:1.5}
+.pro-app .fixed{position:absolute}
+.pro-app .hid{opacity:0}
+
+.stage{width:1482px;height:812px}
+.stage img.base{width:1482px;height:812px}
+
+</style>
+<div id="root" data-composition-id="s3" data-width="1920" data-height="1080">
+  <div class="glow"></div>
+  <div id="s3-chip" class="chip"><b>02</b>KANBAN</div><div id="s3-demo" class="demo-tag">Diálogos con datos de demostración</div><img id="s3-logo" class="logo" src="assets/pro-logo.png">
+  <div id="s3-frame" class="frame">
+    <div id="s3-stage" class="stage">
+      <img id="s3-img0" class="base" src="assets/03-kanban.jpg" width="1482" height="812">
+      <div class="red" data-layout-allow-overlap style="left:1296px;top:10px;width:166px;height:40px"><i>R</i>Residente</div>
+      <div id="s3-hl1" class="hl" style="left:253px;top:368px;width:208px;height:138px"></div><div id="s3-hl2" class="hl" style="left:253px;top:514px;width:208px;height:138px"></div><div id="s3-hl3" class="hl" style="left:485px;top:340px;width:224px;height:26px"></div><div id="s3-hl0" class="hl" style="left:243px;top:340px;width:1186px;height:26px"></div>
+      <div id="s3-t900" data-layout-allow-overlap style="position:absolute;left:414px;top:417px;width:38px;height:16px;background:#fff;z-index:5;opacity:0;font-family:Poppins,sans-serif;font-weight:700;font-size:10.3px;line-height:16px;text-align:right;color:#17191d">09:00</div>
+      <div id="s3-ghost" data-layout-allow-overlap style="position:absolute;left:253px;top:368px;width:208px;height:138px;border-radius:9px;background:url('assets/03-kanban.jpg') -253px -368px/1482px 812px no-repeat;box-shadow:0 18px 40px rgba(0,0,0,.3),0 0 0 2px #ED1C2E;z-index:12;opacity:0"><div id="s3-ghost-t" style="position:absolute;left:161px;top:49px;width:38px;height:16px;background:#fff;font-family:Poppins,sans-serif;font-weight:700;font-size:10.3px;line-height:16px;text-align:right;color:#17191d">09:00</div></div>
+      <div id="s3-app" class="pro-app" style="left:0px;top:0px;width:2008px;height:1100px;z-index:30;"><button type="button" id="s3-dr1-bg" aria-label="Cerrar vista previa" class="fixed inset-0 z-[70] bg-black/35 hid"></button>
+<aside id="s3-dr1" class="fixed inset-y-0 right-0 z-[71] flex w-full max-w-lg flex-col border-l border-border bg-surface shadow-2xl">
+  <div class="flex shrink-0 items-start justify-between gap-3 border-b border-border p-4 sm:gap-4 sm:p-6">
+    <div class="flex min-w-0 gap-3"><span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-strong"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-5"><path d="M16 14v2.2l1.6 1"></path><path d="M16 2v3"></path><path d="M21 7.338V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h2.338"></path><path d="M3 9h5.859"></path><path d="M8 2v3"></path><circle cx="16" cy="16" r="6"></circle></svg></span>
+      <div class="min-w-0"><p class="font-mono text-[10px] text-foreground-muted">PRG-1101EE15</p><h2 class="mt-1 break-words font-semibold text-foreground [overflow-wrap:anywhere]">MEZCLADORA, S.A.</h2></div></div>
+    <button type="button" class="grid size-11 shrink-0 place-items-center rounded-lg text-foreground-muted" aria-label="Cerrar vista previa"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-5"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+  </div>
+  <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6" style="overflow:hidden">
+    <div class="flex flex-wrap items-center gap-2"><span class="rounded-full px-2.5 py-1 text-xs font-semibold programming-status-tone programming-tone-confirmed">Confirmado</span><span class="text-xs text-foreground-muted">25/11/2026, 7:00 a. m.</span></div>
+    <dl class="mt-6 grid gap-4 rounded-xl border border-border bg-muted/30 p-4 min-[400px]:grid-cols-2 min-[400px]:gap-x-5 min-[400px]:gap-y-6">
+      <div><dt class="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground-muted">Proveedor</dt><dd class="mt-1 text-sm font-medium text-foreground">MEZCLADORA, S.A.</dd></div><div><dt class="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground-muted">Bombeo</dt><dd class="mt-1 text-sm font-medium text-foreground">Sí</dd></div><div><dt class="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground-muted">Creado por</dt><dd class="mt-1 text-sm font-medium text-foreground">Residente</dd></div><div><dt class="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground-muted">Persona que confirmó</dt><dd class="mt-1 text-sm font-medium text-foreground">Residente · 23/11/2026, 4:12 p. m.</dd></div></dl>
+    <section class="mt-5 overflow-hidden rounded-xl border border-border">
+      <div class="flex items-center justify-between border-b border-border px-4 py-3"><div class="flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4 text-brand-strong"><path d="M12 22v-9"></path><path d="M15.17 2.21a1.67 1.67 0 0 1 1.63 0L21 4.57a1.93 1.93 0 0 1 0 3.36L8.82 14.79a1.655 1.655 0 0 1-1.64 0L3 12.43a1.93 1.93 0 0 1 0-3.36z"></path><path d="M20 13v3.87a2.06 2.06 0 0 1-1.11 1.83l-6 3.08a1.93 1.93 0 0 1-1.78 0l-6-3.08A2.06 2.06 0 0 1 4 16.87V13"></path><path d="M21 12.43a1.93 1.93 0 0 0 0-3.36L8.83 2.2a1.64 1.64 0 0 0-1.63 0L3 4.57a1.93 1.93 0 0 0 0 3.36l12.18 6.86a1.636 1.636 0 0 0 1.63 0z"></path></svg><h3 class="text-sm font-semibold text-foreground">Productos programados</h3></div><span class="rounded-full bg-muted px-2 py-1 text-xs font-semibold text-foreground-muted">1 línea</span></div>
+      <div class="hidden grid-cols-[3rem_minmax(0,1fr)_5rem] gap-3 border-b border-border bg-muted/20 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-foreground-muted sm:grid"><span>#</span><span>Cantidad</span><span>UM</span></div>
+      <ol class="divide-y divide-border"><li class="grid grid-cols-[2rem_minmax(0,1fr)_3.5rem] items-center gap-2 px-4 py-3 text-sm min-[400px]:grid-cols-[3rem_minmax(0,1fr)_5rem] min-[400px]:gap-3"><span class="font-mono text-xs font-semibold text-foreground-muted">1</span><span class="min-w-0"><span class="font-semibold text-foreground">12</span></span><span class="min-w-0"><span class="font-semibold text-foreground">M3</span></span></li></ol>
+      <div class="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem] items-center gap-2 border-t border-border bg-muted/30 px-4 py-3 text-sm min-[400px]:grid-cols-[minmax(0,1fr)_5rem_5rem] min-[400px]:gap-3"><span class="font-medium text-foreground-muted">Total solicitado</span><span class="font-semibold text-foreground">12</span><span class="font-semibold text-foreground">M3</span></div>
+    </section>
+    <section class="mt-5 rounded-xl border border-border p-4"><h3 class="text-xs font-semibold uppercase tracking-[0.08em] text-foreground-muted">Notas</h3><p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">Sin notas registradas.</p></section>
+    <section class="mt-5 overflow-hidden rounded-xl border border-border"><div class="flex items-center justify-between border-b border-border px-4 py-3"><div class="flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4 text-brand-strong"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"></path><path d="M15 18H9"></path><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"></path><circle cx="17" cy="18" r="2"></circle><circle cx="7" cy="18" r="2"></circle></svg><h3 class="text-sm font-semibold text-foreground">Despachos relacionados</h3></div><span class="rounded-full bg-muted px-2 py-1 text-xs font-semibold text-foreground-muted">0</span></div><p class="px-4 py-6 text-center text-sm text-foreground-muted">Todavía no hay despachos asociados.</p></section>
+  </div>
+  <div class="border-t border-border p-4 sm:p-5"><div class="grid gap-2 sm:grid-cols-2">
+    <a class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted">Ver detalle <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg></a>
+    <button type="button" id="s3-dr1-edit" class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg> Editar programación</button>
+    <button type="button" id="s3-dr1-cancel" class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-destructive/30 px-4 text-sm font-semibold text-destructive hover:bg-destructive-soft"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4"><circle cx="12" cy="12" r="10"></circle><path d="m15 9-6 6"></path><path d="m9 9 6 6"></path></svg> Cancelar programación</button>
+  </div></div>
+</aside><button type="button" id="s3-dr2-bg" aria-label="Cerrar vista previa" class="fixed inset-0 z-[70] bg-black/35 hid"></button>
+<aside id="s3-dr2" class="fixed inset-y-0 right-0 z-[71] flex w-full max-w-lg flex-col border-l border-border bg-surface shadow-2xl">
+  <div class="flex shrink-0 items-start justify-between gap-3 border-b border-border p-4 sm:gap-4 sm:p-6">
+    <div class="flex min-w-0 gap-3"><span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-strong"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-5"><path d="M16 14v2.2l1.6 1"></path><path d="M16 2v3"></path><path d="M21 7.338V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h2.338"></path><path d="M3 9h5.859"></path><path d="M8 2v3"></path><circle cx="16" cy="16" r="6"></circle></svg></span>
+      <div class="min-w-0"><p class="font-mono text-[10px] text-foreground-muted">PRG-F8B66070</p><h2 class="mt-1 break-words font-semibold text-foreground [overflow-wrap:anywhere]">MEZCLADORA, S.A.</h2></div></div>
+    <button type="button" class="grid size-11 shrink-0 place-items-center rounded-lg text-foreground-muted" aria-label="Cerrar vista previa"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-5"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+  </div>
+  <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6" style="overflow:hidden">
+    <div class="flex flex-wrap items-center gap-2"><span class="rounded-full px-2.5 py-1 text-xs font-semibold programming-status-tone programming-tone-confirmed">Confirmado</span><span class="text-xs text-foreground-muted">26/11/2026, 7:00 a. m.</span></div>
+    <dl class="mt-6 grid gap-4 rounded-xl border border-border bg-muted/30 p-4 min-[400px]:grid-cols-2 min-[400px]:gap-x-5 min-[400px]:gap-y-6">
+      <div><dt class="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground-muted">Proveedor</dt><dd class="mt-1 text-sm font-medium text-foreground">MEZCLADORA, S.A.</dd></div><div><dt class="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground-muted">Bombeo</dt><dd class="mt-1 text-sm font-medium text-foreground">Sí</dd></div><div><dt class="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground-muted">Creado por</dt><dd class="mt-1 text-sm font-medium text-foreground">Residente</dd></div><div><dt class="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground-muted">Persona que confirmó</dt><dd class="mt-1 text-sm font-medium text-foreground">Residente · 23/11/2026, 4:12 p. m.</dd></div></dl>
+    <section class="mt-5 overflow-hidden rounded-xl border border-border">
+      <div class="flex items-center justify-between border-b border-border px-4 py-3"><div class="flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4 text-brand-strong"><path d="M12 22v-9"></path><path d="M15.17 2.21a1.67 1.67 0 0 1 1.63 0L21 4.57a1.93 1.93 0 0 1 0 3.36L8.82 14.79a1.655 1.655 0 0 1-1.64 0L3 12.43a1.93 1.93 0 0 1 0-3.36z"></path><path d="M20 13v3.87a2.06 2.06 0 0 1-1.11 1.83l-6 3.08a1.93 1.93 0 0 1-1.78 0l-6-3.08A2.06 2.06 0 0 1 4 16.87V13"></path><path d="M21 12.43a1.93 1.93 0 0 0 0-3.36L8.83 2.2a1.64 1.64 0 0 0-1.63 0L3 4.57a1.93 1.93 0 0 0 0 3.36l12.18 6.86a1.636 1.636 0 0 0 1.63 0z"></path></svg><h3 class="text-sm font-semibold text-foreground">Productos programados</h3></div><span class="rounded-full bg-muted px-2 py-1 text-xs font-semibold text-foreground-muted">1 línea</span></div>
+      <div class="hidden grid-cols-[3rem_minmax(0,1fr)_5rem] gap-3 border-b border-border bg-muted/20 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-foreground-muted sm:grid"><span>#</span><span>Cantidad</span><span>UM</span></div>
+      <ol class="divide-y divide-border"><li class="grid grid-cols-[2rem_minmax(0,1fr)_3.5rem] items-center gap-2 px-4 py-3 text-sm min-[400px]:grid-cols-[3rem_minmax(0,1fr)_5rem] min-[400px]:gap-3"><span class="font-mono text-xs font-semibold text-foreground-muted">1</span><span class="min-w-0"><span class="font-semibold text-foreground">12</span></span><span class="min-w-0"><span class="font-semibold text-foreground">M3</span></span></li></ol>
+      <div class="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem] items-center gap-2 border-t border-border bg-muted/30 px-4 py-3 text-sm min-[400px]:grid-cols-[minmax(0,1fr)_5rem_5rem] min-[400px]:gap-3"><span class="font-medium text-foreground-muted">Total solicitado</span><span class="font-semibold text-foreground">12</span><span class="font-semibold text-foreground">M3</span></div>
+    </section>
+    <section class="mt-5 rounded-xl border border-border p-4"><h3 class="text-xs font-semibold uppercase tracking-[0.08em] text-foreground-muted">Notas</h3><p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">Sin notas registradas.</p></section>
+    <section class="mt-5 overflow-hidden rounded-xl border border-border"><div class="flex items-center justify-between border-b border-border px-4 py-3"><div class="flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4 text-brand-strong"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"></path><path d="M15 18H9"></path><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"></path><circle cx="17" cy="18" r="2"></circle><circle cx="7" cy="18" r="2"></circle></svg><h3 class="text-sm font-semibold text-foreground">Despachos relacionados</h3></div><span class="rounded-full bg-muted px-2 py-1 text-xs font-semibold text-foreground-muted">0</span></div><p class="px-4 py-6 text-center text-sm text-foreground-muted">Todavía no hay despachos asociados.</p></section>
+  </div>
+  <div class="border-t border-border p-4 sm:p-5"><div class="grid gap-2 sm:grid-cols-2">
+    <a class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted">Ver detalle <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg></a>
+    <button type="button" id="s3-dr2-edit" class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg> Editar programación</button>
+    <button type="button" id="s3-dr2-cancel" class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-destructive/30 px-4 text-sm font-semibold text-destructive hover:bg-destructive-soft"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4"><circle cx="12" cy="12" r="10"></circle><path d="m15 9-6 6"></path><path d="m9 9 6 6"></path></svg> Cancelar programación</button>
+  </div></div>
+</aside><div id="s3-oE" class="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-black/50 backdrop-blur-[2px] p-2 sm:p-6 hid" style="overflow:hidden"><div id="s3-edit" role="dialog" class="my-auto flex w-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl sm:rounded-2xl max-w-4xl" style="max-height:calc(1100px - 3rem)">
+  <div class="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3.5 sm:gap-4 sm:px-6 sm:py-4">
+    <div class="flex min-w-0 gap-3"><div class="min-w-0"><h2 class="line-clamp-3 break-words font-semibold text-foreground [overflow-wrap:anywhere]">Editar programación</h2><p class="mt-1 text-xs leading-5 text-foreground-muted">PRG-1101EE15 · Al guardar quedará Confirmado</p></div></div>
+    <span class="group/tooltip relative inline-flex"><button type="button" aria-label="Cerrar" class="icon-button"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-5"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button></span>
+  </div>
+  <div class="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain" style="overflow:hidden"><div id="s3-edit-in" style="position:relative"><div class="grid gap-5 p-5 sm:p-6">
+  <div><label class="form-label">Proveedor</label><select class="form-input"><option>MIXTO_LISTO · MEZCLADORA, S.A.</option></select></div>
+  <div><label class="form-label">Fecha y hora</label><div id="s3-dt" class="form-input" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span class="nv"><span id="s3-when" class="" style="display:inline-grid"><span style="grid-area:1/1;">25/11/2026, 07:00 a.m.</span><span style="grid-area:1/1;opacity:0">25/11/2026, 09:00 a.m.</span></span></span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4 shrink-0 text-foreground"><path d="M8 2v3"></path><path d="M16 2v3"></path><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path><path d="M8 13h.01"></path><path d="M12 13h.01"></path><path d="M16 13h.01"></path><path d="M8 17h.01"></path><path d="M12 17h.01"></path><path d="M16 17h.01"></path></svg></div><p class="mt-1 text-xs text-foreground-muted">Zona horaria: America/Guatemala</p></div>
+  <div><label class="form-label">Pedido No.</label><input class="form-input" value="41"></div>
+  <fieldset class="space-y-3 sm:col-span-2"><legend class="form-label">Modalidad de entrega</legend><div class="grid gap-2 min-[460px]:grid-cols-2"><label class="flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-sm"><input type="checkbox" class="accent-brand">Concreto directo</label><label class="flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-sm"><input type="checkbox" class="accent-brand" checked>Bomba</label><label class="flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-sm"><input type="checkbox" class="accent-brand">Pluma</label><label class="flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-sm"><input type="checkbox" class="accent-brand">Colocación</label></div>
+    <p class="text-xs leading-5 text-foreground-muted">El cierre requiere Producto y Servicio conciliados. Sin modalidad se conserva este requisito.</p></fieldset>
+  <section class="sm:col-span-2"><div class="flex flex-col gap-3 min-[460px]:flex-row min-[460px]:items-end min-[460px]:justify-between">
+      <div><h3 class="text-sm font-semibold text-foreground">Productos</h3><p class="mt-1 text-xs text-foreground-muted">Todas las líneas deben usar la misma unidad de medida.</p></div>
+      <button type="button" class="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>Agregar producto</button></div>
+    <div class="subtle-scrollbar mt-3 space-y-3"><div class="grid min-w-0 grid-cols-[minmax(0,1fr)_6.5rem] gap-3 rounded-xl border border-border bg-muted/25 p-3 sm:grid-cols-[2rem_minmax(0,1fr)_7rem_minmax(0,1fr)_2.75rem] sm:items-end sm:gap-2">
+      <span class="col-start-1 row-start-1 self-center text-xs font-semibold text-foreground sm:grid sm:size-8 sm:place-items-center sm:rounded-full sm:bg-surface sm:text-foreground-muted"><span class="sm:hidden">Producto </span>1</span>
+      <div class="col-start-1 row-start-2 min-w-0 sm:col-start-2 sm:row-start-1"><label class="form-label">Cantidad</label><input type="number" class="form-input" value="12"></div>
+      <div class="col-start-2 row-start-2 min-w-0 sm:col-start-3 sm:row-start-1"><label class="form-label">UM</label><select class="form-input"><option>M3</option></select></div>
+      <div class="col-span-2 row-start-3 min-w-0 sm:col-span-1 sm:col-start-4 sm:row-start-1"><label class="form-label">Tipo de concreto</label><input class="form-input" value="CONF4001"></div>
+      <button type="button" disabled class="col-start-2 row-start-1 ml-auto grid size-9 place-items-center rounded-lg border border-border text-foreground-muted disabled:cursor-not-allowed disabled:opacity-35 sm:col-start-5 sm:row-start-1 sm:size-11" aria-label="Eliminar producto 1"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4"><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+    </div></div></section>
+  <div><label class="form-label">Notas</label><textarea rows="3" maxlength="1000" class="form-input resize-y"></textarea></div>
+  <div id="s3-reason-box"><label class="form-label">Motivo de edición *</label><textarea id="s3-reason" rows="4" maxlength="1000" class="form-input resize-y" placeholder="Explica por qué se modifica la programación"></textarea>
+    <p class="mt-1 text-xs text-foreground-muted">El motivo quedará registrado en el historial y los cambios se confirmarán automáticamente.</p></div>
+</div></div></div>
+  <div class="sticky bottom-0 z-10 flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] [&amp;&gt;*]:w-full sm:static sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:px-6 sm:py-4 [&amp;&gt;*]:sm:w-auto"><button type="button" class="secondary-button ">Volver</button><button type="submit" id="s3-save" class="primary-button "><span class="grid place-items-center"><span aria-hidden="true" class="invisible col-start-1 row-start-1 inline-flex items-center justify-center gap-2">Guardar cambios</span><span aria-hidden="true" class="invisible col-start-1 row-start-1 inline-flex items-center justify-center gap-2"><span class="size-4"></span>Guardando cambios…</span><span class="col-start-1 row-start-1 inline-flex items-center justify-center gap-2">Guardar cambios</span></span></button></div>
+</div></div><div id="s3-oC" class="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-black/50 backdrop-blur-[2px] p-2 sm:p-6 hid" style="overflow:hidden"><div id="s3-cancel" role="dialog" class="my-auto flex w-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl sm:rounded-2xl max-w-4xl" style="max-height:calc(1100px - 3rem)">
+  <div class="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3.5 sm:gap-4 sm:px-6 sm:py-4">
+    <div class="flex min-w-0 gap-3"><div class="min-w-0"><h2 class="line-clamp-3 break-words font-semibold text-foreground [overflow-wrap:anywhere]">Cancelar programación</h2><p class="mt-1 text-xs leading-5 text-foreground-muted">PRG-F8B66070</p></div></div>
+    <span class="group/tooltip relative inline-flex"><button type="button" aria-label="Cerrar" class="icon-button"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-5"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button></span>
+  </div>
+  <div class="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain" style="overflow:hidden"><div id="s3-cancel-in" style="position:relative"><div class="space-y-4 p-4 sm:p-6"><div><label class="form-label">Motivo de cancelación *</label><textarea id="s3-creason" rows="4" maxlength="1000" class="form-input resize-y"></textarea></div></div></div></div>
+  <div class="sticky bottom-0 z-10 flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] [&amp;&gt;*]:w-full sm:static sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:px-6 sm:py-4 [&amp;&gt;*]:sm:w-auto"><button type="button" class="secondary-button ">Volver</button><button type="submit" id="s3-cbtn" class="destructive-button "><span class="grid place-items-center"><span aria-hidden="true" class="invisible col-start-1 row-start-1 inline-flex items-center justify-center gap-2">Cancelar programación</span><span aria-hidden="true" class="invisible col-start-1 row-start-1 inline-flex items-center justify-center gap-2"><span class="size-4"></span>Cancelando programación…</span><span class="col-start-1 row-start-1 inline-flex items-center justify-center gap-2">Cancelar programación</span></span></button></div>
+</div></div></div>
+      <div id="s3-cur" class="cur"><b></b></div>
+      <div id="s3-rip" class="rip"></div>
+    </div>
+  </div>
+  <div class="cap"><span id="s3-cap1">Kanban: cada pedido por estado</span><span id="s3-cap2">Editar programación: hora + motivo</span><span id="s3-cap3">Cancelar programación con motivo</span><span id="s3-cap4">Arrástrala a «En ejecución»</span></div>
+
+  <div id="s3-wipe" class="wipe" data-layout-allow-overflow></div>
+</div>
+<script>
+
+const W=1482, H=812, S=1500/W, K=W/2008;
+const $=(s)=>document.querySelector(s), $$=(s)=>[...document.querySelectorAll(s)];
+const st=$('#s3-stage'), R=st.closest('[data-composition-id]')||document, cur=$('#s3-cur'), curb=$('#s3-cur b'), rip=$('#s3-rip');
+gsap.set(st,{scale:S,x:0,y:0,transformOrigin:'0 0'});
+gsap.set(cur,{x:700,y:300});
+$$('#s3-stage .pro-app').forEach(e=>gsap.set(e,{scale:K,transformOrigin:'0 0'}));
+const tl=gsap.timeline({paused:true});
+// RM: anclas [tiempo anterior, tiempo en la pista actual] para alinear cada acción con la palabra que la nombra.
+const RM=[[0, 0], [2.75, 2.79], [4.35, 4.31], [7.03, 6.94], [9.1, 8.99], [10.42, 10.22], [12.03, 11.99], [13.69, 13.53], [15.5, 15.3]];
+if(RM){const m=(t)=>{let i=0;while(i<RM.length-2&&t>RM[i+1][0])i++;const [a0,b0]=RM[i],[a1,b1]=RM[i+1];return b0+(t-a0)*(b1-b0)/(a1-a0);};
+  ['to','from','fromTo','set','call'].forEach(k=>{const o=tl[k].bind(tl);tl[k]=(...a)=>{const j=a.length-1;if(typeof a[j]==='number')a[j]=Math.max(0,m(a[j]));return o(...a);};});}
+// Positions are measured lazily (when each tween starts), in stage pixels, so they follow the real layout.
+// Elements are resolved NOW (the runtime scopes selectors only while this script runs);
+// positions are measured lazily, in layout coordinates, when each tween starts.
+const E=(a)=>typeof a==='string'?$(a):a;
+const P=(el)=>{let x=el.offsetWidth/2,y=el.offsetHeight/2,e=el;
+  while(e&&e!==st){const g=(p)=>Number(gsap.getProperty(e,p))||0, sc=(e.classList.contains('pro-app')?(Number(gsap.getProperty(e,'scale'))||1):1);
+    x=e.offsetLeft+g('x')+g('xPercent')*e.offsetWidth/100+x*sc; y=e.offsetTop+g('y')+g('yPercent')*e.offsetHeight/100+y*sc; e=e.offsetParent;}
+  return{cx:x,cy:y};};
+// POS: positions baked by the build (recorded frame by frame in a real browser), so HyperFrames never has to
+// measure layout while a scene is hidden. Without POS they are measured lazily and recorded in window.__rec.
+const POS=[{"cx": 357, "cy": 437}, null, {"cx": 1381.536, "cy": 738}, {"cx": 1381.536, "cy": 738}, {"cx": 847.962, "cy": 168.1383186}, {"v": -528}, {"cx": 973.053, "cy": 726.192}, {"cx": 973.053, "cy": 726.192}, null, {"cx": 357, "cy": 583}, null, {"cx": 1206.87584256, "cy": 778.59}, {"cx": 1204.416, "cy": 778.59}, {"cx": 740.2139999999999, "cy": 413.417637}, {"cx": 955.71, "cy": 504.792}, {"cx": 955.71, "cy": 504.792}]; let __pi=0; window.__rec=window.__rec||{}; const REC=window.__rec['s3']=[];
+const ptf=(a)=>{const i=__pi++;if(Array.isArray(a))return()=>({cx:a[0],cy:a[1]});if(POS&&POS[i]){const v=POS[i];return()=>v;}const el=E(a);return()=>{const v=P(el);REC[i]=v;return v;};};
+const lz=(fn)=>{const i=__pi++;if(POS&&POS[i]){const v=POS[i].v;return()=>v;}return()=>{const v=fn();REC[i]={v};return v;};};
+const mv=(a,t,d=.8)=>{const f=ptf(a);tl.to(cur,{x:()=>f().cx,y:()=>f().cy,duration:d,ease:'power2.inOut'},t);};
+const ck=(a,t)=>{const f=ptf(a);tl.set(rip,{x:()=>f().cx,y:()=>f().cy},t).fromTo(rip,{opacity:.95,scale:.3},{opacity:0,scale:2,duration:.55,ease:'power2.out',immediateRender:false},t).fromTo(curb,{scale:1},{scale:.8,duration:.08,yoyo:true,repeat:1,immediateRender:false},t);};
+const go=(a,t,d=.7)=>{mv(a,t-d-.08,d);ck(a,t);};
+const hl=(s,t,d)=>{tl.fromTo(s,{opacity:0,scale:.94},{opacity:1,scale:1,duration:.35,ease:'back.out(2)',immediateRender:false},t).to(s,{opacity:0,duration:.3},t+d);};
+const zm=(a,z,t,d=1)=>{const s=S*z,f=ptf(a);tl.to(st,{scale:s,x:()=>Math.min(0,Math.max(1500-W*s,750-f().cx*s)),y:()=>Math.min(0,Math.max(822-H*s,411-f().cy*s)),duration:d,ease:'power2.inOut'},t).to(cur,{scale:1/z,duration:d,ease:'power2.inOut'},t);};
+const cap=(i,t,d)=>{const e='#s3-cap'+i;gsap.set(e,{xPercent:-50});tl.fromTo(e,{opacity:0,y:14},{opacity:1,y:0,duration:.35,ease:'power2.out',immediateRender:false},t).to(e,{opacity:0,duration:.3},t+d);};
+const ring=(s,t,d,c='237,28,46')=>{tl.fromTo(s,{boxShadow:`0 0 0 0px rgba(${c},0)`},{boxShadow:`0 0 0 4px rgba(${c},.5)`,duration:.3,immediateRender:false},t).to(s,{boxShadow:`0 0 0 0px rgba(${c},0)`,duration:.3},t+d);};
+const show=(s,t,d=.2)=>tl.to(s,{opacity:1,duration:d},t);
+const hide=(s,t,d=.2)=>tl.to(s,{opacity:0,duration:d},t);
+// Dialog motion from src/components/ui/dialog.tsx: overlay fades, panel opacity/y 10/scale .97 in 0.22 s.
+const dIn=(o,p,t)=>{tl.to(o,{opacity:1,duration:.18},t).fromTo(p,{opacity:0,y:10,scale:.97},{opacity:1,y:0,scale:1,duration:.22,ease:'power2.out',immediateRender:false},t);};
+const dOut=(o,p,t)=>{tl.to(p,{opacity:0,y:8,scale:.97,duration:.18},t).to(o,{opacity:0,duration:.18},t);};
+const sw=(s,i,t)=>{tl.set($$(s+'>*'),{opacity:(k)=>k===i?1:0},t);};
+const typeText=(s,txt,t,d)=>{const el=E(s),o={n:0};tl.to(o,{n:txt.length,duration:d,ease:'none',onUpdate:()=>{el.textContent=txt.slice(0,Math.round(o.n));}},t);};
+const offIn=(el,root)=>{let y=0;while(el&&el!==root){y+=el.offsetTop;el=el.offsetParent;}return y;};
+const scr=(inner,target,t,d=.6,m=24)=>{const ie=E(inner),te=typeof target==='number'?null:E(target),f=lz(()=>te?-(offIn(te,ie)-m):-target);tl.to(ie,{y:f,duration:d,ease:'power2.inOut'},t);};
+
+gsap.set('#s3-wipe',{xPercent:0});
+tl.to('#s3-wipe',{xPercent:101,duration:.55,ease:'power3.inOut'},0);
+tl.fromTo('#s3-frame',{opacity:0,y:30},{opacity:1,y:0,duration:.6,ease:'power3.out'},.25)
+  .fromTo('#s3-chip',{opacity:0,x:-24},{opacity:1,x:0,duration:.5,ease:'power3.out'},.45)
+  .fromTo('#s3-logo',{opacity:0},{opacity:1,duration:.5},.55)
+  .to(cur,{opacity:1,duration:.3},.9);
+tl.to('#s3-demo',{opacity:1,duration:.5},.6);
+
+
+// l = t - 33.4.  Drawer: programming-preview-drawer.tsx (x 100% -> 0, 0.2 s easeOut)
+const drIn=(d,t)=>{tl.to(d+'-bg',{opacity:1,duration:.2},t).to(d,{x:0,xPercent:0,duration:.2,ease:'power1.out'},t);};
+const drOut=(d,t)=>{tl.to(d+'-bg',{opacity:0,duration:.15},t).to(d,{opacity:0,duration:.15},t);};
+gsap.set(['#s3-dr1','#s3-dr2'],{xPercent:100,x:0});
+hl('#s3-hl0',.7,1.6); cap(1,.6,2.2);                                    // "En Kanban ves cada pedido por estado"
+mv('#s3-hl1',2.9,.9); hl('#s3-hl1',3.3,1.2); ck([356,436],4.3); drIn('#s3-dr1',4.45);   // "abre la tarjeta" (4.35)
+go('#s3-dr1-edit',5.55,.55); drOut('#s3-dr1',5.7); dIn('#s3-oE','#s3-edit',5.75);       // "entra a Editar programación" (5.1–6.0)
+zm('#s3-dt',1.55,5.9,.6); ring('#s3-dt',6.3,.9); sw('#s3-when',1,6.6); cap(2,6.3,2.4);
+scr('#s3-edit-in','#s3-reason-box',6.75,.4,60);
+typeText('#s3-reason','La obra pidió el camión a las 9:00.',7.2,.9);                    // "indica el motivo" (7.0–8.2)
+go('#s3-save',8.45,.4); dOut('#s3-oE','#s3-edit',8.6); zm([741,406],1.0,8.6,.5); show('#s3-t900',8.7,.15);  // "y guarda" (8.3)
+mv('#s3-hl2',8.65,.55); hl('#s3-hl2',8.9,.8); ck([356,582],9.35); drIn('#s3-dr2',9.45);  // "Si ya no se necesita" (9.1)
+go('#s3-dr2-cancel',10.15,.45); drOut('#s3-dr2',10.3); dIn('#s3-oC','#s3-cancel',10.35);  // "cancélalo" (10.4)
+zm('#s3-creason',1.6,10.45,.5); typeText('#s3-creason','La obra suspendió el colado.',10.75,.7); cap(3,10.4,1.8);
+tl.fromTo('#s3-cbtn',{opacity:.6},{opacity:1,duration:.15},10.8);
+go('#s3-cbtn',11.75,.4); dOut('#s3-oC','#s3-cancel',11.9); zm([741,406],1.0,11.9,.5);   // "con su motivo" (11.5)
+// "Y cuando llegue el camión (12.0–13.1), arrástralo a En ejecución (13.7–14.65)"
+cap(4,12.2,3.1); mv([356,436],12.15,.6);
+tl.set('#s3-ghost',{opacity:1,x:0,y:0,rotation:0},12.95).to('#s3-ghost',{scale:1.03,rotation:-2,duration:.2},12.95);
+tl.to('#s3-ghost',{x:241,y:0,duration:1.1,ease:'power2.inOut'},13.3); mv([597,436],13.3,1.1);
+hl('#s3-hl3',13.4,1.8);
+tl.to('#s3-ghost',{scale:1,rotation:0,duration:.2},14.45).to('#s3-ghost',{boxShadow:'0 2px 6px rgba(0,0,0,.08),0 0 0 2px rgba(237,28,46,0)',duration:.3},14.55);
+
+window.__timelines["s3"] = tl;
+</script>
+</template>

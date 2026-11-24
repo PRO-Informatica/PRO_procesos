@@ -1,0 +1,136 @@
+<template>
+<style>
+#root{position:absolute;inset:0;background:#111216;font-family:Inter,sans-serif;color:#fff;overflow:hidden}
+.glow{position:absolute;inset:0;background:radial-gradient(900px 520px at 88% -8%,rgba(237,28,46,.24),transparent 60%),radial-gradient(760px 520px at -6% 112%,rgba(237,28,46,.14),transparent 60%)}
+.chip{position:absolute;left:210px;top:56px;display:flex;gap:16px;align-items:center;font-weight:800;font-size:26px;letter-spacing:.1em;opacity:0}
+.chip b{background:#ED1C2E;color:#fff;border-radius:8px;padding:4px 14px;font-size:24px;letter-spacing:.02em}
+.logo{position:absolute;right:210px;top:44px;width:150px;height:75px;opacity:0}
+.demo-tag{position:absolute;right:400px;top:70px;font-size:17px;font-weight:600;color:#9aa0aa;letter-spacing:.02em;opacity:0}
+.frame{position:absolute;left:210px;top:130px;width:1500px;height:822px;border-radius:18px;overflow:hidden;background:#fff;box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 2px rgba(255,255,255,.1);opacity:0}
+.stage{position:absolute;left:0;top:0;transform-origin:0 0}
+.stage img.base{position:absolute;left:0;top:0;display:block}
+.red{position:absolute;background:#fff;display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700;color:#111216;z-index:6}
+.red i{display:block;width:28px;height:28px;border-radius:50%;background:#FDE8EA;color:#A80F1E;font-style:normal;text-align:center;line-height:28px;font-size:13px}
+.red.dim{background:#7f7f7f;color:#0b0c0e}.red.dim i{background:#7e7475;color:#540f15}
+.hl{position:absolute;border:4px solid #ED1C2E;border-radius:10px;box-shadow:0 0 0 7px rgba(237,28,46,.22);opacity:0;z-index:20}
+.cur{position:absolute;left:0;top:0;width:34px;height:34px;z-index:60;opacity:0}
+.cur b{display:block;width:34px;height:34px;transform-origin:2px 2px;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='34' height='34' viewBox='0 0 34 34'><path d='M2 2 L2 26 L9 20 L14 31 L19 29 L14 18 L23 18 Z' fill='%23111216' stroke='white' stroke-width='2' stroke-linejoin='round'/></svg>") no-repeat;filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}
+.rip{position:absolute;left:-22px;top:-22px;width:44px;height:44px;border-radius:50%;border:4px solid #ED1C2E;opacity:0;z-index:55}
+.cap{position:absolute;left:0;right:0;top:972px;text-align:center;height:60px}
+.cap span{position:absolute;left:50%;top:0;display:block;white-space:nowrap;background:rgba(17,18,22,.94);border:2px solid #ED1C2E;color:#fff;font-size:30px;font-weight:700;padding:8px 28px;border-radius:40px;opacity:0}
+.wipe{position:absolute;inset:0;background:#ED1C2E;z-index:90}
+.pro-app{position:absolute;transform-origin:0 0;font-family:var(--font-sans);color:var(--foreground);z-index:30;-webkit-font-smoothing:antialiased;line-height:1.5}
+.pro-app .fixed{position:absolute}
+.pro-app .hid{opacity:0}
+
+.stage{width:1482px;height:812px}
+.stage img.base{width:1482px;height:812px}
+
+</style>
+<div data-hf-id="hf-rq2o" id="root" data-composition-id="s8" data-width="1920" data-height="1080">
+  <div data-hf-id="hf-2s7n" class="glow"></div>
+  <div data-hf-id="hf-j1v6" id="s8-chip" class="chip"><b data-hf-id="hf-8n3c">07</b>CIERRE</div><div data-hf-id="hf-r5yf" id="s8-demo" class="demo-tag">Diálogos con datos de demostración</div><img data-hf-id="hf-j3m1" id="s8-logo" class="logo" src="assets/pro-logo.png">
+  <div data-hf-id="hf-o4tw" id="s8-frame" class="frame">
+    <div data-hf-id="hf-hbtg" id="s8-stage" class="stage">
+      <img data-hf-id="hf-d7yq" id="s8-img0" class="base" src="assets/06-detalle-info.jpg" width="1482" height="812">
+      <div data-hf-id="hf-bos8" class="red" data-layout-allow-overlap="" style="left:1296px;top:10px;width:166px;height:40px"><i data-hf-id="hf-2iei">R</i>Residente</div>
+      <div data-hf-id="hf-zc1b" id="s8-pre" style="position:absolute;inset:0;z-index:7"><div data-hf-id="hf-n04j" id="s8-cv-badge" data-layout-allow-overlap="" style="position:absolute;left:508px;top:139px;width:116px;height:20px;background:#f3f4f6;z-index:7;overflow:hidden;"><div data-hf-id="hf-wied" class="pro-app cov" style="position:absolute;left:0;top:0;width:157.2px;height:27.1px;opacity:1;display:flex;align-items:center;justify-content:flex-start"><span data-hf-id="hf-qttv" class="status-feedback inline-flex max-w-full w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold leading-4 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200"><span data-hf-id="hf-nnjg" aria-hidden="true" class="size-1.5 shrink-0 rounded-full bg-current"></span><span data-hf-id="hf-hsu8" class="min-w-0 whitespace-normal break-words">En ejecución</span></span></div></div><div data-hf-id="hf-8hix" id="s8-cv-est" data-layout-allow-overlap="" style="position:absolute;left:1114px;top:267px;width:116px;height:20px;background:#ffffff;z-index:7;overflow:hidden;"><div data-hf-id="hf-tiex" class="pro-app cov" style="position:absolute;left:0;top:0;width:157.2px;height:27.1px;opacity:1;display:flex;align-items:center;justify-content:flex-start"><span data-hf-id="hf-r7yb" class="status-feedback inline-flex max-w-full w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold leading-4 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200"><span data-hf-id="hf-1cw4" aria-hidden="true" class="size-1.5 shrink-0 rounded-full bg-current"></span><span data-hf-id="hf-a3p4" class="min-w-0 whitespace-normal break-words">En ejecución</span></span></div></div><div data-hf-id="hf-zc39" id="s8-cv-rec" data-layout-allow-overlap="" style="position:absolute;left:1122px;top:329px;width:200px;height:20px;background:#ffffff;z-index:7;overflow:hidden;"><div data-hf-id="hf-5vma" class="pro-app cov" style="position:absolute;left:0;top:0;width:271.0px;height:27.1px;opacity:1;display:flex;align-items:center;justify-content:flex-start"><span data-hf-id="hf-fyio" class="text-sm">Residente</span></div></div></div>
+      <img data-hf-id="hf-pku0" id="s8-img1" class="base" src="assets/08-control-operacion.jpg" width="1482" height="812" style="opacity:0;z-index:8">
+      <div data-hf-id="hf-5umi" id="s8-red2" class="red" data-layout-allow-overlap="" style="left:1296px;top:10px;width:166px;height:40px;opacity:0;z-index:9"><i data-hf-id="hf-vsdq">R</i>Residente</div>
+      <div data-hf-id="hf-36xw" id="s8-barwrap" style="position:absolute;left:0;top:0;width:1482px;height:812px;z-index:25"><div data-hf-id="hf-h5sf" id="s8-bar" class="pro-app" style="left:280px;top:745px;width:1505px;height:110px;z-index:25;"><div data-hf-id="hf-ccki" class="sticky bottom-2 z-20 flex flex-col gap-2 rounded-xl border border-border bg-surface/95 p-3 shadow-xl backdrop-blur sm:bottom-3 sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:rounded-2xl sm:p-4"><button data-hf-id="hf-9o8h" type="submit" class="primary-button w-full sm:w-auto"><span data-hf-id="hf-tdlb" class="grid place-items-center"><span data-hf-id="hf-3qv9" aria-hidden="true" class="invisible col-start-1 row-start-1 inline-flex items-center justify-center gap-2">Guardar cambios</span><span data-hf-id="hf-qld2" aria-hidden="true" class="invisible col-start-1 row-start-1 inline-flex items-center justify-center gap-2"><span data-hf-id="hf-f86l" class="size-4"></span>Guardando…</span><span data-hf-id="hf-t731" class="col-start-1 row-start-1 inline-flex items-center justify-center gap-2">Guardar cambios</span></span></button><button data-hf-id="hf-998w" type="button" id="s8-fin" class="success-button w-full sm:w-auto"><svg data-hf-id="hf-f54n" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4"><circle data-hf-id="hf-m1lh" cx="12" cy="12" r="10" /><path data-hf-id="hf-yfzu" d="m9 12 2 2 4-4" /></svg> Finalizar despacho</button></div></div></div>
+      <div data-hf-id="hf-89w0" id="s8-hl1" class="hl" style="left:566px;top:390px;width:266px;height:40px"></div><div data-hf-id="hf-50zo" id="s8-hl2" class="hl" style="left:846px;top:497px;width:548px;height:234px"></div><div data-hf-id="hf-wykm" id="s8-hl3" class="hl" style="left:505px;top:136px;width:120px;height:24px"></div>
+      <div data-hf-id="hf-r4g8" id="s8-app" class="pro-app" style="left:0px;top:0px;width:2008px;height:1100px;z-index:30;"><div data-hf-id="hf-hwbm" id="s8-ov" class="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-black/50 backdrop-blur-[2px] p-2 sm:p-6 hid" style="overflow:hidden"><div data-hf-id="hf-mcje" id="s8-dlg" role="dialog" class="my-auto flex w-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl sm:rounded-2xl max-w-lg" style="max-height:calc(1100px - 3rem)">
+  <div data-hf-id="hf-i5ry" class="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3.5 sm:gap-4 sm:px-6 sm:py-4">
+    <div data-hf-id="hf-wgnu" class="flex min-w-0 gap-3"><span data-hf-id="hf-ch47" class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-strong"><svg data-hf-id="hf-76vm" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-5"><circle data-hf-id="hf-jqh5" cx="12" cy="12" r="10" /><path data-hf-id="hf-b76m" d="m9 12 2 2 4-4" /></svg></span><div data-hf-id="hf-fd6j" class="min-w-0"><h2 data-hf-id="hf-022l" class="line-clamp-3 break-words font-semibold text-foreground [overflow-wrap:anywhere]">¿Finalizar despacho?</h2><p data-hf-id="hf-84c4" class="mt-1 text-xs leading-5 text-foreground-muted">Se guardarán los datos actuales y se cerrará la operación.</p></div></div>
+    <span data-hf-id="hf-2qfn" class="group/tooltip relative inline-flex"><button data-hf-id="hf-565o" type="button" aria-label="Cerrar" class="icon-button"><svg data-hf-id="hf-gf6e" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-5"><path data-hf-id="hf-pdkr" d="M18 6 6 18" /><path data-hf-id="hf-p78z" d="m6 6 12 12" /></svg></button></span>
+  </div>
+  <div data-hf-id="hf-evz0" class="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain" style="overflow:hidden"><div data-hf-id="hf-aylh" id="s8-dlg-in" style="position:relative"><div data-hf-id="hf-oknd" class="space-y-4 p-5"></div></div></div>
+  <div data-hf-id="hf-f26d" class="sticky bottom-0 z-10 flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] [&>*]:w-full sm:static sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:px-6 sm:py-4 [&>*]:sm:w-auto"><button data-hf-id="hf-z1vs" type="button" class="secondary-button">Cancelar</button><button data-hf-id="hf-tb0k" type="submit" id="s8-conf" class="success-button"><span data-hf-id="hf-87qn" class="grid place-items-center"><span data-hf-id="hf-e7qk" aria-hidden="true" class="invisible col-start-1 row-start-1 inline-flex items-center justify-center gap-2">Finalizar despacho</span><span data-hf-id="hf-s988" aria-hidden="true" class="invisible col-start-1 row-start-1 inline-flex items-center justify-center gap-2"><span data-hf-id="hf-umld" class="size-4"></span>Finalizando…</span><span data-hf-id="hf-pw7o" class="col-start-1 row-start-1 inline-flex items-center justify-center gap-2">Finalizar despacho</span></span></button></div>
+</div></div></div>
+      <div data-hf-id="hf-bipg" id="s8-cur" class="cur"><b data-hf-id="hf-xujp"></b></div>
+      <div data-hf-id="hf-8n7s" id="s8-rip" class="rip"></div>
+    </div>
+  </div>
+  <div data-hf-id="hf-2mgg" class="cap"><span data-hf-id="hf-n82e" id="s8-cap1">Verifica la hora de salida y la evidencia</span><span data-hf-id="hf-my3q" id="s8-cap2">¿Finalizar despacho? → Finalizar despacho</span><span data-hf-id="hf-vcyl" id="s8-cap3">Despacho finalizado · La operación quedó cerrada correctamente.</span></div>
+<div data-hf-id="hf-2p08" id="s8-end" style="position:absolute;inset:0;z-index:80;background:#111216;opacity:0">
+  <div data-hf-id="hf-x5mb" class="glow"></div>
+  <div data-hf-id="hf-y8p7" id="s8-biglogo" style="position:absolute;left:660px;top:230px;width:600px;height:300px;background:url('assets/pro-logo.png') center/contain no-repeat"></div>
+  <div data-hf-id="hf-9484" id="s8-done" style="position:absolute;left:0;right:0;top:560px;text-align:center"><span data-hf-id="hf-kc9e" style="display:inline-block;background:#659d7d;color:#fff;font-size:44px;font-weight:900;padding:14px 40px;border-radius:50px">● Despacho completo</span></div>
+  <div data-hf-id="hf-vd50" id="s8-t" style="position:absolute;left:0;right:0;top:700px;text-align:center;font-size:48px;font-weight:800">Flujo en Obra</div>
+  <div data-hf-id="hf-tayg" id="s8-t2" style="position:absolute;left:0;right:0;top:770px;text-align:center;font-size:30px;font-weight:600;color:#D7D9DF">Programar · Iniciar el registro · Registrar guías · Cerrar</div>
+</div>
+  <div data-hf-id="hf-da8h" id="s8-wipe" class="wipe" data-layout-allow-overflow=""></div>
+</div>
+<script>
+
+const W=1482, H=812, S=1500/W, K=W/2008;
+const $=(s)=>document.querySelector(s), $$=(s)=>[...document.querySelectorAll(s)];
+const st=$('#s8-stage'), R=st.closest('[data-composition-id]')||document, cur=$('#s8-cur'), curb=$('#s8-cur b'), rip=$('#s8-rip');
+gsap.set(st,{scale:S,x:0,y:0,transformOrigin:'0 0'});
+gsap.set(cur,{x:700,y:300});
+$$('#s8-stage .pro-app').forEach(e=>gsap.set(e,{scale:K,transformOrigin:'0 0'}));
+gsap.set("#s8-done", { z: 14, transformPerspective: 1080, rotationX: 10, rotationY: -15 });
+const tl=gsap.timeline({paused:true});
+// RM: anclas [tiempo anterior, tiempo en la pista actual] para alinear cada acción con la palabra que la nombra.
+const RM=[[0, 0], [2.64, 2.72], [7.47, 7.45], [9.15, 9.52], [11.2, 11.0]];
+if(RM){const m=(t)=>{let i=0;while(i<RM.length-2&&t>RM[i+1][0])i++;const [a0,b0]=RM[i],[a1,b1]=RM[i+1];return b0+(t-a0)*(b1-b0)/(a1-a0);};
+  ['to','from','fromTo','set','call'].forEach(k=>{const o=tl[k].bind(tl);tl[k]=(...a)=>{const j=a.length-1;if(typeof a[j]==='number')a[j]=Math.max(0,m(a[j]));return o(...a);};});}
+// Positions are measured lazily (when each tween starts), in stage pixels, so they follow the real layout.
+// Elements are resolved NOW (the runtime scopes selectors only while this script runs);
+// positions are measured lazily, in layout coordinates, when each tween starts.
+const E=(a)=>typeof a==='string'?$(a):a;
+const P=(el)=>{let x=el.offsetWidth/2,y=el.offsetHeight/2,e=el;
+  while(e&&e!==st){const g=(p)=>Number(gsap.getProperty(e,p))||0, sc=(e.classList.contains('pro-app')?(Number(gsap.getProperty(e,'scale'))||1):1);
+    x=e.offsetLeft+g('x')+g('xPercent')*e.offsetWidth/100+x*sc; y=e.offsetTop+g('y')+g('yPercent')*e.offsetHeight/100+y*sc; e=e.offsetParent;}
+  return{cx:x,cy:y};};
+// POS: positions baked by the build (recorded frame by frame in a real browser), so HyperFrames never has to
+// measure layout while a scene is hidden. Without POS they are measured lazily and recorded in window.__rec.
+const POS=[null, null, null, {"cx": 1309.51, "cy": 773.044}, {"cx": 1309.51, "cy": 773.044}, {"cx": 1309.51, "cy": 773.044}, {"cx": 740.952, "cy": 406.2906972}, {"cx": 848.6999999999999, "cy": 447.966}, {"cx": 848.6999999999999, "cy": 447.966}]; let __pi=0; window.__rec=window.__rec||{}; const REC=window.__rec['s8']=[];
+const ptf=(a)=>{const i=__pi++;if(Array.isArray(a))return()=>({cx:a[0],cy:a[1]});if(POS&&POS[i]){const v=POS[i];return()=>v;}const el=E(a);return()=>{const v=P(el);REC[i]=v;return v;};};
+const lz=(fn)=>{const i=__pi++;if(POS&&POS[i]){const v=POS[i].v;return()=>v;}return()=>{const v=fn();REC[i]={v};return v;};};
+const mv=(a,t,d=.8)=>{const f=ptf(a);tl.to(cur,{x:()=>f().cx,y:()=>f().cy,duration:d,ease:'power2.inOut'},t);};
+const ck=(a,t)=>{const f=ptf(a);tl.set(rip,{x:()=>f().cx,y:()=>f().cy},t).fromTo(rip,{opacity:.95,scale:.3},{opacity:0,scale:2,duration:.55,ease:'power2.out',immediateRender:false},t).fromTo(curb,{scale:1},{scale:.8,duration:.08,yoyo:true,repeat:1,immediateRender:false},t);};
+const go=(a,t,d=.7)=>{mv(a,t-d-.08,d);ck(a,t);};
+const hl=(s,t,d)=>{tl.fromTo(s,{opacity:0,scale:.94},{opacity:1,scale:1,duration:.35,ease:'back.out(2)',immediateRender:false},t).to(s,{opacity:0,duration:.3},t+d);};
+const zm=(a,z,t,d=1)=>{const s=S*z,f=ptf(a);tl.to(st,{scale:s,x:()=>Math.min(0,Math.max(1500-W*s,750-f().cx*s)),y:()=>Math.min(0,Math.max(822-H*s,411-f().cy*s)),duration:d,ease:'power2.inOut'},t).to(cur,{scale:1/z,duration:d,ease:'power2.inOut'},t);};
+const cap=(i,t,d)=>{const e='#s8-cap'+i;gsap.set(e,{xPercent:-50});tl.fromTo(e,{opacity:0,y:14},{opacity:1,y:0,duration:.35,ease:'power2.out',immediateRender:false},t).to(e,{opacity:0,duration:.3},t+d);};
+const ring=(s,t,d,c='237,28,46')=>{tl.fromTo(s,{boxShadow:`0 0 0 0px rgba(${c},0)`},{boxShadow:`0 0 0 4px rgba(${c},.5)`,duration:.3,immediateRender:false},t).to(s,{boxShadow:`0 0 0 0px rgba(${c},0)`,duration:.3},t+d);};
+const show=(s,t,d=.2)=>tl.to(s,{opacity:1,duration:d},t);
+const hide=(s,t,d=.2)=>tl.to(s,{opacity:0,duration:d},t);
+// Dialog motion from src/components/ui/dialog.tsx: overlay fades, panel opacity/y 10/scale .97 in 0.22 s.
+const dIn=(o,p,t)=>{tl.to(o,{opacity:1,duration:.18},t).fromTo(p,{opacity:0,y:10,scale:.97},{opacity:1,y:0,scale:1,duration:.22,ease:'power2.out',immediateRender:false},t);};
+const dOut=(o,p,t)=>{tl.to(p,{opacity:0,y:8,scale:.97,duration:.18},t).to(o,{opacity:0,duration:.18},t);};
+const sw=(s,i,t)=>{tl.set($$(s+'>*'),{opacity:(k)=>k===i?1:0},t);};
+const typeText=(s,txt,t,d)=>{const el=E(s),o={n:0};tl.to(o,{n:txt.length,duration:d,ease:'none',onUpdate:()=>{el.textContent=txt.slice(0,Math.round(o.n));}},t);};
+const offIn=(el,root)=>{let y=0;while(el&&el!==root){y+=el.offsetTop;el=el.offsetParent;}return y;};
+const scr=(inner,target,t,d=.6,m=24)=>{const ie=E(inner),te=typeof target==='number'?null:E(target),f=lz(()=>te?-(offIn(te,ie)-m):-target);tl.to(ie,{y:f,duration:d,ease:'power2.inOut'},t);};
+
+gsap.set('#s8-wipe',{xPercent:0});
+tl.to('#s8-wipe',{xPercent:101,duration:.55,ease:'power3.inOut'},0);
+tl.fromTo('#s8-frame',{opacity:0,y:30},{opacity:1,y:0,duration:.6,ease:'power3.out'},.25)
+  .fromTo('#s8-chip',{opacity:0,x:-24},{opacity:1,x:0,duration:.5,ease:'power3.out'},.45)
+  .fromTo('#s8-logo',{opacity:0},{opacity:1,duration:.5},.55)
+  .to(cur,{opacity:1,duration:.3},.9);
+tl.to('#s8-demo',{opacity:1,duration:.5},.6);
+
+
+// l = t - 108.8
+zm([700,400],1.5,.3,.9); cap(1,.6,2.9);
+mv([700,409],.9,.7); hl('#s8-hl1',1.4,1.3);                     // "verifica la hora de salida" (1.7)
+show('#s8-img1',2.35,.3); show('#s8-red2',2.35,.3); zm([1120,600],1.3,2.35,.7); hl('#s8-hl2',2.6,1.2);   // "y la evidencia" (2.6)
+zm('#s8-fin',1.5,3.2,.55); go('#s8-fin',3.95,.5);              // "Pulsa Finalizar despacho" (3.5–4.6)
+dIn('#s8-ov','#s8-dlg',4.1); zm('#s8-dlg',1.6,4.2,.5); cap(2,4.2,1.6);
+go('#s8-conf',5.3,.45);                                         // "y confirma" (5.3)
+dOut('#s8-ov','#s8-dlg',5.45); hide('#s8-barwrap',5.45,.15);
+hide('#s8-img1',5.6,.3); hide('#s8-red2',5.6,.3); hide('#s8-pre',5.6,.3); zm([565,250],1.6,5.6,.8);   // detalle real: "Despacho completo"
+hl('#s8-hl3',6.6,1.5); cap(3,6.0,2.1);                         // "Cuando veas Despacho completo" (6.9–7.5)
+tl.to(cur,{opacity:0,duration:.3},7.6);
+tl.to('#s8-end',{opacity:1,duration:.6,ease:'power2.inOut'},8.0)   // "tu operación está cerrada" (8.1–9.2)
+  .fromTo('#s8-biglogo',{scale:.9},{scale:1,duration:.8,ease:'power3.out'},8.0)
+  .fromTo('#s8-done',{opacity:0,y:20},{opacity:1,y:0,duration:.5},8.4)
+  .fromTo('#s8-t',{opacity:0,y:20},{opacity:1,y:0,duration:.5},8.7)
+  .fromTo('#s8-t2',{opacity:0,y:20},{opacity:1,y:0,duration:.5},9.0);
+
+window.__timelines["s8"] = tl;
+</script>
+</template>

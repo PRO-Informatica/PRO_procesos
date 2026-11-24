@@ -1,0 +1,131 @@
+<template>
+<style>
+#root{position:absolute;inset:0;background:#111216;font-family:Inter,sans-serif;color:#fff;overflow:hidden}
+.glow{position:absolute;inset:0;background:radial-gradient(900px 520px at 88% -8%,rgba(237,28,46,.24),transparent 60%),radial-gradient(760px 520px at -6% 112%,rgba(237,28,46,.14),transparent 60%)}
+.chip{position:absolute;left:210px;top:56px;display:flex;gap:16px;align-items:center;font-weight:800;font-size:26px;letter-spacing:.1em;opacity:0}
+.chip b{background:#ED1C2E;color:#fff;border-radius:8px;padding:4px 14px;font-size:24px;letter-spacing:.02em}
+.logo{position:absolute;right:210px;top:44px;width:150px;height:75px;opacity:0}
+.demo-tag{position:absolute;right:400px;top:70px;font-size:17px;font-weight:600;color:#9aa0aa;letter-spacing:.02em;opacity:0}
+.frame{position:absolute;left:210px;top:130px;width:1500px;height:822px;border-radius:18px;overflow:hidden;background:#fff;box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 2px rgba(255,255,255,.1);opacity:0}
+.stage{position:absolute;left:0;top:0;transform-origin:0 0}
+.stage img.base{position:absolute;left:0;top:0;display:block}
+.red{position:absolute;background:#fff;display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700;color:#111216;z-index:6}
+.red i{display:block;width:28px;height:28px;border-radius:50%;background:#FDE8EA;color:#A80F1E;font-style:normal;text-align:center;line-height:28px;font-size:13px}
+.red.dim{background:#7f7f7f;color:#0b0c0e}.red.dim i{background:#7e7475;color:#540f15}
+.hl{position:absolute;border:4px solid #ED1C2E;border-radius:10px;box-shadow:0 0 0 7px rgba(237,28,46,.22);opacity:0;z-index:20}
+.cur{position:absolute;left:0;top:0;width:34px;height:34px;z-index:60;opacity:0}
+.cur b{display:block;width:34px;height:34px;transform-origin:2px 2px;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='34' height='34' viewBox='0 0 34 34'><path d='M2 2 L2 26 L9 20 L14 31 L19 29 L14 18 L23 18 Z' fill='%23111216' stroke='white' stroke-width='2' stroke-linejoin='round'/></svg>") no-repeat;filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}
+.rip{position:absolute;left:-22px;top:-22px;width:44px;height:44px;border-radius:50%;border:4px solid #ED1C2E;opacity:0;z-index:55}
+.cap{position:absolute;left:0;right:0;top:972px;text-align:center;height:60px}
+.cap span{position:absolute;left:50%;top:0;display:block;white-space:nowrap;background:rgba(17,18,22,.94);border:2px solid #ED1C2E;color:#fff;font-size:30px;font-weight:700;padding:8px 28px;border-radius:40px;opacity:0}
+.wipe{position:absolute;inset:0;background:#ED1C2E;z-index:90}
+.pro-app{position:absolute;transform-origin:0 0;font-family:var(--font-sans);color:var(--foreground);z-index:30;-webkit-font-smoothing:antialiased;line-height:1.5}
+.pro-app .fixed{position:absolute}
+.pro-app .hid{opacity:0}
+
+.stage{width:1482px;height:812px}
+.stage img.base{width:1482px;height:812px}
+
+</style>
+<div id="root" data-composition-id="s4" data-width="1920" data-height="1080">
+  <div class="glow"></div>
+  <div id="s4-chip" class="chip"><b>03</b>INICIO DEL DESPACHO</div><div id="s4-demo" class="demo-tag">Diálogos con datos de demostración</div><img id="s4-logo" class="logo" src="assets/pro-logo.png">
+  <div id="s4-frame" class="frame">
+    <div id="s4-stage" class="stage">
+      <img id="s4-img0" class="base" src="assets/04-despachos.jpg" width="1482" height="812">
+      <div class="red" data-layout-allow-overlap style="left:1296px;top:10px;width:166px;height:40px"><i>R</i>Residente</div>
+      <div id="s4-cv-status" data-layout-allow-overlap style="position:absolute;left:1146px;top:350px;width:104px;height:26px;background:#ffffff;z-index:7;overflow:hidden;"><div class="pro-app cov" style="position:absolute;left:0;top:0;width:140.9px;height:35.2px;opacity:1;display:flex;align-items:center;justify-content:center"><span class="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground-muted">Sin iniciar</span></div></div><div id="s4-cv-act" data-layout-allow-overlap style="position:absolute;left:1288px;top:326px;width:126px;height:72px;background:#ffffff;z-index:7;overflow:hidden;"><div class="pro-app cov" style="position:absolute;left:0;top:0;width:170.7px;height:97.6px;opacity:1;display:flex;align-items:center;justify-content:center"><div class="dispatches-actions grid w-full grid-cols-1 gap-2"><a class="secondary-button w-full gap-1.5 px-3 text-xs">Ver programación <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-3.5"><path d="m9 18 6-6-6-6"></path></svg></a><button type="button" id="s4-startbtn" class="primary-button w-full gap-1.5 px-3 text-xs"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg> Inicio de Registro</button></div></div></div>
+      <div id="s4-typed" data-layout-allow-overlap style="position:absolute;left:1102px;top:196px;width:300px;height:17px;background:#fff;font-family:Poppins,sans-serif;font-size:10.3px;line-height:17px;color:#17191d;opacity:0;z-index:8"></div>
+      <img id="s4-img1" src="assets/09-detalle-en-ejecucion.jpg" width="1482" height="861" style="position:absolute;left:0;top:0;width:1482px;height:861px;display:block;opacity:0">
+      <div id="s4-post" style="position:absolute;inset:0;opacity:0;z-index:7"><div class="red" data-layout-allow-overlap style="left:1296px;top:10px;width:166px;height:40px"><i>R</i>Residente</div><div id="s4-cv-rec" data-layout-allow-overlap style="position:absolute;left:1122px;top:333px;width:200px;height:20px;background:#ffffff;z-index:7;overflow:hidden;"><div class="pro-app cov" style="position:absolute;left:0;top:0;width:271.0px;height:27.1px;opacity:1;display:flex;align-items:center;justify-content:flex-start"><span class="text-sm">Residente</span></div></div></div>
+      <div id="s4-hl1" class="hl" style="left:1076px;top:189px;width:342px;height:32px"></div><div id="s4-hl2" class="hl" style="left:243px;top:330px;width:1185px;height:68px"></div><div id="s4-hl3" class="hl" style="left:505px;top:137px;width:166px;height:28px"></div><div id="s4-hl4" class="hl" style="left:1108px;top:262px;width:270px;height:100px"></div>
+      <div id="s4-app" class="pro-app" style="left:0px;top:0px;width:2008px;height:1100px;z-index:30;"><div id="s4-ov" class="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-black/50 backdrop-blur-[2px] p-2 sm:p-6 hid" style="overflow:hidden"><div id="s4-dlg" role="dialog" class="my-auto flex w-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl sm:rounded-2xl max-w-2xl" style="max-height:calc(1100px - 3rem)">
+  <div class="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3.5 sm:gap-4 sm:px-6 sm:py-4">
+    <div class="flex min-w-0 gap-3"><span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-strong"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-5"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"></path><path d="M15 18H9"></path><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"></path><circle cx="17" cy="18" r="2"></circle><circle cx="7" cy="18" r="2"></circle></svg></span><div class="min-w-0"><h2 class="line-clamp-3 break-words font-semibold text-foreground [overflow-wrap:anywhere]">Iniciar despacho</h2><p class="mt-1 text-xs leading-5 text-foreground-muted">Se creará el despacho operativo de esta programación.</p></div></div>
+    <span class="group/tooltip relative inline-flex"><button type="button" aria-label="Cerrar" class="icon-button"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-5"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button></span>
+  </div>
+  <div class="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain" style="overflow:hidden"><div id="s4-dlg-in" style="position:relative"><div class="space-y-5 p-5 sm:p-6">
+  <dl class="grid gap-4 rounded-xl border border-border bg-muted/25 p-4 sm:grid-cols-2">
+    <div><dt class="text-xs text-foreground-muted">Programación</dt><dd class="mt-1 font-mono text-sm font-semibold">PRG-8656D09C</dd></div>
+    <div><dt class="text-xs text-foreground-muted">Proveedor</dt><dd class="mt-1 text-sm font-semibold">MEZCLADORA, S.A.</dd></div>
+    <div><dt class="text-xs text-foreground-muted">Fecha</dt><dd class="mt-1 text-sm font-semibold">12/10/2026, 6:00 p. m.</dd></div>
+    <div><dt class="text-xs text-foreground-muted">Volumen programado</dt><dd class="mt-1 text-sm font-semibold">12 M3</dd></div></dl>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <div><label class="form-label">Hora de llegada *</label><div class="relative"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6h4"></path></svg><div id="s4-arrival" class="form-input bg-muted pl-10"><span class="nv">06:04 p.m.</span></div></div><p class="mt-1 text-xs text-foreground-muted">Se registra automáticamente al iniciar · 2026-10-12.</p></div>
+    <div><label class="form-label">Receptor *</label><input id="s4-receiver" readonly value="Residente" class="form-input bg-muted"><p class="mt-1 text-xs text-foreground-muted">Usuario que inicia el despacho.</p></div>
+  </div></div></div></div>
+  <div class="sticky bottom-0 z-10 flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] [&amp;&gt;*]:w-full sm:static sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:px-6 sm:py-4 [&amp;&gt;*]:sm:w-auto"><button type="button" class="secondary-button ">Cancelar</button><button type="submit" id="s4-go" class="primary-button "><span class="grid place-items-center"><span aria-hidden="true" class="invisible col-start-1 row-start-1 inline-flex items-center justify-center gap-2">Iniciar Registro</span><span aria-hidden="true" class="invisible col-start-1 row-start-1 inline-flex items-center justify-center gap-2"><span class="size-4"></span>Iniciando…</span><span class="col-start-1 row-start-1 inline-flex items-center justify-center gap-2">Iniciar Registro</span></span></button></div>
+</div></div></div>
+      <div id="s4-cur" class="cur"><b></b></div>
+      <div id="s4-rip" class="rip"></div>
+    </div>
+  </div>
+  <div class="cap"><span id="s4-cap1">Busca la programación por su código</span><span id="s4-cap2">Revisa llegada y receptor → Iniciar Registro</span><span id="s4-cap3">Detalle de despacho · En ejecución</span></div>
+
+  <div id="s4-wipe" class="wipe" data-layout-allow-overflow></div>
+</div>
+<script>
+
+const W=1482, H=812, S=1500/W, K=W/2008;
+const $=(s)=>document.querySelector(s), $$=(s)=>[...document.querySelectorAll(s)];
+const st=$('#s4-stage'), R=st.closest('[data-composition-id]')||document, cur=$('#s4-cur'), curb=$('#s4-cur b'), rip=$('#s4-rip');
+gsap.set(st,{scale:S,x:0,y:0,transformOrigin:'0 0'});
+gsap.set(cur,{x:700,y:300});
+$$('#s4-stage .pro-app').forEach(e=>gsap.set(e,{scale:K,transformOrigin:'0 0'}));
+const tl=gsap.timeline({paused:true});
+// RM: anclas [tiempo anterior, tiempo en la pista actual] para alinear cada acción con la palabra que la nombra.
+const RM=[[0, 0], [1.32, 1.09], [2.97, 2.64], [3.76, 3.56], [5.13, 5.21], [6.62, 6.7], [7.45, 7.85], [8.07, 8.96], [10.11, 10.91], [10.9, 11.7]];
+if(RM){const m=(t)=>{let i=0;while(i<RM.length-2&&t>RM[i+1][0])i++;const [a0,b0]=RM[i],[a1,b1]=RM[i+1];return b0+(t-a0)*(b1-b0)/(a1-a0);};
+  ['to','from','fromTo','set','call'].forEach(k=>{const o=tl[k].bind(tl);tl[k]=(...a)=>{const j=a.length-1;if(typeof a[j]==='number')a[j]=Math.max(0,m(a[j]));return o(...a);};});}
+// Positions are measured lazily (when each tween starts), in stage pixels, so they follow the real layout.
+// Elements are resolved NOW (the runtime scopes selectors only while this script runs);
+// positions are measured lazily, in layout coordinates, when each tween starts.
+const E=(a)=>typeof a==='string'?$(a):a;
+const P=(el)=>{let x=el.offsetWidth/2,y=el.offsetHeight/2,e=el;
+  while(e&&e!==st){const g=(p)=>Number(gsap.getProperty(e,p))||0, sc=(e.classList.contains('pro-app')?(Number(gsap.getProperty(e,'scale'))||1):1);
+    x=e.offsetLeft+g('x')+g('xPercent')*e.offsetWidth/100+x*sc; y=e.offsetTop+g('y')+g('yPercent')*e.offsetHeight/100+y*sc; e=e.offsetParent;}
+  return{cx:x,cy:y};};
+// POS: positions baked by the build (recorded frame by frame in a real browser), so HyperFrames never has to
+// measure layout while a scene is hidden. Without POS they are measured lazily and recorded in window.__rec.
+const POS=[null, null, {"cx": 1351.099, "cy": 386.516}, {"cx": 1351.099, "cy": 386.516}, {"cx": 740.952, "cy": 405.531}, {"cx": 918.072, "cy": 547.596}, {"cx": 918.072, "cy": 547.596}]; let __pi=0; window.__rec=window.__rec||{}; const REC=window.__rec['s4']=[];
+const ptf=(a)=>{const i=__pi++;if(Array.isArray(a))return()=>({cx:a[0],cy:a[1]});if(POS&&POS[i]){const v=POS[i];return()=>v;}const el=E(a);return()=>{const v=P(el);REC[i]=v;return v;};};
+const lz=(fn)=>{const i=__pi++;if(POS&&POS[i]){const v=POS[i].v;return()=>v;}return()=>{const v=fn();REC[i]={v};return v;};};
+const mv=(a,t,d=.8)=>{const f=ptf(a);tl.to(cur,{x:()=>f().cx,y:()=>f().cy,duration:d,ease:'power2.inOut'},t);};
+const ck=(a,t)=>{const f=ptf(a);tl.set(rip,{x:()=>f().cx,y:()=>f().cy},t).fromTo(rip,{opacity:.95,scale:.3},{opacity:0,scale:2,duration:.55,ease:'power2.out',immediateRender:false},t).fromTo(curb,{scale:1},{scale:.8,duration:.08,yoyo:true,repeat:1,immediateRender:false},t);};
+const go=(a,t,d=.7)=>{mv(a,t-d-.08,d);ck(a,t);};
+const hl=(s,t,d)=>{tl.fromTo(s,{opacity:0,scale:.94},{opacity:1,scale:1,duration:.35,ease:'back.out(2)',immediateRender:false},t).to(s,{opacity:0,duration:.3},t+d);};
+const zm=(a,z,t,d=1)=>{const s=S*z,f=ptf(a);tl.to(st,{scale:s,x:()=>Math.min(0,Math.max(1500-W*s,750-f().cx*s)),y:()=>Math.min(0,Math.max(822-H*s,411-f().cy*s)),duration:d,ease:'power2.inOut'},t).to(cur,{scale:1/z,duration:d,ease:'power2.inOut'},t);};
+const cap=(i,t,d)=>{const e='#s4-cap'+i;gsap.set(e,{xPercent:-50});tl.fromTo(e,{opacity:0,y:14},{opacity:1,y:0,duration:.35,ease:'power2.out',immediateRender:false},t).to(e,{opacity:0,duration:.3},t+d);};
+const ring=(s,t,d,c='237,28,46')=>{tl.fromTo(s,{boxShadow:`0 0 0 0px rgba(${c},0)`},{boxShadow:`0 0 0 4px rgba(${c},.5)`,duration:.3,immediateRender:false},t).to(s,{boxShadow:`0 0 0 0px rgba(${c},0)`,duration:.3},t+d);};
+const show=(s,t,d=.2)=>tl.to(s,{opacity:1,duration:d},t);
+const hide=(s,t,d=.2)=>tl.to(s,{opacity:0,duration:d},t);
+// Dialog motion from src/components/ui/dialog.tsx: overlay fades, panel opacity/y 10/scale .97 in 0.22 s.
+const dIn=(o,p,t)=>{tl.to(o,{opacity:1,duration:.18},t).fromTo(p,{opacity:0,y:10,scale:.97},{opacity:1,y:0,scale:1,duration:.22,ease:'power2.out',immediateRender:false},t);};
+const dOut=(o,p,t)=>{tl.to(p,{opacity:0,y:8,scale:.97,duration:.18},t).to(o,{opacity:0,duration:.18},t);};
+const sw=(s,i,t)=>{tl.set($$(s+'>*'),{opacity:(k)=>k===i?1:0},t);};
+const typeText=(s,txt,t,d)=>{const el=E(s),o={n:0};tl.to(o,{n:txt.length,duration:d,ease:'none',onUpdate:()=>{el.textContent=txt.slice(0,Math.round(o.n));}},t);};
+const offIn=(el,root)=>{let y=0;while(el&&el!==root){y+=el.offsetTop;el=el.offsetParent;}return y;};
+const scr=(inner,target,t,d=.6,m=24)=>{const ie=E(inner),te=typeof target==='number'?null:E(target),f=lz(()=>te?-(offIn(te,ie)-m):-target);tl.to(ie,{y:f,duration:d,ease:'power2.inOut'},t);};
+
+gsap.set('#s4-wipe',{xPercent:0});
+tl.to('#s4-wipe',{xPercent:101,duration:.55,ease:'power3.inOut'},0);
+tl.fromTo('#s4-frame',{opacity:0,y:30},{opacity:1,y:0,duration:.6,ease:'power3.out'},.25)
+  .fromTo('#s4-chip',{opacity:0,x:-24},{opacity:1,x:0,duration:.5,ease:'power3.out'},.45)
+  .fromTo('#s4-logo',{opacity:0},{opacity:1,duration:.5},.55)
+  .to(cur,{opacity:1,duration:.3},.9);
+tl.to('#s4-demo',{opacity:1,duration:.5},.6);
+
+
+// l = t - 48.9
+mv([1246,205],.6,.8); hl('#s4-hl1',1.0,2.0); cap(1,.9,2.6); ck([1246,205],1.45);       // "busca la programación por su código" (0.2–3.0)
+show('#s4-typed',1.55,.05); typeText('#s4-typed','PRG-8656D09C',1.65,.9);
+hl('#s4-hl2',2.7,1.3); go('#s4-startbtn',3.75,.6);                                     // "pulsa Iniciar despacho" (3.0–4.2)
+dIn('#s4-ov','#s4-dlg',3.9); zm('#s4-dlg',1.55,4.1,.6); cap(2,4.6,3.0);
+ring('#s4-arrival',5.4,1.3); ring('#s4-receiver',6.3,1.1);                             // "hora de llegada (5.6) y el receptor (6.6)"
+go('#s4-go',7.45,.45); dOut('#s4-ov','#s4-dlg',7.6); zm([741,406],1.0,7.65,.4);        // "Confirma" (7.45)
+show('#s4-img1',7.95,.35); show('#s4-post',7.95,.35); hide(['#s4-cv-status','#s4-cv-act','#s4-typed'],7.95,.3);                                  // "verás el detalle del despacho en ejecución" (8.0–10.1)
+zm([700,250],1.45,8.3,.8); hl('#s4-hl3',8.9,1.6); hl('#s4-hl4',9.4,1.4); cap(3,8.4,2.4);
+
+window.__timelines["s4"] = tl;
+</script>
+</template>
