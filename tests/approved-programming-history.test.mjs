@@ -28,6 +28,7 @@ test('fechas históricas, futuras y bisiestas se validan por su valor calendario
 const rowErrors=load(dialogSource+'\nexport { rowErrors as testRowErrors };',{
   'react/jsx-runtime':{},react:{},'lucide-react':{},
   '@/components/feedback/loading-button':{},'@/components/forms/file-drop-field':{},'@/components/ui/dialog':{},
+  '@/components/ui/icon-button':{},
   '@/lib/notification-messages':{},'@/lib/notify':{},'../actions':{},'../invoice-policy':{},
   '../approved-import-validation':{isValidApprovedProgrammingDateTime},'../types':{},
 }).testRowErrors;
@@ -71,6 +72,36 @@ test('el lote guarda la fecha histórica corregida y relee pedido, concreto y vo
   assert.equal(item.casting_element,'PILES');assert.equal(item.order_number,'106');assert.equal(item.lines[0].quantity,24);
   assert.equal(item.lines[0].concrete_type,'CONF4001');assert.equal(item.lines[0].unit_code,'M3');
   assert.deepEqual(Array.from(item.delivery_modes),['PUMP','PLACEMENT']);assert.ok(f.paths.includes('/programming'));
+});
+
+test('la carga importa únicamente las filas conservadas en el orden del Excel', async () => {
+  const removed = { ...row, sourceRow: 26, orderNumber: '107', scheduledAt: '2026-12-10T' };
+  const last = { ...row, sourceRow: 28, orderNumber: '108', quantity: '17' };
+  const f = fixture({ rows: [row, removed, last] });
+  const data = form();
+  data.set('rows', JSON.stringify([
+    { sourceRow: last.sourceRow, supplierId, scheduledAt: '2026-12-11T08:30', notes: 'Ajuste de hora' },
+    { sourceRow: row.sourceRow, supplierId, scheduledAt: row.scheduledAt, notes: '' },
+  ]));
+
+  assert.equal((await f.actions.createProgrammingBatchAction({}, data)).status, 'success');
+  assert.equal(f.calls.length, 1);
+  const items = f.calls[0].args.p_items;
+  assert.deepEqual(Array.from(items, item => item.order_number), ['106', '108']);
+  assert.equal(items[1].scheduled_at, '2026-12-11T14:30:00.000Z');
+  assert.equal(items[1].notes, 'Ajuste de hora');
+  assert.equal(items[1].lines[0].quantity, 17);
+});
+
+test('la selección de filas rechaza una carga vacía, duplicada o ajena al Excel', async () => {
+  const selected = { sourceRow: row.sourceRow, supplierId, scheduledAt: row.scheduledAt, notes: '' };
+  for (const rows of [[], [selected, selected], [selected, { ...selected, sourceRow: 99 }]]) {
+    const f = fixture({ rows: [row, { ...row, sourceRow: 26, orderNumber: '107' }] });
+    const data = form();
+    data.set('rows', JSON.stringify(rows));
+    assert.equal((await f.actions.createProgrammingBatchAction({}, data)).status, 'error');
+    assert.equal(f.calls.length, 0);
+  }
 });
 
 test('la creación manual acepta una fecha histórica válida y envía la hora del proyecto', async () => {
