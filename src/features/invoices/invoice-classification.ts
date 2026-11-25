@@ -1,4 +1,5 @@
 export type ClassifiedInvoiceType = "PRODUCT" | "SERVICE" | "UNKNOWN";
+export type UniversalInvoiceType = ClassifiedInvoiceType | "MIXED";
 
 export type ClassifiableInvoiceLine = {
   code: string;
@@ -30,4 +31,9 @@ export function classifyInvoiceLines(
   if (lines.some((line) => classifyInvoiceLine(line).product)) return "PRODUCT";
   if (lines.some((line) => classifyInvoiceLine(line).service)) return "SERVICE";
   return "UNKNOWN";
+}
+
+export function classifyUniversalInvoiceLines(lines: ClassifiableInvoiceLine[]): UniversalInvoiceType {
+  const type = classifyInvoiceLines(lines);
+  return type === "PRODUCT" && lines.some((line) => classifyInvoiceLine(line).service) ? "MIXED" : type;
 }

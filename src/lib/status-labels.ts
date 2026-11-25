@@ -66,6 +66,7 @@ const STATUS_LABELS: Readonly<Record<string, string>> = {
   MANUAL_ASSISTED: "Manual asistido",
   PRODUCT: "Producto",
   SERVICE: "Servicio",
+  MIXED: "Mixta",
   PROJECT: "Proyecto",
   COMPANY: "Empresa",
   SUPPLIER: "Proveedor",

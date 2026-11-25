@@ -1,4 +1,5 @@
 import type { ServiceReconciliationSummary } from "@/features/invoices/service-reconciliation";
+import type { MixedInvoiceComparison } from "@/features/invoices/universal/reconciliation-comparison";
 import type { GuideDetails } from "./guide-details";
 import type { CastingElement } from "./casting-elements";
 export const DISPATCH_STATUSES = ["IN_EXECUTION", "COMPLETED"] as const;
@@ -188,6 +189,7 @@ export type DispatchDetail = {
   reconciliation: {
     status: string;
     serviceReconciliation?: ServiceReconciliationSummary;
+    mixedComparison?: MixedInvoiceComparison | null;
     productInvoice: DispatchInvoiceSummary | null;
     serviceInvoice: DispatchInvoiceSummary | null;
     latestDifference: number | null;

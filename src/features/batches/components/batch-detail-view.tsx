@@ -84,12 +84,13 @@ function InvoiceCell({ relation, type }: { relation: BatchDispatchRelation; type
 }
 
 function RecipientExceptionButtons({ relation, onSelect, mobile = false }: { relation: BatchDispatchRelation; onSelect: (invoice: BatchInvoice) => void; mobile?: boolean }) {
-  const pendingInvoices = [relation.productInvoice, relation.serviceInvoice].filter(
+  const service = relation.serviceInvoice?.id === relation.productInvoice?.id ? null : relation.serviceInvoice;
+  const pendingInvoices = [relation.productInvoice, service].filter(
     (invoice): invoice is BatchInvoice => invoice?.recipientException?.status === "PENDING",
   );
   return pendingInvoices.map((invoice) => (
     <button key={invoice.id} type="button" onClick={() => onSelect(invoice)} className={`secondary-button text-xs ${mobile ? "w-full" : ""}`}>
-      Revisar C14 · {invoice.type === "PRODUCT" ? "Producto" : "Servicio"}
+      Revisar C14 · {invoice.id === relation.serviceInvoice?.id && invoice.id === relation.productInvoice?.id ? "Mixta" : invoice.type === "PRODUCT" ? "Producto" : "Servicio"}
     </button>
   ));
 }

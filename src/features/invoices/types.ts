@@ -1,7 +1,7 @@
 export type GlobalInvoiceItem = {
   id: string;
   number: string;
-  type: "PRODUCT" | "SERVICE";
+  type: "PRODUCT" | "SERVICE" | "MIXED";
   status: string;
   date: string;
   total: number;

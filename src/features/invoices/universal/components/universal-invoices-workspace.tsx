@@ -17,6 +17,7 @@ import type { UniversalCommitResult, UniversalInvoiceResult } from "../types";
 import { classifyProductFirst, COMMITTABLE_INVOICE_STATUSES, uploadedProductForService, type InvoiceClassificationStage } from "../upload-pairing";
 import { hasReconciliationDifferences } from "../reconciliation-comparison";
 import { InvoiceComparisonAlert } from "./invoice-comparison-alert";
+import { MixedInvoiceAmounts } from "./mixed-invoice-comparison";
 
 type Entry = {
   id: string;
@@ -31,6 +32,7 @@ const MAX_FILES = 100;
 const MAX_BYTES = 10 * 1024 * 1024;
 const CONCURRENCY = Math.max(1, Math.min(8, Number(process.env.NEXT_PUBLIC_UNIVERSAL_INVOICE_CONCURRENCY ?? 3)));
 const SUCCESS_STATUSES = new Set(["READY", "SAVED"]);
+const typeLabels = { PRODUCT: "Producto", SERVICE: "Servicio", MIXED: "Mixta · Producto + Servicio", UNKNOWN: null };
 const ATTENTION_STATUSES = new Set([
   "READY_WITH_DIFFERENCES",
   "REQUIRES_RECIPIENT_EXCEPTION",
@@ -131,6 +133,8 @@ function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending, ope
   const pending = entry.phase === "WAITING" || entry.phase === "CLASSIFYING" || entry.phase === "SAVING";
   const showPending = useDelayedPending(pending);
   const differences = hasReconciliationDifferences(entry.result);
+  const mixedComparison = entry.result?.mixedComparison;
+  const typeLabel = entry.result ? typeLabels[entry.result.detectedType] : null;
   const phaseStatus = entry.phase === "SAVED" ? "SAVED" : entry.result?.status;
   const status = pending ? undefined : differences && ["SAVED", "READY", "READY_WITH_DIFFERENCES"].includes(phaseStatus ?? "") ? "WITH_DIFFERENCES" : phaseStatus;
   const exceptionStatus = entry.result && "recipientExceptionStatus" in entry.result
@@ -147,9 +151,10 @@ function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending, ope
             {!pending && differences && status !== "WITH_DIFFERENCES" && <Badge tone="warning">Con diferencias</Badge>}
             {!status && showPending && <Badge tone="info"><LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" />{entry.phase === "SAVING" ? "Guardando" : entry.phase === "WAITING" ? "En espera" : "Clasificando"}</Badge>}
           </div>
-          <p className="mt-1 text-xs text-foreground-muted">{sizeLabel(entry.file.size)}{entry.result?.invoiceNumber ? ` · Factura ${entry.result.invoiceNumber}` : ""}{entry.result?.detectedType && entry.result.detectedType !== "UNKNOWN" ? ` · ${entry.result.detectedType === "PRODUCT" ? "Producto" : "Servicio"}` : ""}</p>
+          <p className="mt-1 text-xs text-foreground-muted">{sizeLabel(entry.file.size)}{entry.result?.invoiceNumber ? ` · Factura ${entry.result.invoiceNumber}` : ""}{typeLabel ? ` · ${typeLabel}` : ""}</p>
           {entry.result?.pcaOriginal && <p className="mt-1 break-all text-xs text-foreground-muted">PCA: {entry.result.pcaOriginal}</p>}
-          {!pending && differences && <InvoiceComparisonAlert comparison={entry.result?.comparison} saved={entry.phase === "SAVED"} duplicate={entry.result?.status === "DUPLICATE"} />}
+          {!pending && mixedComparison && <MixedInvoiceAmounts comparison={mixedComparison} />}
+          {!pending && (mixedComparison ? entry.result?.comparison?.matches === false : differences) && <InvoiceComparisonAlert comparison={entry.result?.comparison} saved={entry.phase === "SAVED"} duplicate={entry.result?.status === "DUPLICATE"} />}
           {!pending && entry.result?.status === "REQUIRES_RECIPIENT_EXCEPTION" && (
             <div className="mt-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-xs text-warning">
               <p className="font-semibold">{exceptionStatus === "APPROVED" ? "Excepción C14 aceptada" : exceptionStatus === "REINVOICE_REQUESTED" ? "Refacturación solicitada" : "Decisión de Compras pendiente"}</p>
@@ -164,7 +169,7 @@ function EntryCard({ entry, onChange, onRemove, onDecision, decisionPending, ope
           )}
           {!pending && entry.result?.operation === "REINVOICE" && (
             <div className="mt-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-xs text-warning">
-              <p className="font-semibold">Nueva Factura de {entry.result.detectedType === "SERVICE" ? "Servicio" : "Producto"} · Tipo: Refacturación</p>
+              <p className="font-semibold">Refacturación · {typeLabel}</p>
               <p className="mt-0.5">Reemplaza la factura {entry.result.replacesInvoiceNumber ?? "vigente"}.</p>
             </div>
           )}
@@ -336,7 +341,7 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
           const result = await requestResult("commit", target, uploadedProductForService(target, entries)) as UniversalCommitResult;
           if (result.saved) {
             saved += 1;
-            if (result.reconciliationStatus === "WITH_DIFFERENCES" || result.recipientExceptionStatus === "PENDING" || result.warnings.length > 0) attention += 1;
+            if (hasReconciliationDifferences(result) || result.recipientExceptionStatus === "PENDING" || result.warnings.length > 0) attention += 1;
           } else {
             failed += 1;
           }
@@ -349,8 +354,8 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
       };
       // One user action, two internal phases. Avoid a Service racing the
       // Product's prepare/finalize calls and observing a half-written invoice.
-      await runPool(targets.filter((entry) => entry.result?.detectedType === "PRODUCT"), saveEntry);
-      await runPool(targets.filter((entry) => entry.result?.detectedType !== "PRODUCT"), saveEntry);
+      await runPool(targets.filter((entry) => entry.result?.detectedType !== "SERVICE"), saveEntry);
+      await runPool(targets.filter((entry) => entry.result?.detectedType === "SERVICE"), saveEntry);
       const description = `${saved} ${saved === 1 ? "factura guardada" : "facturas guardadas"}${attention ? `, ${attention} requieren atención` : ""}${failed ? ` y ${failed} con error` : ""}.`;
       if (saved === 0) notify.error("No se procesaron las facturas", "Revisa los archivos marcados e inténtalo nuevamente.");
       else if (attention || failed) notify.warning("Carga finalizada con observaciones", description);
@@ -379,7 +384,7 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
           ...result,
           recipientExceptionStatus: body.exceptionStatus,
           // The C14 decision RPC returns Product's status, even for a Service.
-          reconciliationStatus: result.detectedType === "PRODUCT" ? body.reconciliationStatus : result.reconciliationStatus,
+          reconciliationStatus: result.detectedType !== "SERVICE" ? body.reconciliationStatus : result.reconciliationStatus,
           message: body.message,
         },
       } : item));
@@ -394,7 +399,7 @@ export function UniversalInvoicesWorkspace({ authorizedProjects }: { authorizedP
   return (
     <MotionPage className="mx-auto max-w-[1500px] space-y-5 pb-10">
       <MotionSection className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Gestión multi‑proyecto</p><h1 className="mt-2 text-2xl font-bold sm:text-3xl">Facturas Universal</h1><p className="mt-2 max-w-3xl text-sm leading-5 text-foreground-muted">Carga todas tus facturas juntas. Primero se validan los Productos contra su pedido, concreto y despacho; después se vinculan sus Servicios por pedido. El PCA completo distingue operaciones cuando el pedido se repite.</p></div>
+        <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Gestión multi‑proyecto</p><h1 className="mt-2 text-2xl font-bold sm:text-3xl">Facturas Universal</h1><p className="mt-2 max-w-3xl text-sm leading-5 text-foreground-muted">Carga tus facturas de Producto, Servicio o mixtas. El PCA ayuda a vincularlas al despacho. En las mixtas puedes revisar el importe y la diferencia de cada parte.</p></div>
         <span className="w-fit"><Badge tone="info">{authorizedProjects.length} proyecto(s) autorizado(s)</Badge></span>
       </MotionSection>
 

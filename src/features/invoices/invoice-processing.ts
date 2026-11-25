@@ -22,6 +22,7 @@ export type ProcessedInvoiceType = "PRODUCT" | "SERVICE" | "UNKNOWN";
 
 export type InvoiceProcessingContext = DispatchInvoiceIdentity & {
   expectedType?: "PRODUCT" | "SERVICE";
+  allowMixedInvoice?: boolean;
   companyCode: string;
   orderNumber: string;
   supplierName: string;
@@ -61,6 +62,7 @@ export type InvoiceProcessingPayload = {
   issuer_tax_id_normalized: string;
   fiscal_document_key: string;
   file_sha256?: string;
+  mixed_totals?: { product: number; service: number };
   pca_original: string | null;
   detected_order_number: string | null;
   lines: Array<{
@@ -69,6 +71,9 @@ export type InvoiceProcessingPayload = {
     code: string;
     description: string;
     conciliable: boolean;
+    service?: boolean;
+    unit_price?: number;
+    line_total?: number;
   }>;
   invoiced_quantity: number;
   normalized_unit: string | null;
@@ -159,6 +164,9 @@ export function processExtractedInvoice(
     };
   });
   const productLines = lines.filter((line) => line.conciliable);
+  if (!context.allowMixedInvoice && productLines.length && lines.some((line) => line.service)) {
+    return { status: "error", message: "Carga la factura mixta desde Facturas Universal.", details: [] };
+  }
   const detectedType = classifyInvoiceLines(extracted.lines);
   const units = [...new Set(productLines.map((line) => line.unit_code))];
   const invoiceUnit = units.length === 1 ? units[0] : null;
@@ -290,13 +298,7 @@ export function processExtractedInvoice(
       fiscal_document_key: fiscalDocumentKey!,
       pca_original: extracted.pca_original,
       detected_order_number: detectedOrder,
-      lines: lines.map((line) => ({
-        quantity: line.quantity,
-        unit_code: line.unit_code,
-        code: line.code,
-        description: line.description,
-        conciliable: line.conciliable,
-      })),
+      lines,
       invoiced_quantity: invoicedQuantity,
       normalized_unit: invoiceUnit,
       expected_real_volume: context.realVolume,

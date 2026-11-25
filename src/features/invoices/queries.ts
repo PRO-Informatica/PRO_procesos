@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 import type { GlobalInvoiceData, GlobalInvoiceItem } from "./types";
+import { storedMixedInvoiceTotals } from "./universal/reconciliation-comparison";
 
 function numeric(value: unknown) { const parsed = Number(value ?? 0); return Number.isFinite(parsed) ? parsed : 0; }
 
@@ -33,7 +34,7 @@ export async function getGlobalInvoices(projectId: string): Promise<GlobalInvoic
   const versionIds = (versionsResult.data ?? []).map((row) => row.id);
   const jobsResult = versionIds.length ? await admin.from("document_processing_jobs").select("id, document_version_id").in("document_version_id", versionIds).order("created_at", { ascending: false }) : { data: [], error: null };
   const jobIds = (jobsResult.data ?? []).map((row) => row.id);
-  const extractionResult = jobIds.length ? await admin.from("invoice_extractions").select("processing_job_id, verification_status").in("processing_job_id", jobIds).order("created_at", { ascending: false }) : { data: [], error: null };
+  const extractionResult = jobIds.length ? await admin.from("invoice_extractions").select("processing_job_id, verification_status, mixed_totals:normalized_payload->mixed_totals").in("processing_job_id", jobIds).order("created_at", { ascending: false }) : { data: [], error: null };
   if (versionsResult.error ?? jobsResult.error ?? extractionResult.error) throw new Error("No fue posible resolver el procesamiento de facturas.");
 
   const suppliers = new Map((suppliersResult.data ?? []).map((row) => [row.id, row.name]));
@@ -44,8 +45,10 @@ export async function getGlobalInvoices(projectId: string): Promise<GlobalInvoic
   const versionByDocument = new Map((versionsResult.data ?? []).map((row) => [row.document_id, row]));
   const jobByVersion = new Map<string, string>();
   for (const row of jobsResult.data ?? []) if (!jobByVersion.has(row.document_version_id)) jobByVersion.set(row.document_version_id, row.id);
-  const extractionByJob = new Map<string, GlobalInvoiceItem["extractionStatus"]>();
-  for (const row of extractionResult.data ?? []) if (!extractionByJob.has(row.processing_job_id)) extractionByJob.set(row.processing_job_id, row.verification_status as GlobalInvoiceItem["extractionStatus"]);
+  const extractionByJob = new Map<string, { status: GlobalInvoiceItem["extractionStatus"]; mixed: boolean }>();
+  for (const row of extractionResult.data ?? []) if (!extractionByJob.has(row.processing_job_id)) {
+    extractionByJob.set(row.processing_job_id, { status: row.verification_status as GlobalInvoiceItem["extractionStatus"], mixed: Boolean(storedMixedInvoiceTotals(row.mixed_totals)) });
+  }
   const creators = new Map((creatorsResult.data ?? []).map((row) => [row.id, row.full_name]));
 
   return { batches: batchesResult.data ?? [], items: invoices.map((invoice) => {
@@ -55,7 +58,7 @@ export async function getGlobalInvoices(projectId: string): Promise<GlobalInvoic
     const jobId = version ? jobByVersion.get(version.id) : undefined;
     const dispatch = dispatches.get(invoice.dispatch_id);
     return {
-      id: invoice.id, number: invoice.invoice_number, type: invoice.invoice_type,
+      id: invoice.id, number: invoice.invoice_number, type: jobId && extractionByJob.get(jobId)?.mixed ? "MIXED" : invoice.invoice_type,
       status: invoice.status, date: invoice.invoice_date, total: numeric(invoice.total),
       currency: invoice.currency, supplierName: suppliers.get(invoice.supplier_id) ?? "Proveedor no disponible",
       pcaOriginal: invoice.pca_original, orderNumber: invoice.order_number,
@@ -65,7 +68,7 @@ export async function getGlobalInvoices(projectId: string): Promise<GlobalInvoic
       replacesInvoiceId: invoice.replaces_invoice_id,
       replacedByInvoiceId: invoices.find((row) => row.replaces_invoice_id === invoice.id)?.id ?? null,
       documentId, fileName: version?.file_name ?? null,
-      extractionStatus: jobId ? extractionByJob.get(jobId) ?? null : null,
+      extractionStatus: jobId ? extractionByJob.get(jobId)?.status ?? null : null,
       createdByName: creators.get(invoice.created_by) || "Usuario no disponible",
       createdAt: invoice.created_at,
     };

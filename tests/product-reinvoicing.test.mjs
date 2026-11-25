@@ -25,13 +25,13 @@ test("Universal relaciona el reemplazo con la Producto vigente", () => {
 });
 
 test("Universal conserva el bloqueo si hay factura activa fuera de refacturación", () => {
-  assert.match(universalService, /if \(invoiceSlot\.occupied\)/u);
+  assert.match(universalService, /if \(invoiceSlot\.occupied(?: \|\|[^)]*)?\)/u);
   assert.match(universalService, /Ya existe una Factura de/u);
 });
 
 test("la preview Universal explica el reemplazo al usuario", () => {
   assert.match(universalTypes, /operation: "NEW" \| "REINVOICE"/u);
-  assert.match(universalWorkspace, /Nueva Factura de[\s\S]*Producto[\s\S]*Tipo: Refacturación/u);
+  assert.match(universalWorkspace, /Refacturación · \{typeLabel\}/u);
   assert.match(universalWorkspace, /Reemplaza la factura/u);
 });
 
