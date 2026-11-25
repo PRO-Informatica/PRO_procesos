@@ -97,7 +97,7 @@ export async function getGlobalReconciliation(projectId: string): Promise<Global
         comparisonQuantity: latestAttempt?.comparisonQuantity ?? configuredBasis.quantity,
         comparisonUnitCode: latestAttempt?.comparisonUnitCode ?? configuredBasis.unitCode ?? "—",
         comparisonSource: latestAttempt?.source ?? configuredBasis.source,
-        invoiceCount: Number(Boolean(row?.current_product_invoice_id)) + Number(Boolean(row?.current_service_invoice_id)),
+        invoiceCount: new Set([row?.current_product_invoice_id, row?.current_service_invoice_id].filter(Boolean)).size,
         hasProductInvoice: Boolean(row?.current_product_invoice_id),
         hasServiceInvoice: Boolean(row?.current_service_invoice_id),
         reconciliationStatus: row?.status ?? "NOT_STARTED",

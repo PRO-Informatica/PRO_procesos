@@ -117,11 +117,17 @@ function fixture({ lines = [product], pca = "PCA-13102026-0047", savedProduct = 
   const server = {
     async rpc(name, args) {
       writes.push({ name, args });
-      if (name === "prepare_dispatch_invoice_upload_v2") {
+      if (name === "prepare_dispatch_invoice_upload_v2" || name === "prepare_mixed_dispatch_invoice_upload") {
         uploadedPayload = args.p_payload;
         return { data: [{ invoice_id: "invoice-new-service", document_id: "document", version_id: "version", storage_bucket: "private-documents", storage_path: "fixture.pdf" }], error: null };
       }
-      if (name === "complete_dispatch_invoice_processing") tables.dispatch_reconciliations[0].current_service_invoice_id = "invoice-new-service";
+      if (name === "complete_dispatch_invoice_processing") {
+        tables.dispatch_reconciliations[0].current_service_invoice_id = "invoice-new-service";
+        if (uploadedPayload.mixed_totals) tables.dispatch_reconciliations[0].current_product_invoice_id = "invoice-new-service";
+      }
+      if (name === "reconcile_mixed_dispatch_invoice") {
+        return { data: [{ product_status: "RECONCILED", service_status: "WITH_DIFFERENCES" }], error: null };
+      }
       if (name === "reconcile_dispatch_service") {
         Object.assign(tables.dispatch_reconciliations[0], { service_status: "WITH_DIFFERENCES", service_comparison: {
           ...storedServiceComparison, invoice_total: uploadedPayload.total, invoice_currency: uploadedPayload.currency,
@@ -437,6 +443,37 @@ test("Servicio alerta antes de guardar usando todos los snapshots del despacho, 
   assert.equal(result.comparison.invoiced, 1477);
   assert.equal(result.comparison.difference, -644.56);
   assert.equal(f.writes.length, 0);
+});
+
+test("Universal vincula una factura mixta a un despacho y guarda un PDF con ambos importes", async () => {
+  const f = fixture({ allowCommit: true, lines: [
+    { ...product, unit_price: 1000, line_total: 15500 },
+    { ...serviceLine, unit_price: 300, line_total: 4620.24 },
+  ] });
+  Object.assign(f.tables.dispatch_guide_lines[0], { unit_price: 1000, estimated_subtotal: "15500.0000", currency: "GTQ" });
+  Object.assign(f.tables.dispatch_guide_lines[1], { estimated_subtotal: "4620.0000" });
+  f.tables.dispatch_guide_lines.push({ ...f.tables.dispatch_guide_lines[1], id: "zero", quantity: 0, unit_price: null, estimated_subtotal: null });
+
+  const preview = await f.api.classifyUniversalInvoice(f.file);
+  assert.equal(preview.detectedType, "MIXED");
+  assert.equal(preview.dispatchId, "dispatch-ado");
+  assert.equal(preview.status, "READY_WITH_DIFFERENCES");
+  assert.equal(preview.comparison.matches, true);
+  assert.equal(preview.mixedComparison.product.difference, 0);
+  assert.equal(preview.mixedComparison.service.difference, 0.24);
+  assert.equal(preview.mixedComparison.total.invoiced, 20120.24);
+  assert.equal(f.writes.length, 0);
+
+  const saved = await f.api.commitUniversalInvoice(f.file);
+  assert.equal(saved.saved, true);
+  assert.equal(saved.reconciliationStatus, "RECONCILED");
+  assert.equal(saved.serviceReconciliationStatus, "WITH_DIFFERENCES");
+  assert.equal(f.writes.filter((write) => write === "upload").length, 1);
+  const prepare = f.writes[0];
+  assert.equal(prepare.name, "prepare_mixed_dispatch_invoice_upload");
+  assert.equal(prepare.args.p_payload.mixed_totals.service, 4620.24);
+  assert.equal(prepare.args.p_payload.total, 20120.24);
+  assert.equal(f.writes.at(-1).name, "reconcile_mixed_dispatch_invoice");
 });
 
 test("Producto alerta por cantidad, y no por comparar importes monetarios", async () => {

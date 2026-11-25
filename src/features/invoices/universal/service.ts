@@ -12,8 +12,8 @@ import { normalizeBusinessIdentity, normalizeTaxIdentity } from "@/lib/business-
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-import { classifyInvoiceLines } from "../invoice-classification";
-import { matchInvoiceProducts, sameFullPca } from "../dispatch-invoice-identity";
+import { classifyUniversalInvoiceLines } from "../invoice-classification";
+import { matchInvoiceProducts, normalizeFullPca, sameFullPca } from "../dispatch-invoice-identity";
 import { getDispatchInvoiceIdentities, readInvoiceIdentityRows } from "../dispatch-invoice-identity-queries";
 import { buildFiscalDocumentKey } from "../invoice-identity";
 import {
@@ -25,8 +25,8 @@ import { resolveReconciliationQuantityBasis, selectValidProgrammedQuantity } fro
 import { resolveInvoiceUploadSlot } from "../reinvoicing";
 import type { UniversalCommitResult, UniversalInvoiceResult } from "./types";
 import { COMMITTABLE_INVOICE_STATUSES } from "./upload-pairing";
-import { compareProductInvoice } from "./reconciliation-comparison";
-import { previewServiceInvoiceComparison, storedInvoiceReconciliation } from "./reconciliation-queries";
+import { compareMixedInvoice, compareProductInvoice, splitMixedInvoiceTotals } from "./reconciliation-comparison";
+import { previewMixedInvoiceComparison, previewServiceInvoiceComparison, storedInvoiceReconciliation } from "./reconciliation-queries";
 
 const MAX_PDF_SIZE = 10 * 1024 * 1024;
 const REQUIRED_PERMISSIONS = [
@@ -69,7 +69,9 @@ function result(
     replacesInvoiceId: input.replacesInvoiceId ?? null,
     replacesInvoiceNumber: input.replacesInvoiceNumber ?? null,
     comparison: input.comparison ?? null,
+    mixedComparison: input.mixedComparison,
     reconciliationStatus: input.reconciliationStatus,
+    serviceReconciliationStatus: input.serviceReconciliationStatus,
     payload: input.payload ?? null,
     fileSha256: input.fileSha256 ?? null,
   };
@@ -99,7 +101,9 @@ function publicResult(value: InternalClassification): UniversalInvoiceResult {
     replacesInvoiceId: value.replacesInvoiceId,
     replacesInvoiceNumber: value.replacesInvoiceNumber,
     comparison: value.comparison,
+    mixedComparison: value.mixedComparison,
     reconciliationStatus: value.reconciliationStatus,
+    serviceReconciliationStatus: value.serviceReconciliationStatus,
   };
 }
 
@@ -144,7 +148,9 @@ async function classifyInternal(
   } catch {
     return result(file, { status: "INVALID_FILE", message: "Formato no reconocido o PDF sin texto embebido." });
   }
-  const detectedType = classifyInvoiceLines(raw.lines);
+  const detectedType = classifyUniversalInvoiceLines(raw.lines);
+  const mixed = detectedType === "MIXED";
+  const mixedTotals = mixed ? splitMixedInvoiceTotals(raw.lines, raw.total) : null;
   const base = {
     detectedType,
     invoiceNumber: raw.invoice_number,
@@ -152,12 +158,20 @@ async function classifyInternal(
     orderNumber: normalizeOperationalOrder(raw.pca_original),
     pcaOriginal: raw.pca_original,
     fileSha256,
+    mixedComparison: mixedTotals && raw.currency ? compareMixedInvoice(mixedTotals, raw.currency) : undefined,
   };
   if (raw.detected_invoice_numbers.length > 1) {
     return result(file, { ...base, status: "INVALID_FILE", message: "El PDF contiene más de una factura." });
   }
   if (detectedType === "UNKNOWN") {
     return result(file, { ...base, status: "UNKNOWN_TYPE", message: "No fue posible clasificar la factura como Producto o Servicio." });
+  }
+  const processingType = detectedType === "MIXED" ? "PRODUCT" : detectedType;
+  if (mixed && (!mixedTotals || !raw.currency)) {
+    return result(file, { ...base, status: "ERROR", message: "Revisa los importes de la factura mixta. Cada renglón debe tener un tipo y un importe reconocible, y la suma debe coincidir con el total del PDF." });
+  }
+  if (mixed && !normalizeFullPca(raw.pca_original)) {
+    return result(file, { ...base, status: "DISPATCH_NOT_FOUND", message: "La factura mixta requiere un PCA completo para vincular Producto y Servicio al mismo despacho." });
   }
 
   const addressMatches = scopes.filter(({ project }) =>
@@ -214,7 +228,7 @@ async function classifyInternal(
       // A duplicate remains blocked for upload. Only reveal its stored result
       // when it belongs to the exact project already authorized for this PDF.
       const invoice = duplicate.data;
-      const sameContext = invoice.project_id === project.id && invoice.invoice_type === detectedType && typeof invoice.dispatch_id === "string";
+      const sameContext = invoice.project_id === project.id && invoice.invoice_type === processingType && typeof invoice.dispatch_id === "string";
       const existing = sameContext ? await storedInvoiceReconciliation(admin, project.id, invoice.dispatch_id, invoice.id, detectedType) : null;
       return result(file, {
         ...base,
@@ -225,7 +239,9 @@ async function classifyInternal(
         dispatchId: sameContext ? invoice.dispatch_id : null,
         dispatchLabel: sameContext ? `Pedido ${base.orderNumber ?? "sin número"} · DSP-${invoice.dispatch_id.slice(0, 8).toUpperCase()}` : null,
         comparison: existing?.comparison,
+        mixedComparison: existing?.mixedComparison ?? base.mixedComparison,
         reconciliationStatus: existing?.status,
+        serviceReconciliationStatus: existing?.serviceStatus,
       });
     }
   }
@@ -298,7 +314,7 @@ async function classifyInternal(
   const identityMatches = dispatchMatches.filter((dispatch) => {
     const identity = identities.get(dispatch.id);
     if (!identity) return false;
-    return detectedType === "PRODUCT"
+    return processingType === "PRODUCT"
       ? matchInvoiceProducts(raw.lines, identity.expectedProducts) === "MATCH"
       : identity.productInvoiceIdentityValid && sameFullPca(raw.pca_original, identity.productInvoicePca);
   });
@@ -319,7 +335,7 @@ async function classifyInternal(
     const hasValidatedProduct = [...identities.values()].some((identity) => identity.productInvoiceIdentityValid);
     const status = !dispatchMatches.length ? "DISPATCH_NOT_FOUND"
       : identityMatches.length > 1 ? "DISPATCH_AMBIGUOUS"
-      : detectedType === "PRODUCT" ? hasProductIdentity ? "PRODUCT_MISMATCH" : "DISPATCH_IDENTITY_UNVERIFIED"
+      : processingType === "PRODUCT" ? hasProductIdentity ? "PRODUCT_MISMATCH" : "DISPATCH_IDENTITY_UNVERIFIED"
       : hasValidatedProduct ? "SERVICE_PCA_MISMATCH" : "REQUIRES_PRODUCT_VALIDATION";
     const expected = [...new Set([...identities.values()].flatMap((identity) => identity.expectedProducts.map((item) => `${item.code} / ${item.reference}`)))].slice(0, 8).join(", ");
     return result(file, {
@@ -388,7 +404,7 @@ async function classifyInternal(
   if (reconciliation.error) throw new Error("No fue posible consultar la conciliación del despacho.");
 
   const invoiceSlot = resolveInvoiceUploadSlot({
-    invoiceType: detectedType,
+    invoiceType: processingType,
     reconciliationStatus: reconciliation.data?.status,
     serviceReconciliationStatus: reconciliation.data?.service_status,
     currentProductInvoiceId: reconciliation.data?.current_product_invoice_id,
@@ -396,20 +412,13 @@ async function classifyInternal(
   });
   const { currentInvoiceId } = invoiceSlot;
   const isReinvoicing = invoiceSlot.operation === "REINVOICE";
-  let replacesInvoiceNumber: string | null = null;
-  if (isReinvoicing && currentInvoiceId) {
-    const previousInvoice = await admin
-      .from("invoices")
-      .select("invoice_number")
-      .eq("id", currentInvoiceId)
-      .eq("dispatch_id", selectedDispatch.id)
-      .eq("invoice_type", detectedType)
-      .maybeSingle();
-    if (!previousInvoice.data) throw new Error(`No fue posible recuperar la Factura de ${detectedType === "SERVICE" ? "Servicio" : "Producto"} vigente.`);
-    replacesInvoiceNumber = previousInvoice.data.invoice_number;
-  }
-
-  if (invoiceSlot.occupied) {
+  const { current_product_invoice_id: productInvoiceId, current_service_invoice_id: serviceInvoiceId } = reconciliation.data ?? {};
+  const mixedSlotOccupied = mixed && serviceInvoiceId && serviceInvoiceId !== invoiceSlot.replacesInvoiceId;
+  const serviceBelongsToMixed = detectedType === "SERVICE" && serviceInvoiceId && serviceInvoiceId === productInvoiceId;
+  if (invoiceSlot.occupied || mixedSlotOccupied || serviceBelongsToMixed) {
+    const message = mixed ? "El despacho ya tiene una factura vigente de Producto o Servicio. Revisa las facturas asociadas antes de cargar una mixta."
+      : serviceBelongsToMixed ? "El Servicio de este despacho está vinculado a una factura mixta. Gestiona la refacturación desde Facturas Universal."
+      : `Ya existe una Factura de ${detectedType === "PRODUCT" ? "Producto" : "Servicio"} vigente para este despacho.`;
     return result(file, {
       ...base,
       projectId: project.id,
@@ -419,9 +428,22 @@ async function classifyInternal(
       batchId: batch.id,
       batchLabel: batch.code,
       status: "ERROR",
-      message: `Ya existe una Factura de ${detectedType === "PRODUCT" ? "Producto" : "Servicio"} vigente para este despacho.`,
+      message,
     });
   }
+  let replacesInvoiceNumber: string | null = null;
+  if (isReinvoicing && currentInvoiceId) {
+    const previousInvoice = await admin
+      .from("invoices")
+      .select("invoice_number")
+      .eq("id", currentInvoiceId)
+      .eq("dispatch_id", selectedDispatch.id)
+      .eq("invoice_type", processingType)
+      .maybeSingle();
+    if (!previousInvoice.data) throw new Error(`No fue posible recuperar la Factura de ${detectedType === "SERVICE" ? "Servicio" : "Producto"} vigente.`);
+    replacesInvoiceNumber = previousInvoice.data.invoice_number;
+  }
+
   const supplier = await admin.from("suppliers").select("name, tax_id").eq("id", selectedDispatch.supplier_id).maybeSingle();
   if (!supplier.data) throw new Error("No se encontró el proveedor del despacho.");
   const programmedQuantity = selectValidProgrammedQuantity(
@@ -438,7 +460,8 @@ async function classifyInternal(
   });
   const processed = processExtractedInvoice(raw, {
     ...identities.get(selectedDispatch.id)!,
-    expectedType: detectedType,
+    expectedType: processingType,
+    allowMixedInvoice: mixed,
     companyCode: project.companyCode,
     orderNumber: selectedDispatch.order_number ?? "",
     supplierName: supplier.data.name,
@@ -471,7 +494,11 @@ async function classifyInternal(
   const comparison = detectedType === "SERVICE"
     ? await previewServiceInvoiceComparison(admin, project.id, selectedDispatch.id, processed.payload.total, processed.payload.currency)
     : compareProductInvoice(processed.payload);
-  const hasDifferences = !comparison.matches || processed.payload.warnings.length > 0;
+  const mixedComparison = mixedTotals
+    ? await previewMixedInvoiceComparison(admin, project.id, selectedDispatch.id, mixedTotals, processed.payload.currency)
+    : undefined;
+  const hasDifferences = !comparison.matches || processed.payload.warnings.length > 0
+    || Boolean(mixedComparison && (!mixedComparison.product.matches || !mixedComparison.service.matches));
   return result(file, {
     ...base,
     projectId: project.id,
@@ -486,14 +513,15 @@ async function classifyInternal(
     message: processed.payload.recipient_exception_required
       ? "La factura puede guardarse, pero Compras debe decidir si acepta C14 o solicita refacturación."
       : isReinvoicing
-      ? `Lista para reemplazar la Factura de ${detectedType === "SERVICE" ? "Servicio" : "Producto"} anterior.`
+      ? "Lista para reemplazar la factura anterior."
       : hasDifferences ? "Lista con observaciones; revisa las diferencias antes de conciliar." : "Lista para conciliar.",
     comparison,
+    mixedComparison,
     warnings: processed.payload.warnings,
     operation: isReinvoicing ? "REINVOICE" : "NEW",
     replacesInvoiceId: invoiceSlot.replacesInvoiceId,
     replacesInvoiceNumber,
-    payload: { ...processed.payload, file_sha256: fileSha256 } as InvoiceProcessingPayload,
+    payload: { ...processed.payload, file_sha256: fileSha256, ...(mixedTotals ? { mixed_totals: mixedTotals } : {}) },
   });
 }
 
@@ -512,20 +540,31 @@ export async function commitUniversalInvoice(file: File, selection?: Selection, 
     return { ...publicResult(classified), saved: false };
   }
   const supabase = await createClient();
-  const prepared = await supabase.rpc("prepare_dispatch_invoice_upload_v2", {
+  const mixed = classified.detectedType === "MIXED";
+  const uploadArguments = {
     p_batch_id: classified.batchId,
     p_dispatch_id: classified.dispatchId,
-    p_invoice_type: classified.detectedType,
     p_payload: classified.payload,
     p_file_name: file.name,
     p_file_size: file.size,
     p_replaces_invoice_id: classified.replacesInvoiceId,
-  });
+  };
+  const prepared = mixed
+    ? await supabase.rpc("prepare_mixed_dispatch_invoice_upload", uploadArguments)
+    : await supabase.rpc("prepare_dispatch_invoice_upload_v2", { ...uploadArguments, p_invoice_type: classified.detectedType });
   const row = prepared.data?.[0];
   if (prepared.error || !row) {
     const duplicate = prepared.error?.message.toUpperCase().includes("FISCAL_DOCUMENT_ALREADY_EXISTS");
     const periodInvalid = prepared.error?.message.includes("INVOICE_ACCOUNTING_PERIOD");
-    return { ...publicResult(classified), status: duplicate ? "DUPLICATE" : "ERROR", message: duplicate ? "Esta factura fiscal ya fue procesada anteriormente." : periodInvalid ? "La factura está fuera del período permitido; la gracia del mes anterior es de cinco días hábiles." : "No fue posible preparar la factura.", saved: false };
+    const occupied = prepared.error?.message.includes("ACTIVE_DISPATCH_INVOICE_ALREADY_EXISTS");
+    const migrationRequired = mixed && prepared.error?.code === "PGRST202";
+    return { ...publicResult(classified), status: duplicate ? "DUPLICATE" : "ERROR", saved: false,
+      message: duplicate ? "Esta factura fiscal ya fue procesada anteriormente."
+        : occupied ? "El despacho ya tiene una factura vigente para una de las partes. Vuelve a clasificar los archivos."
+        : periodInvalid ? "La factura está fuera del período permitido; la gracia del mes anterior es de cinco días hábiles."
+        : migrationRequired ? "El guardado de facturas mixtas requiere la migración 155 en la base de datos configurada."
+        : "No fue posible preparar la factura.",
+    };
   }
   const admin = createAdminClient();
   const upload = await admin.storage.from(row.storage_bucket).upload(row.storage_path, file, { contentType: "application/pdf", upsert: false });
@@ -550,16 +589,22 @@ export async function commitUniversalInvoice(file: File, selection?: Selection, 
     return { ...publicResult(classified), status: "ERROR", message: "El PDF se guardó, pero no pudo procesarse.", saved: false };
   }
   let reconciliationStatus: string | undefined;
+  let serviceReconciliationStatus: string | undefined;
   let comparison = classified.comparison;
+  let mixedComparison = classified.mixedComparison;
   const warnings = [...classified.warnings];
   if (!classified.payload.recipient_exception_required) {
-    const reconciled = await supabase.rpc(classified.detectedType === "SERVICE" ? "reconcile_dispatch_service" : "reconcile_dispatch", { p_dispatch_id: classified.dispatchId });
+    const reconcileFunction = mixed ? "reconcile_mixed_dispatch_invoice"
+      : classified.detectedType === "SERVICE" ? "reconcile_dispatch_service" : "reconcile_dispatch";
+    const reconciled = await supabase.rpc(reconcileFunction, { p_dispatch_id: classified.dispatchId });
     if (reconciled.error) warnings.push("La factura se guardó, pero la conciliación debe reintentarse.");
     else {
-      reconciliationStatus = String(reconciled.data);
+      reconciliationStatus = mixed ? reconciled.data?.[0]?.product_status : String(reconciled.data);
+      serviceReconciliationStatus = mixed ? reconciled.data?.[0]?.service_status : undefined;
       try {
         const stored = await storedInvoiceReconciliation(admin, classified.projectId, classified.dispatchId, String(row.invoice_id), classified.detectedType);
         if (stored?.comparison) comparison = stored.comparison;
+        if (stored?.mixedComparison) mixedComparison = stored.mixedComparison;
       } catch {
         warnings.push("La factura se guardó; actualiza la conciliación para consultar su detalle más reciente.");
       }
@@ -571,6 +616,10 @@ export async function commitUniversalInvoice(file: File, selection?: Selection, 
       ? "Factura guardada. Compras debe aceptar la excepción C14 o solicitar refacturación."
       : !reconciliationStatus
       ? "La factura se guardó, pero la conciliación debe reintentarse."
+      : mixed
+      ? [reconciliationStatus, serviceReconciliationStatus].includes("WITH_DIFFERENCES")
+        ? "Factura mixta guardada. Revisa las partes que tienen diferencias."
+        : "Factura mixta guardada. Se concilió Producto y Servicio."
       : classified.detectedType === "PRODUCT"
       ? reconciliationStatus === "WITH_DIFFERENCES"
         ? "Factura guardada; la conciliación detectó diferencias."
@@ -582,7 +631,9 @@ export async function commitUniversalInvoice(file: File, selection?: Selection, 
     saved: true,
     invoiceId: String(row.invoice_id),
     reconciliationStatus,
+    serviceReconciliationStatus,
     comparison,
+    mixedComparison,
     recipientExceptionStatus: classified.payload.recipient_exception_required ? "PENDING" : null,
   };
 }

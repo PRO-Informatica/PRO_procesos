@@ -1,5 +1,5 @@
-import type { ProcessedInvoiceType } from "../invoice-processing";
-import type { UniversalInvoiceComparison } from "./reconciliation-comparison";
+import type { UniversalInvoiceType } from "../invoice-classification";
+import type { MixedInvoiceComparison, UniversalInvoiceComparison } from "./reconciliation-comparison";
 
 export type UniversalInvoiceStatus =
   | "IDENTIFIED"
@@ -28,7 +28,7 @@ export type UniversalInvoiceResult = {
   message: string;
   fileName: string;
   fileSize: number;
-  detectedType: ProcessedInvoiceType;
+  detectedType: UniversalInvoiceType;
   invoiceNumber: string | null;
   detectedBillingLegalName: string | null;
   orderNumber: string | null;
@@ -46,7 +46,9 @@ export type UniversalInvoiceResult = {
   replacesInvoiceId: string | null;
   replacesInvoiceNumber: string | null;
   comparison?: UniversalInvoiceComparison | null;
+  mixedComparison?: MixedInvoiceComparison | null;
   reconciliationStatus?: string;
+  serviceReconciliationStatus?: string;
 };
 
 export type UniversalCommitResult = UniversalInvoiceResult & {

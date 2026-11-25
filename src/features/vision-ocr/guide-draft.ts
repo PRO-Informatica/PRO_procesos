@@ -19,6 +19,18 @@ export type GuideOcrDraft = {
   warnings: string[];
 };
 
+const GUIDE_ZERO_DEFAULT_SERVICE_CODES = new Set(["SERV0507", "SERV0510"]);
+
+export function initialOcrGuideQuantity(line: OcrDraftLine, documentType: GuideDetails["documentType"]) {
+  if (documentType === "DISPATCH_GUIDE"
+    && line.type === "SERVICE"
+    && GUIDE_ZERO_DEFAULT_SERVICE_CODES.has(line.productCode)
+    && Number(line.quantity.replace(",", ".")) === 1) {
+    return "0";
+  }
+  return line.quantity;
+}
+
 // Recompute from the edited lines so a catalog selection or removal clears its alert.
 export function guideCatalogReviewWarnings(lines: { productCode: string; catalogItemId: string; catalogType: string; ocrWarning?: string | null }[]) {
   return lines.flatMap((line, index) => {

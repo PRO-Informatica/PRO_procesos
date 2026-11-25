@@ -190,6 +190,8 @@ test("la consulta de Despachos conserva las programaciones después de completar
     "server-only": {}, "@/lib/supabase/server": { createClient: async () => client }, "@/lib/supabase/admin": {},
     "./formatters": { ...dispatchFormatters, normalizeCatalogReference: value => value ?? "" },
     "@/features/invoices/service-reconciliation": {},
+    "@/features/invoices/universal/reconciliation-comparison": {},
+    "@/features/invoices/universal/reconciliation-queries": {},
     "./billing-completion-queries": { getDispatchBillingCompletion: async () => ({ DISPATCH_COMPLETED: false, COMPLETED: true }) },
   });
   const data = await getDispatchPageData("project");

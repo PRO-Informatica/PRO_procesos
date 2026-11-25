@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFile} from 'node:fs/promises';
-import { emptyGuideDetails, matchGuideCatalog, normalizeGuideDate, normalizeGuideTime, normalizeGuideUnit, validateOcrReview } from '../src/features/vision-ocr/guide-draft.ts';
+import { emptyGuideDetails, initialOcrGuideQuantity, matchGuideCatalog, normalizeGuideDate, normalizeGuideTime, normalizeGuideUnit, validateOcrReview } from '../src/features/vision-ocr/guide-draft.ts';
 import {parseCompleteGuide} from '../src/features/vision-ocr/complete-guide-parser.ts';
 import {FULL_GUIDE_CROP, imageQuality, validGuideCrop} from '../src/features/vision-ocr/image-preparation.ts';
 
@@ -121,9 +121,21 @@ test('guía mixta conserva producto y cuatro servicios, incluido código numéri
   assert.equal(result.guideNumber,'6015-000543');assert.equal(result.details.guideDate,'2026-11-03');
   assert.deepEqual(result.lines.map(l=>l.productCode),sample.map(l=>l.code));
   assert.deepEqual(result.lines.map(l=>l.quantity),['6.50','1.00','1.00','13.00','1.00']);
+  assert.deepEqual(result.lines.map(l=>initialOcrGuideQuantity(l,result.details.documentType)),['6.50','0','0','13.00','1.00']);
   assert.equal(result.lines.filter(l=>l.type==='SERVICE').length,4);
   assert.equal(result.lines.at(-1).description,'SERVICIO DE BOMBA ESTACIONARIA');
  }
+});
+test('el cero inicial aplica a los dos servicios leídos como uno en una guía de despacho',()=>{
+ const row={...line,type:'SERVICE',productCode:'SERV0507',quantity:'1,00'};
+ assert.equal(initialOcrGuideQuantity(row,'DISPATCH_GUIDE'),'0');
+ for(const documentType of ['MIXTO_OPERATION','PANEXUS_OPERATION']) {
+  assert.equal(initialOcrGuideQuantity(row,documentType),'1,00');
+ }
+ for(const quantity of ['','0','0.001','1.25','2']) {
+  assert.equal(initialOcrGuideQuantity({...row,quantity},'DISPATCH_GUIDE'),quantity);
+ }
+ assert.equal(initialOcrGuideQuantity({...row,type:'PRODUCT'},'DISPATCH_GUIDE'),'1,00');
 });
 test('cada fotografía conserva su número y líneas; una guía de producto no hereda los servicios de otra',()=>{
  const result=parseCompleteGuide(fixture(90,{guideNumber:'6015-000544',lines:[{quantity:'7.50',unit:'m3',code:'86131064',description:'CONF4001'}]}));

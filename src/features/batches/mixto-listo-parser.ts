@@ -3,6 +3,8 @@ export type MixtoListoParsedLine = {
   unit_code: string;
   code: string;
   description: string;
+  unit_price?: number;
+  line_total?: number;
 };
 
 export type MixtoListoParsedInvoice = {
@@ -48,17 +50,18 @@ function decimal(value: string) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-function invoiceDescription(value: string) {
-  // Mixto Listo prints unit price and line total immediately after the
-  // description. PDF layout extraction can flatten those columns into the
-  // same row, so remove only terminal monetary values (always two decimals).
-  // Product measurements such as `4000 PSI` and `3/8"` remain untouched.
-  return value
-    .replace(
-      /(?:\s+(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\.[0-9]{2})+\s*$/,
-      "",
-    )
-    .trim();
+function invoiceLineDetails(value: string) {
+  // Layout extraction puts the last two columns (Precio Unitario and Total)
+  // on the same row as the description. Preserve the printed amounts.
+  const amounts = value.match(/\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$/u);
+  if (amounts) {
+    return {
+      description: value.slice(0, amounts.index).trim(),
+      unit_price: Number(amounts[1].replaceAll(",", "")),
+      line_total: Number(amounts[2].replaceAll(",", "")),
+    };
+  }
+  return { description: value.replace(/\s+[\d,]+\.\d{2}\s*$/u, "").trim() };
 }
 
 function isSectionBoundary(value: string) {
@@ -200,7 +203,7 @@ export function parseMixtoListoInvoiceText(
         quantity,
         unit_code: normalizeUnit(match[2]),
         code: match[3].trim().toUpperCase(),
-        description: invoiceDescription(match[4]),
+        ...invoiceLineDetails(match[4]),
       });
       continue;
     }
