@@ -154,9 +154,10 @@ export function InvoicesWorkspace({
             onChange={(e) => setType(e.target.value)}
             className="form-input xl:col-span-2"
           >
-            <option value="">Producto / Servicio</option>
+            <option value="">Todos los tipos</option>
             <option value="PRODUCT">Producto</option>
             <option value="SERVICE">Servicio</option>
+            <option value="MIXED">Mixta</option>
           </select>
           <select
             aria-label="Filtrar por estado"

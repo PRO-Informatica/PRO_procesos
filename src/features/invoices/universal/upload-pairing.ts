@@ -35,7 +35,7 @@ export async function classifyProductFirst<T extends ClassifiedUpload & { id: st
   handlers.onStage("PRODUCTS");
   for (const target of targets) {
     const upload = uploads.get(target.id)!;
-    if (upload.result?.status === "IDENTIFIED" && upload.result.detectedType === "PRODUCT") {
+    if (upload.result?.status === "IDENTIFIED" && ["PRODUCT", "MIXED"].includes(upload.result.detectedType)) {
       update(await handlers.classify(upload, null));
     }
   }

@@ -13,7 +13,7 @@ import { notifications } from "@/lib/notification-messages";
 import { getPublicEnvironment } from "@/lib/env";
 import { GuidePhotoCapture, guideCaptureUrl, type GuidePhotoResult, type GuidePhotoCaptureHandle } from "@/features/vision-ocr/components/guide-photo-capture";
 import { GuideOcrVariants, SavedGuideOcrDetails } from "@/features/vision-ocr/components/guide-ocr-details";
-import { guideCatalogReviewWarnings, type GuideDetails, type GuideOcrDraft } from "@/features/vision-ocr/guide-draft";
+import { guideCatalogReviewWarnings, initialOcrGuideQuantity, type GuideDetails, type GuideOcrDraft } from "@/features/vision-ocr/guide-draft";
 import { guideScanScope, openGuideScanStorage, type GuideScanStorage } from "@/features/vision-ocr/guide-scan-storage";
 
 import { GuideOcrReview } from "@/features/vision-ocr/components/guide-ocr-review";
@@ -341,7 +341,7 @@ export function DispatchGuideDialog({
     setTruckArrivalTime(result.draft.arrivalTime); setTruckDepartureTime(result.draft.departureTime);
     setLines(result.draft.lines.length ? result.draft.lines.map((line) => {
       const selected = line.candidates.find((item) => item.id === line.catalogItemId);
-      return { ...emptyLine(crypto.randomUUID()), quantity: line.quantity, unitCode: line.unit, catalogType: line.type,
+      return { ...emptyLine(crypto.randomUUID()), quantity: initialOcrGuideQuantity(line, result.draft.details.documentType), unitCode: line.unit, catalogType: line.type,
         catalogItemId: line.catalogItemId, productCode: line.productCode, productDescription: line.description,
         catalogReference: selected?.reference ?? "", unitPrice: selected?.price ?? null, currency: selected?.currency ?? "",
         ocrCandidates: line.candidates, ocrWarning: line.warning };

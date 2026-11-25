@@ -7,6 +7,7 @@ import ExcelJS from 'exceljs';
 import {REPORT_TABLE_HEADER_ROW,setupReportSheet} from '../src/features/reports/workbook-header.ts';
 import {guideReportMetadata} from '../src/features/reports/guide-metadata.ts';
 import {serviceReconciliationSummary} from '../src/features/invoices/service-reconciliation.ts';
+import {storedMixedInvoiceTotals} from '../src/features/invoices/universal/reconciliation-comparison.ts';
 import {requiresServiceInvoice} from '../src/features/programming/invoice-policy.ts';
 import {reportDispatchProcessStatus,reportStatusTone} from '../src/features/reports/presentation.ts';
 import * as projectAccess from '../src/features/projects/access-policy.ts';
@@ -14,7 +15,7 @@ import {formatStatusLabel} from '../src/lib/status-labels.ts';
 
 const root=new URL('../',import.meta.url);
 const [querySource,routeSource,rowSource]=await Promise.all(['src/features/reports/queries.ts','src/app/(dashboard)/reports/export/route.ts','src/features/reports/components/report-table-rows.tsx'].map(f=>readFile(new URL(f,root),'utf8')));
-function load(source,imports){const exports={};const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;runInNewContext(compiled,{exports,require(name){assert.ok(Object.hasOwn(imports,name),name);return imports[name];},Date,Intl,Response});return exports;}
+function load(source,imports){const exports={};const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;runInNewContext(compiled,{exports,require(name){if(name==='@/features/invoices/universal/reconciliation-comparison')return {storedMixedInvoiceTotals};assert.ok(Object.hasOwn(imports,name),name);return imports[name];},Date,Intl,Response});return exports;}
 const projects=[{id:'project-a',name:'ADO',code:'ADO-PRO',companyName:'Empresa',timezone:'America/Guatemala',billingLegalName:'Cliente'}];
 const base={project_id:'project-a',supplier_id:'supplier',programming_id:'program-a',status:'COMPLETED',result:'DISPATCHED',created_by:'registrar',created_at:'2026-10-27T13:00:00Z',order_number:'47',real_volume:7,real_unit_code:'M3',completed_by:'validator'};
 function fixture({labelsMissing=false,billingComplete=false,supplierName="Mixto Listo",otherSupplier=false,reportProjects=projects,withoutDispatches=false,reconciliations=[],deliveryModes}={}){

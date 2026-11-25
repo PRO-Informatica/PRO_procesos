@@ -1,9 +1,41 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { compareProductInvoice, compareServiceInvoice, hasReconciliationDifferences } from "../src/features/invoices/universal/reconciliation-comparison.ts";
+import { parseMixtoListoInvoiceText } from "../src/features/batches/mixto-listo-parser.ts";
+import { compareMixedInvoice, compareProductInvoice, compareServiceInvoice, hasReconciliationDifferences, splitMixedInvoiceTotals } from "../src/features/invoices/universal/reconciliation-comparison.ts";
 
 const line = (subtotal, currency = "GTQ") => ({ unit_price: 1, estimated_subtotal: subtotal, currency });
+
+test("lee el importe por renglón y verifica ambos subtotales contra el total impreso", () => {
+  const invoice = parseMixtoListoInvoiceText([
+    "Cantidad Medida Código Descripción Precio Unitario Total",
+    '17.00 M3 86131061 CONF3001 FLUIDO 3000 PSI TNM 3/8" 1,111.04 18,887.68',
+    "34.00 UN SERV0226 DOSIS RETARDANTE 10.92 371.28",
+    "1.00 UN SERV0276 COMBO TRES PAREJAS DE CILINDROS 832.16 832.16",
+    "16.00 M3 SERV0507 BOMBEO DE CONCRETO REGIONAL 110.32 1,765.12",
+    "17.00 M3 SERV0510 COLOCACIÓN REGIONAL 134.40 2,284.80",
+    "Total en letras: VEINTICUATRO MIL GTQ 24,141.04",
+  ].join("\n"));
+
+  assert.equal(invoice.lines[0].unit_price, 1111.04);
+  assert.equal(invoice.lines[0].line_total, 18887.68);
+  assert.match(invoice.lines[0].description, /TNM 3\/8"$/u);
+  assert.deepEqual(splitMixedInvoiceTotals(invoice.lines, invoice.total), { product: 18887.68, service: 5253.36 });
+  assert.equal(splitMixedInvoiceTotals(invoice.lines, 24141.05), null);
+  const missingAmount = invoice.lines.map((row, index) => index === 4 ? { ...row, line_total: undefined } : row);
+  assert.equal(splitMixedInvoiceTotals(missingAmount, invoice.total), null);
+});
+
+test("un total mixto que coincide conserva diferencias opuestas de Producto y Servicio", () => {
+  const mixedComparison = compareMixedInvoice({ product: 18887.68, service: 5253.36 }, "GTQ", {
+    product: [line("18987.6808")],
+    service: [line("5153.3600")],
+  });
+  assert.equal(mixedComparison.product.difference, -100);
+  assert.equal(mixedComparison.service.difference, 100);
+  assert.equal(mixedComparison.total.matches, true);
+  assert.equal(hasReconciliationDifferences({ mixedComparison }), true);
+});
 
 test("Universal muestra las diferencias monetarias de los Servicios 106 y 147", () => {
   for (const [expected, invoiced, difference] of [[10055.22, 7776.05, -2279.17], [2121.56, 1477, -644.56]]) {

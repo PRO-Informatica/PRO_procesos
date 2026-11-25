@@ -47,6 +47,7 @@ function fixture(overrides = {}, permissions = { canModify: true, canComplete: t
     "next/navigation": { useRouter: () => ({ refresh() {} }) },
     "@/components/feedback/use-action-notification": { useActionNotification() {} },
     "@/features/batches/actions": {},
+    "@/features/invoices/universal/components/mixed-invoice-comparison": { MixedInvoiceAmounts: "MixedInvoiceAmounts" },
     "@/features/reconciliation/components/service-reconciliation-summary": { ServiceReconciliationSummaryCard: "ServiceReconciliationSummaryCard" }, "@/lib/notification-messages": { notifications: {} },
     "@/lib/notify": {}, "@/lib/status-labels": { formatStatusLabel: value => value },
     "@/lib/env": {}, "@/features/vision-ocr/guide-scan-storage": {},

@@ -149,6 +149,7 @@ test('las consultas trasladan horarios nuevos e históricos sin fabricar datos',
   const queries = await readFile(new URL('src/features/dispatches/queries.ts',root),'utf8');
   const loadedQueries = load(queries+'\nexport { buildGuides as testBuildGuides };', {
     '@/features/invoices/service-reconciliation':{serviceReconciliationSummary},'server-only':{}, '@/lib/supabase/admin':{}, '@/lib/supabase/server':{}, './formatters':{},
+    '@/features/invoices/universal/reconciliation-comparison':{}, '@/features/invoices/universal/reconciliation-queries':{},
   });
   const guide={casting_element:'PILES',laboratory_applied:true,details:{truck:'0183',pilot:'Piloto manual'},id:guideId,guide_number:'1234',guide_date:'2026-10-26',quantity:5,unit_code:'M3',truck_arrival_at:'2026-10-26T21:30:00Z',truck_departure_at:'2026-10-26T22:10:00Z'};
   const row=loadedQueries.testBuildGuides([guide],[])[0];

@@ -1,6 +1,7 @@
 import "server-only";
 import { getDispatchBillingCompletion } from "@/features/dispatches/billing-completion-queries";
 import { serviceReconciliationSummary } from "@/features/invoices/service-reconciliation";
+import { storedMixedInvoiceTotals, type MixedInvoiceTotals } from "@/features/invoices/universal/reconciliation-comparison";
 import { requiresServiceInvoice } from "@/features/programming/invoice-policy";
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -138,10 +139,13 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
   const extractionByInvoice = new Map<string, Row>();
   for (const extraction of invoiceExtractions.data ?? []) { const id = String(extraction.invoice_id ?? ""); if (id && !extractionByInvoice.has(id)) extractionByInvoice.set(id, extraction); }
   const invoiceById = new Map<string, ReportInvoice>();
+  const mixedTotalsByInvoice = new Map<string, MixedInvoiceTotals>();
   for (const invoice of invoicesResult.data ?? []) {
     const id = String(invoice.id);
     const extraction = extractionByInvoice.get(id);
     const payload = objectValue(extraction?.corrected_payload ?? extraction?.normalized_payload);
+    const mixedTotals = storedMixedInvoiceTotals(payload.mixed_totals);
+    if (mixedTotals) mixedTotalsByInvoice.set(id, mixedTotals);
     const documentId = documentByInvoice.get(id) ?? null;
     invoiceById.set(id, {
       id, type: String(invoice.invoice_type) as ReportInvoice["type"], number: String(invoice.invoice_number), date: String(invoice.invoice_date), status: String(invoice.status),
@@ -172,8 +176,15 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
       const id = String(dispatch.id);
       const dispatchGuides = guidesByDispatch.get(id) ?? [];
       const reconciliation = reconciliationByDispatch.get(id);
-      const productInvoice = reconciliation?.current_product_invoice_id ? invoiceById.get(reconciliation.current_product_invoice_id) ?? null : null;
-      const serviceInvoice = reconciliation?.current_service_invoice_id ? invoiceById.get(reconciliation.current_service_invoice_id) ?? null : null;
+      let productInvoice = reconciliation?.current_product_invoice_id ? invoiceById.get(reconciliation.current_product_invoice_id) ?? null : null;
+      let serviceInvoice = reconciliation?.current_service_invoice_id ? invoiceById.get(reconciliation.current_service_invoice_id) ?? null : null;
+      if (productInvoice && productInvoice.id === serviceInvoice?.id) {
+        const totals = mixedTotalsByInvoice.get(productInvoice.id);
+        if (totals) {
+          productInvoice = { ...productInvoice, subtotal: totals.product, total: totals.product };
+          serviceInvoice = { ...serviceInvoice, type: "SERVICE", subtotal: totals.service, total: totals.service, invoicedQuantity: null, unitCode: null };
+        }
+      }
       const batchId = batchByDispatch.get(id) ?? null;
       const incidentList = incidentsByDispatch.get(id) ?? [];
       const completedById = dispatch.status === "COMPLETED" ? optionalText(dispatch.completed_by) : null;
@@ -190,7 +201,7 @@ export async function getGuideReport(projects: ReportProjectInput[], filters: Gu
         incidentCount: incidentList.length, documentCount: dispatchGuides.reduce((sum, guide) => sum + (guideDocCount.get(String(guide.id)) ?? 0), 0) + incidentList.reduce((sum, incidentId) => sum + (incidentDocCount.get(incidentId) ?? 0), 0),
         orderStatus: reconciliation?.status ?? "NOT_STARTED", reinvoicingRequired: reconciliation?.status === "PENDING_REINVOICING", reconciliationStatus: reconciliation?.status ?? "NOT_STARTED",
         serviceReconciliation: serviceRequired || reconciliation?.current_service_invoice_id ? serviceReconciliationSummary(reconciliation ?? {}) : null,
-        productInvoicedQuantity: productInvoice?.invoicedQuantity ?? 0, difference: numeric(latestAttemptByDispatch.get(id)?.difference), invoiceCount: [productInvoice, serviceInvoice].filter(Boolean).length, productInvoice, serviceInvoice,
+        productInvoicedQuantity: productInvoice?.invoicedQuantity ?? 0, difference: numeric(latestAttemptByDispatch.get(id)?.difference), invoiceCount: new Set([productInvoice?.id, serviceInvoice?.id].filter(Boolean)).size, productInvoice, serviceInvoice,
       };
     });
     if (filters.orderNumber) { const order = filters.orderNumber.toLowerCase(); children = children.filter((row) => row.orderNumber?.toLowerCase().includes(order)); }

@@ -2,6 +2,8 @@ import { getDispatchBillingCompletion } from "./billing-completion-queries";
 import "server-only";
 import type { CastingElement } from "./casting-elements";
 import { serviceReconciliationSummary } from "@/features/invoices/service-reconciliation";
+import { compareMixedInvoice, storedMixedInvoiceTotals } from "@/features/invoices/universal/reconciliation-comparison";
+import { storedInvoiceReconciliation } from "@/features/invoices/universal/reconciliation-queries";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -112,6 +114,7 @@ type InvoiceExtractionPayload = {
   billing_legal_name?: unknown;
   billing_tax_id?: unknown;
   lines?: unknown;
+  mixed_totals?: unknown;
 };
 
 function numberValue(value: number | string | null | undefined) {
@@ -722,6 +725,13 @@ export async function getDispatchDetail(
     });
   }
   const latestDifference = attemptsResult.data?.[0]?.difference;
+  const productInvoiceId = reconciliationResult.data?.current_product_invoice_id;
+  const mixedInvoiceId = productInvoiceId && productInvoiceId === reconciliationResult.data?.current_service_invoice_id ? productInvoiceId : null;
+  const mixedInvoice = mixedInvoiceId ? invoiceById.get(mixedInvoiceId) : null;
+  const mixedTotals = mixedInvoiceId ? storedMixedInvoiceTotals(extractionByInvoice.get(mixedInvoiceId)?.mixed_totals) : null;
+  const mixedResult = mixedInvoiceId
+    ? await storedInvoiceReconciliation(supabase, projectId, dispatchId, mixedInvoiceId, "MIXED")
+    : null;
 
   return {
     id: dispatch.id,
@@ -767,13 +777,15 @@ export async function getDispatchDetail(
     reconciliation: reconciliationResult.data ? {
       status: reconciliationResult.data.status,
       serviceReconciliation: serviceReconciliationSummary(reconciliationResult.data),
+      mixedComparison: mixedResult?.mixedComparison ?? (mixedInvoice && mixedTotals ? compareMixedInvoice(mixedTotals, mixedInvoice.currency) : null),
       productInvoice: reconciliationResult.data.current_product_invoice_id
         ? invoiceById.get(reconciliationResult.data.current_product_invoice_id) ?? null
         : null,
       serviceInvoice: reconciliationResult.data.current_service_invoice_id
         ? invoiceById.get(reconciliationResult.data.current_service_invoice_id) ?? null
         : null,
-      latestDifference: latestDifference === null || latestDifference === undefined ? null : numberValue(latestDifference),
+      latestDifference: mixedInvoiceId ? mixedResult?.comparison?.difference ?? null
+        : latestDifference === null || latestDifference === undefined ? null : numberValue(latestDifference),
     } : null,
     incidentTypes: (typesResult.data ?? []).map((row) => ({ id: row.id, name: row.name })),
     units: (unitsResult.data ?? []).map((row) => ({ code: row.code, name: row.name })),
