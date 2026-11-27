@@ -374,7 +374,7 @@ export async function saveDispatchGuideAction(
   if (!guideNumber)
     return { status: "error", message: "Ingresa el número de guía." };
   const castingElement = text(formData, "castingElement");
-  if (!["COLUMNS", "PILES", "PILES_AND_COLUMNS"].includes(castingElement)) return { status: "error", message: "Selecciona el elemento a fundir." };
+  if (!["COLUMNS", "PILES", "PILES_AND_COLUMNS", "SLAB", "STAIRS", "CAPITALS", "CISTERN", "SUBFLOOR", "BASE_FILL"].includes(castingElement)) return { status: "error", message: "Selecciona el elemento a fundir." };
   const laboratoryApplied = formData.get("laboratoryApplied") === "on";
   let details: unknown;
   try { details = JSON.parse(text(formData, "guideDetails") || JSON.stringify(emptyGuideDetails())); }

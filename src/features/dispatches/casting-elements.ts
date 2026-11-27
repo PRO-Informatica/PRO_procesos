@@ -2,6 +2,12 @@ export const CASTING_ELEMENTS = {
   PILES: "Pilotes",
   COLUMNS: "Columnas",
   PILES_AND_COLUMNS: "Pilotes y columnas",
+  SLAB: "Losa",
+  STAIRS: "Gradas",
+  CAPITALS: "Capiteles",
+  CISTERN: "Cisterna",
+  SUBFLOOR: "Contrapiso",
+  BASE_FILL: "Base - relleno",
 } as const;
 export type CastingElement = keyof typeof CASTING_ELEMENTS;
 
